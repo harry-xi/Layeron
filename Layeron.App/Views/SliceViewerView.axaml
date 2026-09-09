@@ -1,0 +1,21 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Layeron.App.ViewModels"
+             xmlns:local="using:Layeron.App.Views"
+             mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="500"
+             x:Class="Layeron.App.Views.SliceViewerView"
+             x:DataType="vm:SliceViewerViewModel"
+             ClipToBounds="True">
+    <local:CustomImageViewer x:Name="ImageViewer"
+                             Source="{Binding SliceImage}"
+                             ClickCommand="{Binding ClickCommand}"
+                             CrosshairX="{Binding CrosshairXPosition}"
+                             CrosshairY="{Binding CrosshairYPosition}"
+                             ImageWidth="{Binding CurrentImageWidth}"
+                             ImageHeight="{Binding CurrentImageHeight}"
+                             BackgroundBrush="#FF1E1E1E"
+                             ImageBorderBrush="#FF606060"
+                             ImageBorderThickness="1" />
+</UserControl>

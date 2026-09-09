@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="Layeron.App/Layeron.App.csproj" />
+  <Project Path="Layeron.Big3DArray.Bench/Layeron.Big3DArray.Bench.csproj" />
+  <Project Path="Layeron.Big3DArray.Test/Layeron.Big3DArray.Test.csproj" Id="e0b4e929-df93-46fa-8855-b536cd3a2e77" />
+  <Project Path="Layeron.Big3DArray/Layeron.Big3DArray.csproj" />
+</Solution>

@@ -1,0 +1,31 @@
+## .NET build artifacts
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+*.useroscache
+*.sln.docstates
+
+## Rider / Visual Studio
+.idea/
+.vs/
+
+## BenchmarkDotNet
+BenchmarkDotNet.Artifacts/
+
+## Test results
+TestResults/
+[Tt]est[Rr]esult*/
+
+## OS
+.DS_Store
+Thumbs.db
+
+## Logs
+*.log
+
+## SixLabors license (machine-specific license key)
+sixlabors.lic
+
+## Six labors lic
+**/sixlabors.lic

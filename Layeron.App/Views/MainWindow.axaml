@@ -1,0 +1,29 @@
+<Window xmlns="https://github.com/avaloniaui"
+            xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+            xmlns:vm="using:Layeron.App.ViewModels"
+            xmlns:controls="clr-namespace:Dock.Avalonia.Controls;assembly=Dock.Avalonia"
+            xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+            xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+            mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+            x:Class="Layeron.App.Views.MainWindow"
+            x:DataType="vm:MainWindowViewModel"
+            Icon="/Assets/avalonia-logo.ico"
+            Title="Layeron.App - Dock Demo">
+
+    <Design.DataContext>
+        <vm:MainWindowViewModel/>
+    </Design.DataContext>
+
+    <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="10">
+            <Button Content="Load Data" Command="{Binding SharedData.LoadCommand}" Margin="0,0,10,0"/>
+            <Button Content="Save Data" Command="{Binding SharedData.SaveCommand}" Margin="0,0,10,0"/>
+            <Button Content="Generate Demo" Command="{Binding SharedData.GenerateDemoCommand}" Margin="0,0,10,0"/>
+            <Button Content="Create from Images" Command="{Binding SharedData.CreateFromImagesCommand}" Margin="0,0,10,0"/>
+            <TextBlock Text="{Binding SharedData.StatusText}" VerticalAlignment="Center" Margin="10,0,0,0"/>
+        </StackPanel>
+        
+        <controls:DockControl Layout="{Binding Dock.Layout}"/>
+    </DockPanel>
+
+</Window>
