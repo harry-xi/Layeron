@@ -93,7 +93,7 @@ public class CrosshairOverlay : IImageOverlay
         }
     }
 
-    public void Render(DrawingContext context, Rect imageBounds)
+    public void Render(DrawingContext context, Rect imageBounds, Rect viewportBounds)
     {
         if (!IsVisible || ImageWidth <= 0 || ImageHeight <= 0) return;
 

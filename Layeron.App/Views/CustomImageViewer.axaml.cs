@@ -17,8 +17,15 @@ public partial class CustomImageViewer : UserControl
     public static readonly StyledProperty<WriteableBitmap?> SourceProperty =
         AvaloniaProperty.Register<CustomImageViewer, WriteableBitmap?>(nameof(Source));
 
+    public static readonly StyledProperty<WriteableBitmap?> MaskImageProperty =
+        AvaloniaProperty.Register<CustomImageViewer, WriteableBitmap?>(nameof(MaskImage));
+
     public static readonly StyledProperty<ICommand?> ClickCommandProperty =
         AvaloniaProperty.Register<CustomImageViewer, ICommand?>(nameof(ClickCommand));
+
+    // [TEMP-DEMO] mask painting support
+    public static readonly StyledProperty<ICommand?> PaintCommandProperty =
+        AvaloniaProperty.Register<CustomImageViewer, ICommand?>(nameof(PaintCommand));
 
     public static readonly StyledProperty<int> CrosshairXProperty =
         AvaloniaProperty.Register<CustomImageViewer, int>(nameof(CrosshairX));
@@ -42,6 +49,7 @@ public partial class CustomImageViewer : UserControl
         AvaloniaProperty.Register<CustomImageViewer, double>(nameof(ImageBorderThickness));
 
     private bool _isDragging;
+    private bool _isPainting; // [TEMP-DEMO]
     private Point _lastDragPoint;
     private Point _pan = new(0, 0);
     private double _scale = 1.0;
@@ -77,10 +85,23 @@ public partial class CustomImageViewer : UserControl
         set => SetValue(SourceProperty, value);
     }
 
+    public WriteableBitmap? MaskImage
+    {
+        get => GetValue(MaskImageProperty);
+        set => SetValue(MaskImageProperty, value);
+    }
+
     public ICommand? ClickCommand
     {
         get => GetValue(ClickCommandProperty);
         set => SetValue(ClickCommandProperty, value);
+    }
+
+    // [TEMP-DEMO] mask painting support
+    public ICommand? PaintCommand
+    {
+        get => GetValue(PaintCommandProperty);
+        set => SetValue(PaintCommandProperty, value);
     }
 
     public int CrosshairX
@@ -161,7 +182,13 @@ public partial class CustomImageViewer : UserControl
     {
         var pt = e.GetPosition(this);
         var current = e.GetCurrentPoint(this).Properties;
-        if (current.IsLeftButtonPressed)
+        if (current.IsLeftButtonPressed && IsPaintModifier(e.KeyModifiers)) // [TEMP-DEMO]
+        {
+            _isPainting = true;
+            Cursor = new Cursor(StandardCursorType.Cross);
+            ExecutePaint(pt);
+        }
+        else if (current.IsLeftButtonPressed)
         {
             _lastDragPoint = pt;
             _isDragging = true;
@@ -189,7 +216,12 @@ public partial class CustomImageViewer : UserControl
 
     private void OnPointerMoved(object? sender, PointerEventArgs e)
     {
-        if (_isDragging && e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        var currentPoint = e.GetCurrentPoint(this);
+        if (_isPainting && currentPoint.Properties.IsLeftButtonPressed) // [TEMP-DEMO]
+        {
+            ExecutePaint(e.GetPosition(this));
+        }
+        else if (_isDragging && currentPoint.Properties.IsLeftButtonPressed)
         {
             var current = e.GetPosition(this);
             _pan += current - _lastDragPoint;
@@ -200,14 +232,32 @@ public partial class CustomImageViewer : UserControl
 
     private void OnPointerReleased(object? sender, PointerEventArgs e)
     {
+        _isPainting = false; // [TEMP-DEMO]
         _isDragging = false;
         Cursor = new Cursor(StandardCursorType.Arrow);
+    }
+
+    // [TEMP-DEMO] mask painting support
+    private static bool IsPaintModifier(KeyModifiers modifiers) =>
+        modifiers.HasFlag(KeyModifiers.Control);
+
+    private void ExecutePaint(Point controlPt)
+    {
+        if (PaintCommand == null || Source == null || ImageWidth == 0 || ImageHeight == 0) return;
+
+        var imgPt = (controlPt - _pan) / _scale;
+        var pixelX = (int)imgPt.X;
+        var pixelY = (int)imgPt.Y;
+        if (pixelX < 0 || pixelX >= ImageWidth || pixelY < 0 || pixelY >= ImageHeight) return;
+
+        PaintCommand.Execute(new Point(pixelX, pixelY));
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
         if (change.Property == SourceProperty ||
+            change.Property == MaskImageProperty ||
             change.Property == CrosshairXProperty ||
             change.Property == CrosshairYProperty ||
             change.Property == ImageWidthProperty ||
@@ -273,17 +323,24 @@ public partial class CustomImageViewer : UserControl
         using (context.PushRenderOptions(options))
         {
             context.DrawImage(Source, new Rect(0, 0, imgW, imgH), imageBounds);
-        }
 
-        if (ImageBorderBrush != null && ImageBorderThickness > 0)
-        {
-            var borderPen = new Pen(ImageBorderBrush, ImageBorderThickness);
-            context.DrawRectangle(null, borderPen, imageBounds);
-        }
+            if (MaskImage != null)
+            {
+                var mW = MaskImage.PixelSize.Width;
+                var mH = MaskImage.PixelSize.Height;
+                context.DrawImage(MaskImage, new Rect(0, 0, mW, mH), imageBounds);
+            }
 
-        foreach (var overlay in Overlays)
-        {
-            overlay.Render(context, imageBounds);
+            if (ImageBorderBrush != null && ImageBorderThickness > 0)
+            {
+                var borderPen = new Pen(ImageBorderBrush, ImageBorderThickness);
+                context.DrawRectangle(null, borderPen, imageBounds);
+            }
+
+            foreach (var overlay in Overlays)
+            {
+                overlay.Render(context, imageBounds, new Rect(Bounds.Size));
+            }
         }
     }
 }

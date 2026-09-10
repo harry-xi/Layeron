@@ -2,9 +2,9 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Windows.Input;
 using Avalonia.Platform.Storage;
 using ReactiveUI;
+using RxVoid = ReactiveUI.Primitives.RxVoid;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using B3DA = Layeron.Big3DArray.Big3DArray;
@@ -24,6 +24,17 @@ public class SharedDataSourceViewModel : ViewModelBase
         SaveCommand = ReactiveCommand.CreateFromTask(SaveAsync);
         GenerateDemoCommand = ReactiveCommand.Create(GenerateDemoData);
         CreateFromImagesCommand = ReactiveCommand.CreateFromTask(CreateFromImagesAsync);
+
+        LoadCommand.ThrownExceptions.Subscribe(OnDataCommandError);
+        SaveCommand.ThrownExceptions.Subscribe(OnDataCommandError);
+        GenerateDemoCommand.ThrownExceptions.Subscribe(OnDataCommandError);
+        CreateFromImagesCommand.ThrownExceptions.Subscribe(OnDataCommandError);
+    }
+
+    // [TEMP-DEMO] never let a load/generate command failure break the app
+    private void OnDataCommandError(Exception ex)
+    {
+        StatusText = $"Error: {ex.Message}";
     }
 
     public B3DA? Array
@@ -44,6 +55,8 @@ public class SharedDataSourceViewModel : ViewModelBase
                 : "No data loaded";
         }
     }
+
+    public MaskManagerViewModel? MaskManager { get; set; }
 
     public bool HasData => _array != null;
 
@@ -103,10 +116,10 @@ public class SharedDataSourceViewModel : ViewModelBase
         set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
-    public ICommand LoadCommand { get; }
-    public ICommand SaveCommand { get; }
-    public ICommand GenerateDemoCommand { get; }
-    public ICommand CreateFromImagesCommand { get; }
+    public ReactiveCommand<RxVoid, RxVoid> LoadCommand { get; }
+    public ReactiveCommand<RxVoid, RxVoid> SaveCommand { get; }
+    public ReactiveCommand<RxVoid, RxVoid> GenerateDemoCommand { get; }
+    public ReactiveCommand<RxVoid, RxVoid> CreateFromImagesCommand { get; }
 
     private async Task LoadAsync()
     {

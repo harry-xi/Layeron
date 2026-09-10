@@ -13,10 +13,12 @@ public class DockFactory : Factory
 {
     private int _windowCount = 0;
     private readonly SharedDataSourceViewModel _sharedData;
+    private readonly MaskManagerViewModel _maskManager;
 
-    public DockFactory(SharedDataSourceViewModel sharedData)
+    public DockFactory(SharedDataSourceViewModel sharedData, MaskManagerViewModel maskManager)
     {
         _sharedData = sharedData;
+        _maskManager = maskManager;
     }
 
     public override IRootDock CreateLayout()
@@ -29,7 +31,7 @@ public class DockFactory : Factory
         {
             Id = "Documents",
             Title = "Documents",
-            Proportion = 0.7,
+            Proportion = 0.66,
             ActiveDockable = sliceXY,
             VisibleDockables = CreateList<IDockable>(sliceXY, sliceXZ, sliceYZ)
         };
@@ -38,7 +40,7 @@ public class DockFactory : Factory
         {
             Id = "LeftToolDock",
             Title = "LeftToolDock",
-            Proportion = 0.15,
+            Proportion = 0.12,
             Alignment = Alignment.Left,
             ActiveDockable = null,
             VisibleDockables = CreateList<IDockable>()
@@ -48,10 +50,10 @@ public class DockFactory : Factory
         {
             Id = "RightToolDock",
             Title = "RightToolDock",
-            Proportion = 0.15,
+            Proportion = 0.22,
             Alignment = Alignment.Right,
-            ActiveDockable = null,
-            VisibleDockables = CreateList<IDockable>()
+            ActiveDockable = _maskManager,
+            VisibleDockables = CreateList<IDockable>(_maskManager)
         };
 
         var mainLayout = new ProportionalDock
@@ -90,7 +92,8 @@ public class DockFactory : Factory
             ["SliceXZ"] = () => new SliceViewerViewModel("XZ Slice", "SliceXZ", SliceAxis.XZ) { SharedData = _sharedData },
             ["SliceYZ"] = () => new SliceViewerViewModel("YZ Slice", "SliceYZ", SliceAxis.YZ) { SharedData = _sharedData },
             ["LeftToolDock"] = () => new ToolWindowViewModel(),
-            ["RightToolDock"] = () => new ToolWindowViewModel()
+            ["RightToolDock"] = () => new ToolWindowViewModel(),
+            ["MaskManager"] = () => _maskManager
         };
 
         DockableLocator = new Dictionary<string, Func<IDockable>>

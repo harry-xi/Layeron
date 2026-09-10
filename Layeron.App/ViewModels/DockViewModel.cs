@@ -11,10 +11,10 @@ public class DockViewModel : ViewModelBase
     private int _toolCount;
     private readonly SharedDataSourceViewModel _sharedData;
 
-    public DockViewModel(SharedDataSourceViewModel sharedData)
+    public DockViewModel(SharedDataSourceViewModel sharedData, MaskManagerViewModel maskManager)
     {
         _sharedData = sharedData;
-        var factory = new DockFactory(sharedData);
+        var factory = new DockFactory(sharedData, maskManager);
         Layout = factory.CreateLayout();
         factory.InitLayout(Layout);
         

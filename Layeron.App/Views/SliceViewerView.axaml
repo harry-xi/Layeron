@@ -10,7 +10,9 @@
              ClipToBounds="True">
     <local:CustomImageViewer x:Name="ImageViewer"
                              Source="{Binding SliceImage}"
+                             MaskImage="{Binding MaskImage}"
                              ClickCommand="{Binding ClickCommand}"
+                             PaintCommand="{Binding PaintCommand}"
                              CrosshairX="{Binding CrosshairXPosition}"
                              CrosshairY="{Binding CrosshairYPosition}"
                              ImageWidth="{Binding CurrentImageWidth}"

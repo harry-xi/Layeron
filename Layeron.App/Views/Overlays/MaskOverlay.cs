@@ -36,7 +36,7 @@ public class MaskOverlay : IImageOverlay
         }
     }
 
-    public void Render(DrawingContext context, Rect imageBounds)
+    public void Render(DrawingContext context, Rect imageBounds, Rect viewportBounds)
     {
         if (!IsVisible || _sliceImage == null) return;
 

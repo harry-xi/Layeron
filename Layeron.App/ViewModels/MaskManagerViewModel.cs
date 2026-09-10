@@ -3,13 +3,13 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Windows.Input;
 using Avalonia.Platform.Storage;
 using Dock.Model.ReactiveUI.Controls;
 using Avalonia.Controls;
 using Layeron.App.Models;
 using Layeron.Big3DArray;
 using ReactiveUI;
+using RxVoid = ReactiveUI.Primitives.RxVoid;
 
 namespace Layeron.App.ViewModels;
 
@@ -17,6 +17,7 @@ public class MaskManagerViewModel : Tool
 {
     private int _nextMaskIndex = 1;
     private SharedDataSourceViewModel? _sharedData;
+    private MaskLayer? _activeMask; // [TEMP-DEMO]
 
     public MaskManagerViewModel()
     {
@@ -28,9 +29,35 @@ public class MaskManagerViewModel : Tool
         RemoveMaskCommand = ReactiveCommand.Create<MaskLayer>(RemoveMask);
         LoadMaskCommand = ReactiveCommand.CreateFromTask(LoadMaskAsync);
         SaveMaskCommand = ReactiveCommand.CreateFromTask<MaskLayer>(SaveMaskAsync);
+
+        // [TEMP-DEMO] never let a command failure break the app
+        AddMaskCommand.ThrownExceptions.Subscribe(HandleCommandError);
+        RemoveMaskCommand.ThrownExceptions.Subscribe(HandleCommandError);
+        LoadMaskCommand.ThrownExceptions.Subscribe(HandleCommandError);
+        SaveMaskCommand.ThrownExceptions.Subscribe(HandleCommandError);
+
+        Masks.CollectionChanged += (_, _) => this.RaisePropertyChanged(nameof(LayersCountText));
+    }
+
+    // [TEMP-DEMO] log-and-swallow for mask commands
+    private static void HandleCommandError(Exception ex)
+    {
+        Console.WriteLine($"[MaskManager] command error: {ex}");
     }
 
     public ObservableCollection<MaskLayer> Masks { get; } = new();
+
+    public string LayersCountText => $"{Masks.Count} layer(s)";
+
+    // [TEMP-DEMO] mask painting support
+    public int BrushRadius { get; set; } = 3;
+
+    // [TEMP-DEMO] mask painting support
+    public MaskLayer? ActiveMask
+    {
+        get => _activeMask;
+        set => this.RaiseAndSetIfChanged(ref _activeMask, value);
+    }
 
     public SharedDataSourceViewModel? SharedData
     {
@@ -45,13 +72,18 @@ public class MaskManagerViewModel : Tool
         }
     }
 
-    public ICommand AddMaskCommand { get; }
-    public ICommand RemoveMaskCommand { get; }
-    public ICommand LoadMaskCommand { get; }
-    public ICommand SaveMaskCommand { get; }
+    public ReactiveCommand<RxVoid, RxVoid> AddMaskCommand { get; }
+    public ReactiveCommand<MaskLayer, RxVoid> RemoveMaskCommand { get; }
+    public ReactiveCommand<RxVoid, RxVoid> LoadMaskCommand { get; }
+    public ReactiveCommand<MaskLayer, RxVoid> SaveMaskCommand { get; }
 
     public event Action? MasksCollectionChanged;
-    public event Action<MaskLayer>? MaskPropertyChanged;
+
+    // [TEMP-DEMO] mask painting support: raised when mask PIXELS change (not structure)
+    public event Action? MasksContentChanged;
+
+    // [TEMP-DEMO] mask painting support
+    public void RaiseMasksContentChanged() => MasksContentChanged?.Invoke();
 
     private void OnSharedDataChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
@@ -71,6 +103,9 @@ public class MaskManagerViewModel : Tool
             if (!Masks[i].MatchesDimensions(ax, ay, az))
                 Masks.RemoveAt(i);
         }
+
+        if (ActiveMask != null && !Masks.Contains(ActiveMask))
+            ActiveMask = Masks.FirstOrDefault(); // [TEMP-DEMO] keep active mask valid
     }
 
     private void AddMask()
@@ -84,6 +119,7 @@ public class MaskManagerViewModel : Tool
             Bitmap = new Big3DBitMap(ax.X, ax.Y, ax.Z)
         };
         Masks.Add(layer);
+        ActiveMask = layer; // [TEMP-DEMO]
         MasksCollectionChanged?.Invoke();
     }
 
@@ -91,6 +127,8 @@ public class MaskManagerViewModel : Tool
     {
         if (layer == null) return;
         Masks.Remove(layer);
+        if (ReferenceEquals(ActiveMask, layer))
+            ActiveMask = Masks.LastOrDefault(); // [TEMP-DEMO] keep active mask valid
         MasksCollectionChanged?.Invoke();
     }
 
@@ -127,6 +165,7 @@ public class MaskManagerViewModel : Tool
 
             if (layer == null) return;
             Masks.Add(layer);
+            ActiveMask = layer; // [TEMP-DEMO]
             MasksCollectionChanged?.Invoke();
         }
         catch
@@ -164,11 +203,6 @@ public class MaskManagerViewModel : Tool
         {
             // swallow save errors silently
         }
-    }
-
-    internal void NotifyMaskPropertyChanged(MaskLayer layer)
-    {
-        MaskPropertyChanged?.Invoke(layer);
     }
 
     private static TopLevel? GetTopLevel()
