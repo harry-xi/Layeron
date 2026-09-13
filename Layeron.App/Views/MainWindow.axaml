@@ -15,15 +15,26 @@
     </Design.DataContext>
 
     <DockPanel>
-        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="10">
-            <Button Content="Load Data" Command="{Binding SharedData.LoadCommand}" Margin="0,0,10,0"/>
-            <Button Content="Save Data" Command="{Binding SharedData.SaveCommand}" Margin="0,0,10,0"/>
-            <Button Content="Generate Demo" Command="{Binding SharedData.GenerateDemoCommand}" Margin="0,0,10,0"/>
-            <Button Content="Create from Images" Command="{Binding SharedData.CreateFromImagesCommand}" Margin="0,0,10,0"/>
-            <TextBlock Text="{Binding SharedData.StatusText}" VerticalAlignment="Center" Margin="10,0,0,0"/>
-        </StackPanel>
+        <Menu DockPanel.Dock="Top">
+            <MenuItem Header="文件">
+                <MenuItem Header="加载数据" Command="{Binding SharedData.LoadCommand}"/>
+                <MenuItem Header="保存数据" Command="{Binding SharedData.SaveCommand}"/>
+                <MenuItem Header="生成演示数据" Command="{Binding SharedData.GenerateDemoCommand}"/>
+                <MenuItem Header="从图片创建" Command="{Binding SharedData.CreateFromImagesCommand}"/>
+            </MenuItem>
+            <MenuItem Header="窗口">
+                <MenuItem Header="XY 切片视图" Command="{Binding Dock.CreateSliceXYCommand}"/>
+                <MenuItem Header="XZ 切片视图" Command="{Binding Dock.CreateSliceXZCommand}"/>
+                <MenuItem Header="YZ 切片视图" Command="{Binding Dock.CreateSliceYZCommand}"/>
+                <MenuItem Header="代码编辑器" Command="{Binding Dock.CreateCodeEditorCommand}"/>
+            </MenuItem>
+        </Menu>
         
         <controls:DockControl Layout="{Binding Dock.Layout}"/>
+        
+        <Border DockPanel.Dock="Bottom" Padding="10,4" Background="{DynamicResource SukiCardBackground}">
+            <TextBlock Text="{Binding SharedData.StatusText}" VerticalAlignment="Center"/>
+        </Border>
     </DockPanel>
 
 </Window>

@@ -9,17 +9,24 @@ public class DockViewModel : ViewModelBase
 {
     private int _documentCount;
     private int _toolCount;
+    private int _sliceCount;
+    private int _codeEditorCount;
     private readonly SharedDataSourceViewModel _sharedData;
+    private readonly DockFactory _factory;
 
     public DockViewModel(SharedDataSourceViewModel sharedData, MaskManagerViewModel maskManager)
     {
         _sharedData = sharedData;
-        var factory = new DockFactory(sharedData, maskManager);
-        Layout = factory.CreateLayout();
-        factory.InitLayout(Layout);
+        _factory = new DockFactory(sharedData, maskManager);
+        Layout = _factory.CreateLayout();
+        _factory.InitLayout(Layout);
         
         AddDocumentCommand = ReactiveCommand.Create(AddDocument);
         AddToolCommand = ReactiveCommand.Create(AddTool);
+        CreateSliceXYCommand = ReactiveCommand.Create(() => AddSlice(SliceAxis.XY));
+        CreateSliceXZCommand = ReactiveCommand.Create(() => AddSlice(SliceAxis.XZ));
+        CreateSliceYZCommand = ReactiveCommand.Create(() => AddSlice(SliceAxis.YZ));
+        CreateCodeEditorCommand = ReactiveCommand.Create(AddCodeEditor);
     }
 
     public IRootDock? Layout
@@ -30,11 +37,13 @@ public class DockViewModel : ViewModelBase
 
     public ICommand AddDocumentCommand { get; }
     public ICommand AddToolCommand { get; }
+    public ICommand CreateSliceXYCommand { get; }
+    public ICommand CreateSliceXZCommand { get; }
+    public ICommand CreateSliceYZCommand { get; }
+    public ICommand CreateCodeEditorCommand { get; }
 
     private void AddDocument()
     {
-        if (Layout is not { } rootDock) return;
-        
         _documentCount++;
         var newDocument = new DocumentWindowViewModel 
         { 
@@ -43,24 +52,11 @@ public class DockViewModel : ViewModelBase
             Content = $"This is document {_documentCount}. You can add any content here, such as text, code, or UI elements.",
         };
 
-        if (rootDock.DefaultDockable is IProportionalDock mainLayout)
-        {
-            foreach (var dockable in mainLayout.VisibleDockables ?? new System.Collections.ObjectModel.ObservableCollection<IDockable>())
-            {
-                if (dockable is IDocumentDock documentDock)
-                {
-                    documentDock.VisibleDockables?.Add(newDocument);
-                    documentDock.ActiveDockable = newDocument;
-                    break;
-                }
-            }
-        }
+        AddToMainLayout(newDocument);
     }
 
     private void AddTool()
     {
-        if (Layout is not { } rootDock) return;
-        
         _toolCount++;
         var newTool = new ToolWindowViewModel 
         { 
@@ -69,17 +65,33 @@ public class DockViewModel : ViewModelBase
             Content = $"This is tool {_toolCount}. Tools are typically used for utilities, properties, output, or other auxiliary functions.",
         };
 
-        if (rootDock.DefaultDockable is IProportionalDock mainLayout)
+        if (Layout is not { } rootDock) return;
+        _factory.AddTool(rootDock, newTool);
+    }
+
+    private void AddSlice(SliceAxis axis)
+    {
+        _sliceCount++;
+        var name = axis.ToString();
+        var newSlice = new SliceViewerViewModel($"{name} Slice {_sliceCount}", $"Slice{name}{_sliceCount}", axis)
         {
-            foreach (var dockable in mainLayout.VisibleDockables ?? new System.Collections.ObjectModel.ObservableCollection<IDockable>())
-            {
-                if (dockable is IToolDock toolDock)
-                {
-                    toolDock.VisibleDockables?.Add(newTool);
-                    toolDock.ActiveDockable = newTool;
-                    break;
-                }
-            }
-        }
+            SharedData = _sharedData
+        };
+
+        AddToMainLayout(newSlice);
+    }
+
+    private void AddCodeEditor()
+    {
+        _codeEditorCount++;
+        var newEditor = new CodeEditorViewModel($"Code Editor {_codeEditorCount}", $"CodeEditor{_codeEditorCount}");
+
+        AddToMainLayout(newEditor);
+    }
+
+    private void AddToMainLayout(IDockable newDockable)
+    {
+        if (Layout is not { } rootDock) return;
+        _factory.AddDocument(rootDock, newDockable);
     }
 }
