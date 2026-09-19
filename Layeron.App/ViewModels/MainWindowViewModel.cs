@@ -6,9 +6,11 @@ public class MainWindowViewModel : ViewModelBase
     {
         SharedData = new SharedDataSourceViewModel();
         MaskManager = new MaskManagerViewModel();
+        WindowLevel = new WindowLevelViewModel();
         SharedData.MaskManager = MaskManager;
         MaskManager.SharedData = SharedData;
-        Dock = new DockViewModel(SharedData, MaskManager);
+        WindowLevel.SharedData = SharedData;
+        Dock = new DockViewModel(SharedData, MaskManager, WindowLevel);
     }
     
     public DockViewModel Dock { get; }
@@ -16,4 +18,6 @@ public class MainWindowViewModel : ViewModelBase
     public SharedDataSourceViewModel SharedData { get; }
 
     public MaskManagerViewModel MaskManager { get; }
+
+    public WindowLevelViewModel WindowLevel { get; }
 }

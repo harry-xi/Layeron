@@ -1,5 +1,4 @@
 using BenchmarkDotNet.Attributes;
-using Layeron.Big3DArray;
 
 namespace Layeron.Big3DArray.Bench;
 

@@ -3,17 +3,17 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Platform.Storage;
+using Layeron.Big3DArray;
 using ReactiveUI;
 using RxVoid = ReactiveUI.Primitives.RxVoid;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
-using B3DA = Layeron.Big3DArray.Big3DArray;
 
 namespace Layeron.App.ViewModels;
 
 public class SharedDataSourceViewModel : ViewModelBase
 {
-    private B3DA? _array;
+    private ReadonlyBig3DArray? _array;
     private int _currentX;
     private int _currentY;
     private int _currentZ;
@@ -23,11 +23,13 @@ public class SharedDataSourceViewModel : ViewModelBase
         LoadCommand = ReactiveCommand.CreateFromTask(LoadAsync);
         SaveCommand = ReactiveCommand.CreateFromTask(SaveAsync);
         GenerateDemoCommand = ReactiveCommand.Create(GenerateDemoData);
+        GenerateDemo16Command = ReactiveCommand.Create(GenerateDemoData16);
         CreateFromImagesCommand = ReactiveCommand.CreateFromTask(CreateFromImagesAsync);
 
         LoadCommand.ThrownExceptions.Subscribe(OnDataCommandError);
         SaveCommand.ThrownExceptions.Subscribe(OnDataCommandError);
         GenerateDemoCommand.ThrownExceptions.Subscribe(OnDataCommandError);
+        GenerateDemo16Command.ThrownExceptions.Subscribe(OnDataCommandError);
         CreateFromImagesCommand.ThrownExceptions.Subscribe(OnDataCommandError);
     }
 
@@ -37,7 +39,7 @@ public class SharedDataSourceViewModel : ViewModelBase
         StatusText = $"Error: {ex.Message}";
     }
 
-    public B3DA? Array
+    public ReadonlyBig3DArray? Array
     {
         get => _array;
         set
@@ -51,9 +53,14 @@ public class SharedDataSourceViewModel : ViewModelBase
             CurrentY = 0;
             CurrentZ = 0;
             StatusText = value != null
-                ? $"Loaded: {value.X}x{value.Y}x{value.Z}"
+                ? $"Loaded: {value.X}x{value.Y}x{value.Z} {DescribeElementType(value)}"
                 : "No data loaded";
         }
+    }
+
+    private static string DescribeElementType(ReadonlyBig3DArray array)
+    {
+        return array.ElementType == PixelElementType.UInt16 ? "(16-bit)" : "(8-bit)";
     }
 
     public MaskManagerViewModel? MaskManager { get; set; }
@@ -119,6 +126,7 @@ public class SharedDataSourceViewModel : ViewModelBase
     public ReactiveCommand<RxVoid, RxVoid> LoadCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> SaveCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> GenerateDemoCommand { get; }
+    public ReactiveCommand<RxVoid, RxVoid> GenerateDemo16Command { get; }
     public ReactiveCommand<RxVoid, RxVoid> CreateFromImagesCommand { get; }
 
     private async Task LoadAsync()
@@ -147,7 +155,7 @@ public class SharedDataSourceViewModel : ViewModelBase
                 {
                     using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
                         bufferSize: 1024 * 1024, FileOptions.SequentialScan);
-                    return B3DA.LoadStream(fs);
+                    return Big3DArrayFactory.LoadStream(fs);
                 });
                 Array = array;
                 FilePath = path;
@@ -200,7 +208,7 @@ public class SharedDataSourceViewModel : ViewModelBase
 
     private void GenerateDemoData()
     {
-        var array = new B3DA(128, 128, 64);
+        var array = new Big3DArray<byte>(128, 128, 64);
         array.Fill((x, y, z) =>
         {
             int v = (int)(
@@ -209,6 +217,22 @@ public class SharedDataSourceViewModel : ViewModelBase
                 Math.Sin(z * 0.15) * 40 +
                 128);
             return (byte)Math.Clamp(v, 0, 255);
+        });
+        Array = array;
+        FilePath = null;
+    }
+
+    private void GenerateDemoData16()
+    {
+        var array = new Big3DArray<ushort>(128, 128, 64);
+        array.Fill((x, y, z) =>
+        {
+            int v = (int)(
+                Math.Sin(x * 0.1) * 8000 +
+                Math.Cos(y * 0.1) * 8000 +
+                Math.Sin(z * 0.15) * 8000 +
+                32768);
+            return (ushort)Math.Clamp(v, 0, 65535);
         });
         Array = array;
         FilePath = null;
@@ -259,7 +283,7 @@ public class SharedDataSourceViewModel : ViewModelBase
                 }
 
                 using var first = Image.Load<L8>(imagePaths[0]);
-                return B3DA.FromImages(imagePaths, ImageToBytes, first.Width, first.Height, imagePaths.Count);
+                return Big3DArray<byte>.FromImages(imagePaths, ImageToBytes, first.Width, first.Height, imagePaths.Count);
             });
 
             if (array != null)

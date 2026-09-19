@@ -2,7 +2,6 @@ using System;
 using System.Globalization;
 using Avalonia;
 using Avalonia.Media;
-using Avalonia.Media.TextFormatting;
 
 namespace Layeron.App.Views.Overlays;
 

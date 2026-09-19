@@ -12,12 +12,14 @@ public class DockViewModel : ViewModelBase
     private int _sliceCount;
     private int _codeEditorCount;
     private readonly SharedDataSourceViewModel _sharedData;
+    private readonly WindowLevelViewModel _windowLevel;
     private readonly DockFactory _factory;
 
-    public DockViewModel(SharedDataSourceViewModel sharedData, MaskManagerViewModel maskManager)
+    public DockViewModel(SharedDataSourceViewModel sharedData, MaskManagerViewModel maskManager, WindowLevelViewModel windowLevel)
     {
         _sharedData = sharedData;
-        _factory = new DockFactory(sharedData, maskManager);
+        _windowLevel = windowLevel;
+        _factory = new DockFactory(sharedData, maskManager, windowLevel);
         Layout = _factory.CreateLayout();
         _factory.InitLayout(Layout);
         
@@ -75,7 +77,8 @@ public class DockViewModel : ViewModelBase
         var name = axis.ToString();
         var newSlice = new SliceViewerViewModel($"{name} Slice {_sliceCount}", $"Slice{name}{_sliceCount}", axis)
         {
-            SharedData = _sharedData
+            SharedData = _sharedData,
+            WindowLevel = _windowLevel
         };
 
         AddToMainLayout(newSlice);

@@ -12,6 +12,7 @@ using Dock.Model.ReactiveUI.Controls;
 using Layeron.App.Models;
 using Layeron.App.Views;
 using Layeron.App.Views.Overlays;
+using Layeron.Big3DArray;
 using ReactiveUI;
 using RxVoid = ReactiveUI.Primitives.RxVoid;
 using Big3DBitMap = Layeron.Big3DArray.Big3DBitMap;
@@ -41,6 +42,8 @@ public class SliceViewerViewModel : Document
     private CrosshairOverlay? _crosshairOverlay;
     private MaskOverlay? _maskOverlay;
     private ImageBorderOverlay? _imageBorderOverlay;
+    private WindowLevelViewModel? _windowLevel;
+    private object? _lastSlice;
 
     public SliceViewerViewModel()
     {
@@ -133,6 +136,7 @@ public class SliceViewerViewModel : Document
     {
         if (_sharedData?.Array == null)
         {
+            _lastSlice = null;
             SliceImage = null;
             _maskOverlay?.SliceImage = null;
             StatusText = "No data loaded";
@@ -148,6 +152,7 @@ public class SliceViewerViewModel : Document
         }
 
         var array = _sharedData.Array;
+        _lastSlice = null;
         StatusText = $"{_axisLabel} view: {array.X}x{array.Y}x{array.Z}";
         this.RaisePropertyChanged(nameof(MaxSlice));
         this.RaisePropertyChanged(nameof(CurrentSlice));
@@ -294,6 +299,41 @@ public class SliceViewerViewModel : Document
     {
         get;
         set => this.RaiseAndSetIfChanged(ref field, value);
+    }
+
+    /// <summary>
+    /// Shared window/level tool. All slice views render through the same lookup table, so
+    /// adjusting it updates every view.
+    /// </summary>
+    public WindowLevelViewModel? WindowLevel
+    {
+        get => _windowLevel;
+        set
+        {
+            if (_windowLevel != null)
+                _windowLevel.WindowLevelChanged -= OnWindowLevelChanged;
+            _windowLevel = value;
+            if (value != null)
+            {
+                value.WindowLevelChanged += OnWindowLevelChanged;
+                OnWindowLevelChanged();
+            }
+        }
+    }
+
+    private void OnWindowLevelChanged()
+    {
+        if (_lastSlice == null) return;
+        var old = SliceImage;
+        SliceImage = RenderSliceToBitmap(_lastSlice, GetLut());
+        old?.Dispose();
+    }
+
+    private uint[] GetLut()
+    {
+        if (_windowLevel != null && _windowLevel.Lut.Length > 0)
+            return _windowLevel.Lut;
+        return WindowLevelViewModel.BuildIdentityLut(_sharedData?.Array?.ElementType ?? PixelElementType.Byte);
     }
 
     public SliceAxis Axis => _axis;
@@ -448,13 +488,7 @@ public class SliceViewerViewModel : Document
 
         Task.Run(() =>
         {
-            var baseSlice = axis switch
-            {
-                SliceAxis.Axial => array.GetXYSlice(slice),
-                SliceAxis.Coronal => array.GetXZSlice(slice),
-                SliceAxis.Sagittal => array.GetYZSlice(slice),
-                _ => throw new InvalidOperationException()
-            };
+            var baseSlice = ExtractScalarSlice(array, axis, slice);
 
             var maskSlices = new bool[,]?[masks.Count];
             for (int i = 0; i < masks.Count; i++)
@@ -465,8 +499,9 @@ public class SliceViewerViewModel : Document
         {
             if (ct.IsCancellationRequested || t.IsFaulted || t.Result.baseSlice == null) return;
 
+            _lastSlice = t.Result.baseSlice;
             var old = SliceImage;
-            SliceImage = RenderSliceToBitmap(t.Result.baseSlice);
+            SliceImage = RenderSliceToBitmap(t.Result.baseSlice, GetLut());
             old?.Dispose();
 
             var maskSlices = t.Result.maskSlices;
@@ -544,7 +579,82 @@ public class SliceViewerViewModel : Document
         return fb;
     }
 
-    private static WriteableBitmap RenderSliceToBitmap(byte[,] data)
+    private static object ExtractScalarSlice(ReadonlyBig3DArray array, SliceAxis axis, int slice) => axis switch
+    {
+        SliceAxis.Axial => array switch
+        {
+            ReadonlyBig3DArray<byte> b => b.GetXYSlice(slice),
+            ReadonlyBig3DArray<ushort> u => u.GetXYSlice(slice),
+            _ => throw new InvalidOperationException()
+        },
+        SliceAxis.Coronal => array switch
+        {
+            ReadonlyBig3DArray<byte> b => b.GetXZSlice(slice),
+            ReadonlyBig3DArray<ushort> u => u.GetXZSlice(slice),
+            _ => throw new InvalidOperationException()
+        },
+        SliceAxis.Sagittal => array switch
+        {
+            ReadonlyBig3DArray<byte> b => b.GetYZSlice(slice),
+            ReadonlyBig3DArray<ushort> u => u.GetYZSlice(slice),
+            _ => throw new InvalidOperationException()
+        },
+        _ => throw new InvalidOperationException()
+    };
+
+    private static WriteableBitmap RenderSliceToBitmap(object data, uint[]? lut = null)
+    {
+        if (data is byte[,] b) return RenderSlice8ToBitmap(b, lut);
+        if (data is ushort[,] u) return RenderSlice16ToBitmap(u, lut);
+        throw new InvalidOperationException("Unsupported slice element type.");
+    }
+
+    // Window/level lookup applied per voxel. The LUT is built once per window/level change
+    // so this inner loop is a single indexed read, keeping 8/16-bit rendering equally fast.
+    private static WriteableBitmap RenderSlice8ToBitmap(byte[,] data, uint[]? lut)
+    {
+        int height = data.GetLength(0);
+        int width = data.GetLength(1);
+
+        var fb = new WriteableBitmap(
+            new PixelSize(width, height),
+            new Vector(96, 96));
+
+        using (var lockData = fb.Lock())
+        {
+            unsafe
+            {
+                var ptr = (uint*)lockData.Address;
+                int stride = lockData.RowBytes / 4;
+
+                if (lut != null)
+                {
+                    for (int y = 0; y < height; y++)
+                    {
+                        int row = y * stride;
+                        for (int x = 0; x < width; x++)
+                            ptr[row + x] = lut[data[y, x]];
+                    }
+                }
+                else
+                {
+                    for (int y = 0; y < height; y++)
+                    {
+                        int row = y * stride;
+                        for (int x = 0; x < width; x++)
+                        {
+                            byte v = data[y, x];
+                            ptr[row + x] = 0xFF000000u | ((uint)v << 16) | ((uint)v << 8) | v;
+                        }
+                    }
+                }
+            }
+        }
+
+        return fb;
+    }
+
+    private static WriteableBitmap RenderSlice16ToBitmap(ushort[,] data, uint[]? lut)
     {
         int height = data.GetLength(0);
         int width = data.GetLength(1);
@@ -562,11 +672,9 @@ public class SliceViewerViewModel : Document
 
                 for (int y = 0; y < height; y++)
                 {
+                    int row = y * stride;
                     for (int x = 0; x < width; x++)
-                    {
-                        byte v = data[y, x];
-                        ptr[y * stride + x] = (uint)(0xFF000000 | ((uint)v << 16) | ((uint)v << 8) | v);
-                    }
+                        ptr[row + x] = lut![data[y, x]];
                 }
             }
         }

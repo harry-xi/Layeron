@@ -20,6 +20,7 @@
                 <MenuItem Header="加载数据" Command="{Binding SharedData.LoadCommand}"/>
                 <MenuItem Header="保存数据" Command="{Binding SharedData.SaveCommand}"/>
                 <MenuItem Header="生成演示数据" Command="{Binding SharedData.GenerateDemoCommand}"/>
+                <MenuItem Header="生成16位演示数据" Command="{Binding SharedData.GenerateDemo16Command}"/>
                 <MenuItem Header="从图片创建" Command="{Binding SharedData.CreateFromImagesCommand}"/>
             </MenuItem>
             <MenuItem Header="窗口">

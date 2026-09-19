@@ -1,6 +1,3 @@
-using Layeron.Big3DArray;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-
 namespace Layeron.Big3DArray.Test;
 
 [TestClass]

@@ -1,0 +1,56 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Layeron.App.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="220"
+             x:Class="Layeron.App.Views.WindowLevelView"
+             x:DataType="vm:WindowLevelViewModel">
+
+    <Design.DataContext>
+        <vm:WindowLevelViewModel/>
+    </Design.DataContext>
+
+    <Border Background="{DynamicResource SukiCardBackground}"
+            CornerRadius="8"
+            Padding="12"
+            Margin="8">
+        <StackPanel Spacing="12">
+            <TextBlock Text="窗宽窗位"
+                       FontSize="14"
+                       FontWeight="Bold"/>
+            <TextBlock Text="调整所有视图显示的灰度范围"
+                       FontSize="12"
+                       Opacity="0.7"
+                       Margin="0,-6,0,0"/>
+
+            <Grid ColumnDefinitions="64,*,64" ColumnSpacing="8">
+                <TextBlock Text="灰度下界" VerticalAlignment="Center"/>
+                <Slider Grid.Column="1"
+                        Minimum="0"
+                        Maximum="{Binding HighMax}"
+                        Value="{Binding Low, Mode=TwoWay}"
+                        VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="2"
+                           Text="{Binding Low, StringFormat={}{0:0}}"
+                           TextAlignment="Right"
+                           VerticalAlignment="Center"/>
+            </Grid>
+
+            <Grid ColumnDefinitions="64,*,64" ColumnSpacing="8">
+                <TextBlock Text="灰度上界" VerticalAlignment="Center"/>
+                <Slider Grid.Column="1"
+                        Minimum="0"
+                        Maximum="{Binding HighMax}"
+                        Value="{Binding High, Mode=TwoWay}"
+                        VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="2"
+                           Text="{Binding High, StringFormat={}{0:0}}"
+                           TextAlignment="Right"
+                           VerticalAlignment="Center"/>
+            </Grid>
+
+            <Button Content="重置" Command="{Binding ResetCommand}" HorizontalAlignment="Left"/>
+        </StackPanel>
+    </Border>
+</UserControl>

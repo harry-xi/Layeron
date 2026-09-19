@@ -8,7 +8,7 @@
              x:Class="Layeron.App.Views.SliceViewerView"
              x:DataType="vm:SliceViewerViewModel"
              ClipToBounds="True">
-<Border BorderBrush="{Binding AxisBrush}" BorderThickness="2">
+    <Border BorderBrush="{Binding AxisBrush}" BorderThickness="2">
         <local:CustomImageViewer x:Name="ImageViewer"
                                  Source="{Binding SliceImage}"
                                  ClickCommand="{Binding ClickCommand}"
