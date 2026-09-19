@@ -23,9 +23,9 @@
                 <MenuItem Header="从图片创建" Command="{Binding SharedData.CreateFromImagesCommand}"/>
             </MenuItem>
             <MenuItem Header="窗口">
-                <MenuItem Header="XY 切片视图" Command="{Binding Dock.CreateSliceXYCommand}"/>
-                <MenuItem Header="XZ 切片视图" Command="{Binding Dock.CreateSliceXZCommand}"/>
-                <MenuItem Header="YZ 切片视图" Command="{Binding Dock.CreateSliceYZCommand}"/>
+                <MenuItem Header="轴位 (Axial) 视图" Command="{Binding Dock.CreateAxialCommand}"/>
+                <MenuItem Header="冠状位 (Coronal) 视图" Command="{Binding Dock.CreateCoronalCommand}"/>
+                <MenuItem Header="矢状位 (Sagittal) 视图" Command="{Binding Dock.CreateSagittalCommand}"/>
                 <MenuItem Header="代码编辑器" Command="{Binding Dock.CreateCodeEditorCommand}"/>
             </MenuItem>
         </Menu>

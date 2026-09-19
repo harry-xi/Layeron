@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Specialized;
 using System.ComponentModel;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -20,7 +19,6 @@ public partial class SliceViewerView : UserControl
         {
             ImageViewer.PointerWheelChanged += OnImageViewerWheel;
             ImageViewer.Overlays.Add(_sliceInfoOverlay);
-            ImageViewer.Overlays.CollectionChanged += OnOverlaysForPinning;
         }
     }
 
@@ -55,18 +53,6 @@ public partial class SliceViewerView : UserControl
         var vm = ViewModel;
         _sliceInfoOverlay.Text = vm == null ? "" : $"{vm.AxisLabel} {vm.SliceInfoText}";
     }
-
-    // Keep the slice info overlay on top of mask overlays.
-    private void OnOverlaysForPinning(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        if (_pinningOverlays) return;
-        _pinningOverlays = true;
-        ImageViewer.Overlays.Remove(_sliceInfoOverlay);
-        ImageViewer.Overlays.Add(_sliceInfoOverlay);
-        _pinningOverlays = false;
-    }
-
-    private bool _pinningOverlays;
 
     private SliceViewerViewModel? ViewModel => DataContext as SliceViewerViewModel;
 

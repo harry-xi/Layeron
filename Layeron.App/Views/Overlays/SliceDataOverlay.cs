@@ -17,6 +17,9 @@ public class SliceDataOverlay : IImageOverlay
 
     public event Action? Invalidated;
 
+    // Always on top of image overlays (crosshair, mask, border).
+    public int Layer => 100;
+
     public bool IsVisible
     {
         get => _isVisible;

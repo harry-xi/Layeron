@@ -42,6 +42,13 @@ public class MaskOverlay : IImageOverlay
 
         var imgW = _sliceImage.PixelSize.Width;
         var imgH = _sliceImage.PixelSize.Height;
-        context.DrawImage(_sliceImage, new Rect(0, 0, imgW, imgH), imageBounds);
+        var options = new RenderOptions
+        {
+            BitmapInterpolationMode = BitmapInterpolationMode.None
+        };
+        using (context.PushRenderOptions(options))
+        {
+            context.DrawImage(_sliceImage, new Rect(0, 0, imgW, imgH), imageBounds);
+        }
     }
 }

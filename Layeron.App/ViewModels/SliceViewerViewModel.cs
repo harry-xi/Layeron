@@ -11,6 +11,7 @@ using Avalonia.Platform;
 using Dock.Model.ReactiveUI.Controls;
 using Layeron.App.Models;
 using Layeron.App.Views;
+using Layeron.App.Views.Overlays;
 using ReactiveUI;
 using RxVoid = ReactiveUI.Primitives.RxVoid;
 using Big3DBitMap = Layeron.Big3DArray.Big3DBitMap;
@@ -19,19 +20,27 @@ namespace Layeron.App.ViewModels;
 
 public enum SliceAxis
 {
-    XY,
-    XZ,
-    YZ
+    Axial,
+    Coronal,
+    Sagittal
 }
 
 public class SliceViewerViewModel : Document
 {
     private SharedDataSourceViewModel? _sharedData;
     private SliceAxis _axis;
-    private string _axisLabel = "XY";
+    private string _axisLabel = "Axial";
+
+    // Standard axis colors: X=red, Y=green, Z=blue.
+    private static readonly IBrush XAxisBrush = new SolidColorBrush(Color.FromRgb(255, 82, 82));
+    private static readonly IBrush YAxisBrush = new SolidColorBrush(Color.FromRgb(76, 217, 100));
+    private static readonly IBrush ZAxisBrush = new SolidColorBrush(Color.FromRgb(68, 170, 255));
     private CancellationTokenSource? _renderCts;
     private CustomImageViewer? _imageViewer;
     private readonly HashSet<MaskLayer> _maskLayerSubscriptions = new();
+    private CrosshairOverlay? _crosshairOverlay;
+    private MaskOverlay? _maskOverlay;
+    private ImageBorderOverlay? _imageBorderOverlay;
 
     public SliceViewerViewModel()
     {
@@ -115,6 +124,7 @@ public class SliceViewerViewModel : Document
             this.RaisePropertyChanged(nameof(CrosshairYPosition));
             this.RaisePropertyChanged(nameof(CurrentSlice));
             this.RaisePropertyChanged(nameof(SliceInfoText));
+            PushOverlayState();
             RefreshSlice();
         }
     }
@@ -124,7 +134,7 @@ public class SliceViewerViewModel : Document
         if (_sharedData?.Array == null)
         {
             SliceImage = null;
-            MaskImage = null;
+            _maskOverlay?.SliceImage = null;
             StatusText = "No data loaded";
             this.RaisePropertyChanged(nameof(CurrentSlice));
             this.RaisePropertyChanged(nameof(MaxSlice));
@@ -133,6 +143,7 @@ public class SliceViewerViewModel : Document
             this.RaisePropertyChanged(nameof(CrosshairYPosition));
             this.RaisePropertyChanged(nameof(CurrentImageWidth));
             this.RaisePropertyChanged(nameof(CurrentImageHeight));
+            PushOverlayState();
             return;
         }
 
@@ -146,14 +157,57 @@ public class SliceViewerViewModel : Document
         this.RaisePropertyChanged(nameof(CurrentImageWidth));
         this.RaisePropertyChanged(nameof(CurrentImageHeight));
         SyncMaskLayerSubscriptions();
+        PushOverlayState();
         RefreshSlice();
     }
 
     public void RegisterImageViewer(CustomImageViewer viewer)
     {
         if (_imageViewer == viewer) return;
+        UnregisterOverlays(_imageViewer);
         _imageViewer = viewer;
+        RegisterOverlays(viewer);
+        PushOverlayState();
         RefreshSlice();
+    }
+
+    private void RegisterOverlays(CustomImageViewer viewer)
+    {
+        _crosshairOverlay = new CrosshairOverlay
+        {
+            PositionXBrush = CrosshairPositionXBrush,
+            PositionYBrush = CrosshairPositionYBrush
+        };
+        _maskOverlay = new MaskOverlay();
+        _imageBorderOverlay = new ImageBorderOverlay
+        {
+            Brush = new SolidColorBrush(Color.FromRgb(96, 96, 96)),
+            Thickness = 1
+        };
+
+        viewer.Overlays.Add(_crosshairOverlay);
+        viewer.Overlays.Add(_maskOverlay);
+        viewer.Overlays.Add(_imageBorderOverlay);
+    }
+
+    private void UnregisterOverlays(CustomImageViewer? viewer)
+    {
+        if (viewer == null) return;
+        if (_crosshairOverlay != null) viewer.Overlays.Remove(_crosshairOverlay);
+        if (_maskOverlay != null) viewer.Overlays.Remove(_maskOverlay);
+        if (_imageBorderOverlay != null) viewer.Overlays.Remove(_imageBorderOverlay);
+        _crosshairOverlay = null;
+        _maskOverlay = null;
+        _imageBorderOverlay = null;
+    }
+
+    private void PushOverlayState()
+    {
+        if (_crosshairOverlay == null) return;
+        _crosshairOverlay.ImageWidth = CurrentImageWidth;
+        _crosshairOverlay.ImageHeight = CurrentImageHeight;
+        _crosshairOverlay.PositionX = CrosshairXPosition;
+        _crosshairOverlay.PositionY = CrosshairYPosition;
     }
 
     private void OnMasksCollectionChanged()
@@ -193,9 +247,9 @@ public class SliceViewerViewModel : Document
     {
         get => _axis switch
         {
-            SliceAxis.XY => _sharedData?.CurrentZ ?? 0,
-            SliceAxis.XZ => _sharedData?.CurrentY ?? 0,
-            SliceAxis.YZ => _sharedData?.CurrentX ?? 0,
+            SliceAxis.Axial => _sharedData?.CurrentZ ?? 0,
+            SliceAxis.Coronal => _sharedData?.CurrentY ?? 0,
+            SliceAxis.Sagittal => _sharedData?.CurrentX ?? 0,
             _ => 0
         };
         set
@@ -203,13 +257,13 @@ public class SliceViewerViewModel : Document
             if (_sharedData == null) return;
             switch (_axis)
             {
-                case SliceAxis.XY:
+                case SliceAxis.Axial:
                     _sharedData.CurrentZ = value;
                     break;
-                case SliceAxis.XZ:
+                case SliceAxis.Coronal:
                     _sharedData.CurrentY = value;
                     break;
-                case SliceAxis.YZ:
+                case SliceAxis.Sagittal:
                     _sharedData.CurrentX = value;
                     break;
             }
@@ -218,9 +272,9 @@ public class SliceViewerViewModel : Document
 
     public int MaxSlice => _axis switch
     {
-        SliceAxis.XY => _sharedData?.MaxZ ?? 0,
-        SliceAxis.XZ => _sharedData?.MaxY ?? 0,
-        SliceAxis.YZ => _sharedData?.MaxX ?? 0,
+        SliceAxis.Axial => _sharedData?.MaxZ ?? 0,
+        SliceAxis.Coronal => _sharedData?.MaxY ?? 0,
+        SliceAxis.Sagittal => _sharedData?.MaxX ?? 0,
         _ => 0
     };
 
@@ -242,45 +296,67 @@ public class SliceViewerViewModel : Document
         set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
-    public WriteableBitmap? MaskImage
-    {
-        get;
-        set => this.RaiseAndSetIfChanged(ref field, value);
-    }
-
     public SliceAxis Axis => _axis;
+
+    // View accent color = the color of the axis the view plane is perpendicular to.
+    public IBrush AxisBrush => _axis switch
+    {
+        SliceAxis.Axial => ZAxisBrush,
+        SliceAxis.Coronal => YAxisBrush,
+        SliceAxis.Sagittal => XAxisBrush,
+        _ => Brushes.Gray
+    };
+
+    // Crosshair line colors, each line painted with its representative axis color.
+    // The vertical line (at PositionX) and the horizontal line (at PositionY) each
+    // follow the axis they measure in the current view.
+    public IBrush CrosshairPositionXBrush => _axis switch
+    {
+        SliceAxis.Axial => XAxisBrush,
+        SliceAxis.Coronal => XAxisBrush,
+        SliceAxis.Sagittal => YAxisBrush,
+        _ => Brushes.Gray
+    };
+
+    public IBrush CrosshairPositionYBrush => _axis switch
+    {
+        SliceAxis.Axial => YAxisBrush,
+        SliceAxis.Coronal => ZAxisBrush,
+        SliceAxis.Sagittal => ZAxisBrush,
+        _ => Brushes.Gray
+    };
 
     public string SliceInfoText => $"{CurrentSlice} / {MaxSlice}";
 
     public int CrosshairXPosition => _axis switch
     {
-        SliceAxis.XY => _sharedData?.CurrentX ?? 0,
-        SliceAxis.XZ => _sharedData?.CurrentX ?? 0,
-        SliceAxis.YZ => _sharedData?.CurrentY ?? 0,
+        SliceAxis.Axial => _sharedData?.CurrentX ?? 0,
+        SliceAxis.Coronal => _sharedData?.CurrentX ?? 0,
+        SliceAxis.Sagittal => _sharedData?.CurrentY ?? 0,
         _ => 0
     };
 
     public int CrosshairYPosition => _axis switch
     {
-        SliceAxis.XY => _sharedData?.CurrentY ?? 0,
-        SliceAxis.XZ => _sharedData?.CurrentZ ?? 0,
-        SliceAxis.YZ => _sharedData?.CurrentZ ?? 0,
+        SliceAxis.Axial => _sharedData?.CurrentY ?? 0,
+        SliceAxis.Coronal => _sharedData?.CurrentZ ?? 0,
+        SliceAxis.Sagittal => _sharedData?.CurrentZ ?? 0,
         _ => 0
     };
 
     public int CurrentImageWidth => _axis switch
     {
-        SliceAxis.XY => _sharedData?.Array?.X ?? 0,
-        SliceAxis.XZ => _sharedData?.Array?.X ?? 0,
-        SliceAxis.YZ => _sharedData?.Array?.Y ?? 0,
+        SliceAxis.Axial => _sharedData?.Array?.X ?? 0,
+        SliceAxis.Coronal => _sharedData?.Array?.X ?? 0,
+        SliceAxis.Sagittal => _sharedData?.Array?.Y ?? 0,
         _ => 0
     };
 
     public int CurrentImageHeight => _axis switch
     {
-        SliceAxis.XY => _sharedData?.Array?.Y ?? 0,
-        SliceAxis.XZ => _sharedData?.Array?.Z ?? 0,
-        SliceAxis.YZ => _sharedData?.Array?.Z ?? 0,
+        SliceAxis.Axial => _sharedData?.Array?.Y ?? 0,
+        SliceAxis.Coronal => _sharedData?.Array?.Z ?? 0,
+        SliceAxis.Sagittal => _sharedData?.Array?.Z ?? 0,
         _ => 0
     };
 
@@ -293,15 +369,15 @@ public class SliceViewerViewModel : Document
 
         switch (_axis)
         {
-            case SliceAxis.XY:
+            case SliceAxis.Axial:
                 _sharedData.CurrentX = pixelX;
                 _sharedData.CurrentY = pixelY;
                 break;
-            case SliceAxis.XZ:
+            case SliceAxis.Coronal:
                 _sharedData.CurrentX = pixelX;
                 _sharedData.CurrentZ = pixelY;
                 break;
-            case SliceAxis.YZ:
+            case SliceAxis.Sagittal:
                 _sharedData.CurrentY = pixelX;
                 _sharedData.CurrentZ = pixelY;
                 break;
@@ -323,9 +399,9 @@ public class SliceViewerViewModel : Document
 
         int depth = _axis switch
         {
-            SliceAxis.XY => _sharedData.CurrentZ,
-            SliceAxis.XZ => _sharedData.CurrentY,
-            SliceAxis.YZ => _sharedData.CurrentX,
+            SliceAxis.Axial => _sharedData.CurrentZ,
+            SliceAxis.Coronal => _sharedData.CurrentY,
+            SliceAxis.Sagittal => _sharedData.CurrentX,
             _ => 0
         };
 
@@ -341,8 +417,8 @@ public class SliceViewerViewModel : Document
                 int wx, wy, wz;
                 switch (_axis)
                 {
-                    case SliceAxis.XY: wx = u; wy = v; wz = depth; break;
-                    case SliceAxis.XZ: wx = u; wy = depth; wz = v; break;
+                    case SliceAxis.Axial: wx = u; wy = v; wz = depth; break;
+                    case SliceAxis.Coronal: wx = u; wy = depth; wz = v; break;
                     default:           wx = depth; wy = u; wz = v; break;
                 }
 
@@ -374,9 +450,9 @@ public class SliceViewerViewModel : Document
         {
             var baseSlice = axis switch
             {
-                SliceAxis.XY => array.GetXYSlice(slice),
-                SliceAxis.XZ => array.GetXZSlice(slice),
-                SliceAxis.YZ => array.GetYZSlice(slice),
+                SliceAxis.Axial => array.GetXYSlice(slice),
+                SliceAxis.Coronal => array.GetXZSlice(slice),
+                SliceAxis.Sagittal => array.GetYZSlice(slice),
                 _ => throw new InvalidOperationException()
             };
 
@@ -395,18 +471,19 @@ public class SliceViewerViewModel : Document
 
             var maskSlices = t.Result.maskSlices;
             var newMask = RenderMasksToBitmap(maskSlices, masks);
-            var oldMask = MaskImage;
-            MaskImage = newMask;
-            oldMask?.Dispose();
+            if (_maskOverlay != null)
+                _maskOverlay.SliceImage = newMask;
+            else
+                newMask?.Dispose();
         }, ct, TaskContinuationOptions.OnlyOnRanToCompletion,
            TaskScheduler.FromCurrentSynchronizationContext());
     }
 
     private bool[,] ExtractMaskSlice(Big3DBitMap bitmap, int slice) => _axis switch
     {
-        SliceAxis.XY => bitmap.GetXYSlice(slice),
-        SliceAxis.XZ => bitmap.GetXZSlice(slice),
-        SliceAxis.YZ => bitmap.GetYZSlice(slice),
+        SliceAxis.Axial => bitmap.GetXYSlice(slice),
+        SliceAxis.Coronal => bitmap.GetXZSlice(slice),
+        SliceAxis.Sagittal => bitmap.GetYZSlice(slice),
         _ => throw new InvalidOperationException()
     };
 

@@ -23,9 +23,9 @@ public class DockViewModel : ViewModelBase
         
         AddDocumentCommand = ReactiveCommand.Create(AddDocument);
         AddToolCommand = ReactiveCommand.Create(AddTool);
-        CreateSliceXYCommand = ReactiveCommand.Create(() => AddSlice(SliceAxis.XY));
-        CreateSliceXZCommand = ReactiveCommand.Create(() => AddSlice(SliceAxis.XZ));
-        CreateSliceYZCommand = ReactiveCommand.Create(() => AddSlice(SliceAxis.YZ));
+        CreateAxialCommand = ReactiveCommand.Create(() => AddSlice(SliceAxis.Axial));
+        CreateCoronalCommand = ReactiveCommand.Create(() => AddSlice(SliceAxis.Coronal));
+        CreateSagittalCommand = ReactiveCommand.Create(() => AddSlice(SliceAxis.Sagittal));
         CreateCodeEditorCommand = ReactiveCommand.Create(AddCodeEditor);
     }
 
@@ -37,9 +37,9 @@ public class DockViewModel : ViewModelBase
 
     public ICommand AddDocumentCommand { get; }
     public ICommand AddToolCommand { get; }
-    public ICommand CreateSliceXYCommand { get; }
-    public ICommand CreateSliceXZCommand { get; }
-    public ICommand CreateSliceYZCommand { get; }
+    public ICommand CreateAxialCommand { get; }
+    public ICommand CreateCoronalCommand { get; }
+    public ICommand CreateSagittalCommand { get; }
     public ICommand CreateCodeEditorCommand { get; }
 
     private void AddDocument()

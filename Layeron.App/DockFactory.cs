@@ -24,17 +24,17 @@ public class DockFactory : Factory
 
     public override IRootDock CreateLayout()
     {
-        var sliceXY = new SliceViewerViewModel("XY Slice", "SliceXY", SliceAxis.XY) { SharedData = _sharedData };
-        var sliceXZ = new SliceViewerViewModel("XZ Slice", "SliceXZ", SliceAxis.XZ) { SharedData = _sharedData };
-        var sliceYZ = new SliceViewerViewModel("YZ Slice", "SliceYZ", SliceAxis.YZ) { SharedData = _sharedData };
+        var sliceAxial = new SliceViewerViewModel("Axial", "SliceAxial", SliceAxis.Axial) { SharedData = _sharedData };
+        var sliceCoronal = new SliceViewerViewModel("Coronal", "SliceCoronal", SliceAxis.Coronal) { SharedData = _sharedData };
+        var sliceSagittal = new SliceViewerViewModel("Sagittal", "SliceSagittal", SliceAxis.Sagittal) { SharedData = _sharedData };
 
         var documentDock = new DocumentDock
         {
             Id = "Documents",
             Title = "Documents",
             Proportion = 0.66,
-            ActiveDockable = sliceXY,
-            VisibleDockables = CreateList<IDockable>(sliceXY, sliceXZ, sliceYZ)
+            ActiveDockable = sliceAxial,
+            VisibleDockables = CreateList<IDockable>(sliceAxial, sliceCoronal, sliceSagittal)
         };
 
         var leftToolDock = new ToolDock
@@ -89,13 +89,13 @@ public class DockFactory : Factory
             ["Root"] = () => new DocumentWindowViewModel(),
             ["MainLayout"] = () => new DocumentWindowViewModel(),
             ["Documents"] = () => new DocumentWindowViewModel(),
-            ["SliceXY"] = () => new SliceViewerViewModel("XY Slice", "SliceXY", SliceAxis.XY) { SharedData = _sharedData },
-            ["SliceXZ"] = () => new SliceViewerViewModel("XZ Slice", "SliceXZ", SliceAxis.XZ) { SharedData = _sharedData },
-            ["SliceYZ"] = () => new SliceViewerViewModel("YZ Slice", "SliceYZ", SliceAxis.YZ) { SharedData = _sharedData },
+            ["SliceAxial"] = () => new SliceViewerViewModel("Axial", "SliceAxial", SliceAxis.Axial) { SharedData = _sharedData },
+            ["SliceCoronal"] = () => new SliceViewerViewModel("Coronal", "SliceCoronal", SliceAxis.Coronal) { SharedData = _sharedData },
+            ["SliceSagittal"] = () => new SliceViewerViewModel("Sagittal", "SliceSagittal", SliceAxis.Sagittal) { SharedData = _sharedData },
             ["LeftToolDock"] = () => new ToolWindowViewModel(),
             ["RightToolDock"] = () => new ToolWindowViewModel(),
             ["MaskManager"] = () => _maskManager
-        };
+        }!;
 
         DockableLocator = new Dictionary<string, Func<IDockable>>
         {
@@ -103,12 +103,12 @@ public class DockFactory : Factory
             ["Documents"] = () => layout,
             ["LeftToolDock"] = () => layout,
             ["RightToolDock"] = () => layout
-        };
+        }!;
 
         HostWindowLocator = new Dictionary<string, Func<IHostWindow>>
         {
             [nameof(IDockWindow)] = () => new HostWindow()
-        };
+        }!;
 
         base.InitLayout(layout);
     }

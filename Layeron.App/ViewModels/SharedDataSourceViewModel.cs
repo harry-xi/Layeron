@@ -72,7 +72,7 @@ public class SharedDataSourceViewModel : ViewModelBase
             var max = MaxX;
             var v = Math.Clamp(value, 0, max);
             this.RaiseAndSetIfChanged(ref _currentX, v);
-            this.RaisePropertyChanged(nameof(CrosshairYZ));
+            this.RaisePropertyChanged(nameof(CrosshairSagittal));
         }
     }
 
@@ -84,7 +84,7 @@ public class SharedDataSourceViewModel : ViewModelBase
             var max = MaxY;
             var v = Math.Clamp(value, 0, max);
             this.RaiseAndSetIfChanged(ref _currentY, v);
-            this.RaisePropertyChanged(nameof(CrosshairXZ));
+            this.RaisePropertyChanged(nameof(CrosshairCoronal));
         }
     }
 
@@ -96,13 +96,13 @@ public class SharedDataSourceViewModel : ViewModelBase
             var max = MaxZ;
             var v = Math.Clamp(value, 0, max);
             this.RaiseAndSetIfChanged(ref _currentZ, v);
-            this.RaisePropertyChanged(nameof(CrosshairXY));
+            this.RaisePropertyChanged(nameof(CrosshairAxial));
         }
     }
 
-    public int CrosshairXY => _currentZ;
-    public int CrosshairXZ => _currentY;
-    public int CrosshairYZ => _currentX;
+    public int CrosshairAxial => _currentZ;
+    public int CrosshairCoronal => _currentY;
+    public int CrosshairSagittal => _currentX;
 
     public string StatusText
     {

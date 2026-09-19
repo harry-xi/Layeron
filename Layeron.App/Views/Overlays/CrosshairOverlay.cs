@@ -11,7 +11,8 @@ public class CrosshairOverlay : IImageOverlay
     private int _positionY;
     private int _imageWidth;
     private int _imageHeight;
-    private IBrush _brush = Brushes.Red;
+    private IBrush _positionXBrush = Brushes.Red;
+    private IBrush _positionYBrush = Brushes.Green;
     private double _thickness = 1;
 
     public event Action? Invalidated;
@@ -71,13 +72,24 @@ public class CrosshairOverlay : IImageOverlay
         }
     }
 
-    public IBrush Brush
+    public IBrush PositionXBrush
     {
-        get => _brush;
+        get => _positionXBrush;
         set
         {
-            if (Equals(_brush, value)) return;
-            _brush = value;
+            if (Equals(_positionXBrush, value)) return;
+            _positionXBrush = value;
+            Invalidated?.Invoke();
+        }
+    }
+
+    public IBrush PositionYBrush
+    {
+        get => _positionYBrush;
+        set
+        {
+            if (Equals(_positionYBrush, value)) return;
+            _positionYBrush = value;
             Invalidated?.Invoke();
         }
     }
@@ -97,18 +109,19 @@ public class CrosshairOverlay : IImageOverlay
     {
         if (!IsVisible || ImageWidth <= 0 || ImageHeight <= 0) return;
 
-        var pen = new Pen(Brush, Thickness);
+        var penX = new Pen(PositionXBrush, Thickness);
+        var penY = new Pen(PositionYBrush, Thickness);
         var cx = imageBounds.X + (double)PositionX / ImageWidth * imageBounds.Width;
         var cy = imageBounds.Y + (double)PositionY / ImageHeight * imageBounds.Height;
 
         if (cx >= imageBounds.X && cx <= imageBounds.Right)
         {
-            context.DrawLine(pen, new Point(cx, imageBounds.Y), new Point(cx, imageBounds.Bottom));
+            context.DrawLine(penX, new Point(cx, imageBounds.Y), new Point(cx, imageBounds.Bottom));
         }
 
         if (cy >= imageBounds.Y && cy <= imageBounds.Bottom)
         {
-            context.DrawLine(pen, new Point(imageBounds.X, cy), new Point(imageBounds.Right, cy));
+            context.DrawLine(penY, new Point(imageBounds.X, cy), new Point(imageBounds.Right, cy));
         }
     }
 }

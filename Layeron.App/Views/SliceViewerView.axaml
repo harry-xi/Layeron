@@ -8,16 +8,11 @@
              x:Class="Layeron.App.Views.SliceViewerView"
              x:DataType="vm:SliceViewerViewModel"
              ClipToBounds="True">
-    <local:CustomImageViewer x:Name="ImageViewer"
-                             Source="{Binding SliceImage}"
-                             MaskImage="{Binding MaskImage}"
-                             ClickCommand="{Binding ClickCommand}"
-                             PaintCommand="{Binding PaintCommand}"
-                             CrosshairX="{Binding CrosshairXPosition}"
-                             CrosshairY="{Binding CrosshairYPosition}"
-                             ImageWidth="{Binding CurrentImageWidth}"
-                             ImageHeight="{Binding CurrentImageHeight}"
-                             BackgroundBrush="#FF1E1E1E"
-                             ImageBorderBrush="#FF606060"
-                             ImageBorderThickness="1" />
+<Border BorderBrush="{Binding AxisBrush}" BorderThickness="2">
+        <local:CustomImageViewer x:Name="ImageViewer"
+                                 Source="{Binding SliceImage}"
+                                 ClickCommand="{Binding ClickCommand}"
+                                 PaintCommand="{Binding PaintCommand}"
+                                 BackgroundBrush="#FF1E1E1E" />
+    </Border>
 </UserControl>
