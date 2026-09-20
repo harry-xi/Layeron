@@ -5,10 +5,9 @@ namespace Layeron.App.ViewModels;
 
 public class CodeEditorViewModel : Document
 {
-    public CodeEditorViewModel(string title, string id)
+    public CodeEditorViewModel(string title)
     {
         Title = title;
-        Id = id;
         CanClose = true;
         Document = new TextDocument(InitialSnippet);
     }

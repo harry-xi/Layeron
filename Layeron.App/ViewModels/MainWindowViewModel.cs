@@ -1,4 +1,6 @@
-﻿namespace Layeron.App.ViewModels;
+﻿using Layeron.App.Session;
+
+namespace Layeron.App.ViewModels;
 
 public class MainWindowViewModel : ViewModelBase
 {
@@ -10,11 +12,13 @@ public class MainWindowViewModel : ViewModelBase
         SharedData.MaskManager = MaskManager;
         MaskManager.SharedData = SharedData;
         WindowLevel.SharedData = SharedData;
-        Dock = new DockViewModel(SharedData, MaskManager, WindowLevel);
+
+        var session = new SessionContext(SharedData, MaskManager, WindowLevel);
+        Dock = new DockViewModel(session);
     }
-    
+
     public DockViewModel Dock { get; }
-    
+
     public SharedDataSourceViewModel SharedData { get; }
 
     public MaskManagerViewModel MaskManager { get; }

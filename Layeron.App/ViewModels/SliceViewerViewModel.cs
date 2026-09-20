@@ -63,10 +63,13 @@ public class SliceViewerViewModel : Document
         Console.WriteLine($"[SliceViewer] command error: {ex}");
     }
 
-    public SliceViewerViewModel(string title, string id, SliceAxis axis) : this()
+    public SliceViewerViewModel(SliceAxis axis) : this(axis, axis.ToString())
+    {
+    }
+
+    public SliceViewerViewModel(SliceAxis axis,string title) : this()
     {
         Title = title;
-        Id = id;
         _axis = axis;
         _axisLabel = axis.ToString();
     }

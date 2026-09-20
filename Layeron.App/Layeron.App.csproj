@@ -30,6 +30,8 @@
         <PackageReference Include="Dock.Avalonia.Themes.Fluent" Version="12.1.0.6" />
         <PackageReference Include="Dock.Model.ReactiveUI" Version="12.1.0.6" />
         <PackageReference Include="Dock.Serializer.SystemTextJson" Version="12.1.0.6" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
+        <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
         <PackageReference Include="ReactiveUI.Avalonia" Version="12.1.2" />
         <PackageReference Include="SixLabors.ImageSharp" Version="4.1.1"/>
 

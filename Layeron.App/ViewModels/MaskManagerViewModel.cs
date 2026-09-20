@@ -23,7 +23,7 @@ public class MaskManagerViewModel : Tool
     {
         Title = "Mask Manager";
         Id = "MaskManager";
-        CanClose = false;
+        CanClose = true;
 
         AddMaskCommand = ReactiveCommand.Create(AddMask);
         RemoveMaskCommand = ReactiveCommand.Create<MaskLayer>(RemoveMask);

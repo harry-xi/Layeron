@@ -23,7 +23,7 @@ public class WindowLevelViewModel : Tool
     {
         Title = "Window Level";
         Id = "WindowLevel";
-        CanClose = false;
+        CanClose = true;
 
         ResetCommand = ReactiveCommand.Create(Reset);
 
