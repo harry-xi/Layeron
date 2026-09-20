@@ -39,6 +39,36 @@
 
     <ItemGroup>
         <ProjectReference Include="..\Layeron.Big3DArray\Layeron.Big3DArray.csproj" />
+        <ProjectReference Include="..\Layeron.Plugin.Abstractions\Layeron.Plugin.Abstractions.csproj" />
+        <ProjectReference Include="..\Layeron.Plugin.Host\Layeron.Plugin.Host.csproj" />
+        <!--
+          The sample plugins are built with the app and deployed into a development plugin folder
+          (see DeploySamplePlugins) so a plain build yields a working plugin set. They are not
+          referenced as assemblies: the app must never compile against plugin code.
+        -->
+        <ProjectReference Include="..\Layeron.Plugins.ScriptHost\Layeron.Plugins.ScriptHost.csproj" ReferenceOutputAssembly="false" />
+        <ProjectReference Include="..\Layeron.Plugins.Threshold\Layeron.Plugins.Threshold.csproj" ReferenceOutputAssembly="false" />
     </ItemGroup>
+
+    <!--
+      Copies each sample plugin into $(OutDir)plugins.dev/<plugin id>/. The manager scans that folder
+      before the installed one, so a locally built plugin shadows an installed copy with the same id.
+      The whole plugin output is copied because a plugin may ship private dependencies (Roslyn, for the
+      script host) that its own load context resolves from its folder and .deps.json.
+    -->
+    <Target Name="DeploySamplePlugins" AfterTargets="Build">
+        <ItemGroup>
+            <SamplePluginFile Include="..\Layeron.Plugins.Threshold\bin\$(Configuration)\net10.0\**\*.*">
+                <PluginFolder>layeron.threshold</PluginFolder>
+            </SamplePluginFile>
+            <SamplePluginFile Include="..\Layeron.Plugins.ScriptHost\bin\$(Configuration)\net10.0\**\*.*">
+                <PluginFolder>layeron.scripthost</PluginFolder>
+            </SamplePluginFile>
+        </ItemGroup>
+
+        <Copy SourceFiles="@(SamplePluginFile)"
+              DestinationFiles="@(SamplePluginFile->'$(OutDir)plugins.dev\%(PluginFolder)\%(RecursiveDir)%(Filename)%(Extension)')"
+              SkipUnchangedFiles="true" />
+    </Target>
     
 </Project>

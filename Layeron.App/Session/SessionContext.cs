@@ -1,20 +1,18 @@
 using System;
-using System.Collections.Generic;
 using Layeron.App.ViewModels;
 
 namespace Layeron.App.Session;
 
 /// <summary>
-/// The single source of truth for the current session's core data. Dockables and,
-/// in the future, plugins resolve the shared volume / mask / window-level objects
-/// from here instead of receiving them through constructor arguments. This keeps
-/// the dock layout serializable (layout records only identifiers, never live
-/// object graphs) and gives plugins one stable entry point into the core data.
+/// The single source of truth for one live session's core data. A session has a real
+/// lifetime: it is created and closed through <see cref="ISessionManager"/>, and
+/// consumers (dockables, future plugins) must react to that lifetime instead of
+/// holding a captured object graph. This keeps the dock layout serializable (layout
+/// records only identifiers, never live objects) and gives plugins one stable entry
+/// point into the core data.
 /// </summary>
-public sealed class SessionContext
+public sealed class SessionContext : ISession
 {
-    private readonly Dictionary<object, object> _services = new();
-
     public SessionContext(
         SharedDataSourceViewModel sharedData,
         MaskManagerViewModel maskManager,
@@ -34,29 +32,15 @@ public sealed class SessionContext
     /// <summary>Shared window/level lookup applied by every slice view.</summary>
     public WindowLevelViewModel WindowLevel { get; }
 
-    /// <summary>Registers (or replaces) a service for plugins to consume.</summary>
-    public void Provide<T>(T service) where T : class
-        => _services[typeof(T)] = service;
+    /// <inheritdoc />
+    public event Action<ISession>? Closing;
 
-    /// <summary>Registers a keyed service, allowing several instances of the same type.</summary>
-    public void Provide<T>(string key, T service) where T : class
-        => _services[new ServiceKey(typeof(T), key)] = service;
+    /// <inheritdoc />
+    public event Action<ISession>? Closed;
 
-    /// <summary>Resolves a registered service, returning null when it is not present.</summary>
-    public T? Inject<T>() where T : class
-        => _services.TryGetValue(typeof(T), out var service) ? (T)service : null;
+    /// <summary>First phase of shutdown: the session is still fully usable here.</summary>
+    internal void RaiseClosing() => Closing?.Invoke(this);
 
-    /// <summary>Resolves a keyed service, returning null when it is not present.</summary>
-    public T? Inject<T>(string key) where T : class
-        => _services.TryGetValue(new ServiceKey(typeof(T), key), out var service) ? (T)service : null;
-
-    /// <summary>Removes a previously registered service.</summary>
-    public bool Revoke<T>() where T : class
-        => _services.Remove(typeof(T));
-
-    /// <summary>Removes a previously registered keyed service.</summary>
-    public bool Revoke<T>(string key) where T : class
-        => _services.Remove(new ServiceKey(typeof(T), key));
-
-    private readonly record struct ServiceKey(Type Type, string Key);
+    /// <summary>Final phase of shutdown: nothing may use the session after this.</summary>
+    internal void RaiseClosed() => Closed?.Invoke(this);
 }

@@ -1,4 +1,7 @@
 using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Avalonia.Threading;
 using Dock.Model.ReactiveUI.Controls;
 using Layeron.Big3DArray;
 using ReactiveUI;
@@ -18,6 +21,8 @@ public class WindowLevelViewModel : Tool
     private double _high;
     private uint[] _lut = Array.Empty<uint>();
     private PixelElementType _elementType = PixelElementType.Byte;
+    private CancellationTokenSource? _histogramCts;
+    private long[]? _histogram;
 
     public WindowLevelViewModel()
     {
@@ -46,10 +51,11 @@ public class WindowLevelViewModel : Tool
                 _sharedData.PropertyChanged -= OnSharedDataChanged;
             _sharedData = value;
             if (value != null)
-            {
                 value.PropertyChanged += OnSharedDataChanged;
-                OnArrayChanged();
-            }
+
+            // A closed session clears the data source, which invalidates the range and the histogram
+            // exactly like a newly loaded array does, so both paths share one refresh.
+            OnArrayChanged();
         }
     }
 
@@ -64,6 +70,66 @@ public class WindowLevelViewModel : Tool
         _elementType = _sharedData?.Array?.ElementType ?? PixelElementType.Byte;
         Reset();
         this.RaisePropertyChanged(nameof(HighMax));
+        RefreshHistogram();
+    }
+
+    /// <summary>
+    /// Recomputes the gray-level histogram on a background thread. The pass is block-streamed and
+    /// cancellable, so loading another volume supersedes a running computation instead of queueing
+    /// behind it.
+    /// </summary>
+    private void RefreshHistogram()
+    {
+        _histogramCts?.Cancel();
+        _histogramCts?.Dispose();
+        _histogramCts = null;
+
+        // The previous array's chart must not be shown against the new array's range.
+        Histogram = null;
+
+        if (_sharedData?.Array is not { } array)
+            return;
+
+        var cts = new CancellationTokenSource();
+        _histogramCts = cts;
+        _ = ComputeHistogramAsync(array, cts);
+    }
+
+    private async Task ComputeHistogramAsync(ReadonlyBig3DArray array, CancellationTokenSource cts)
+    {
+        long[] bins;
+        try
+        {
+            bins = await Task.Run(() => VolumeHistogram.Compute(array, cts.Token), cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return; // superseded by a newer array, or the session closed
+        }
+        catch (Exception ex)
+        {
+            // The chart is diagnostic: a volume the histogram cannot describe leaves it empty
+            // rather than failing the tool that owns the window range.
+            Console.WriteLine($"[WindowLevel] histogram failed: {ex.Message}");
+            return;
+        }
+
+        if (!ReferenceEquals(_histogramCts, cts))
+            return;
+
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            Histogram = bins;
+            return;
+        }
+
+        // The measurement runs off the UI thread, so the result reaches the bound property on the
+        // UI thread - and only if that array is still the current one.
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (ReferenceEquals(_histogramCts, cts))
+                Histogram = bins;
+        });
     }
 
     /// <summary>Lower bound of the displayed gray range.</summary>
@@ -99,6 +165,18 @@ public class WindowLevelViewModel : Tool
 
     /// <summary>The shared window/level lookup table, indexed by raw voxel value.</summary>
     public uint[] Lut => _lut;
+
+    /// <summary>
+    /// Gray-level histogram of the current array, or null while there is nothing to measure or the
+    /// measurement for a newly loaded array is still running. Bins are the core
+    /// <see cref="VolumeHistogram.BinCount"/> bins covering the whole value range of the current
+    /// element type, so the chart is drawn against the same axis as <see cref="Low"/>/<see cref="High"/>.
+    /// </summary>
+    public long[]? Histogram
+    {
+        get => _histogram;
+        private set => this.RaiseAndSetIfChanged(ref _histogram, value);
+    }
 
     public ReactiveCommand<RxVoid, RxVoid> ResetCommand { get; }
 

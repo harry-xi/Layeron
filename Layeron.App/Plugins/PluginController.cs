@@ -1,0 +1,151 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.IO;
+using System.Linq;
+using Layeron.App.ViewModels;
+using Layeron.Plugin.Abstractions;
+using Layeron.Plugin.Host;
+
+namespace Layeron.App.Plugins;
+
+/// <summary>
+/// The application's plugin surface: owns the <see cref="PluginManager"/>, exposes what is loaded to
+/// the UI, and provides load / unload / hot-reload operations.
+/// <para>
+/// Loading happens on the UI thread before the window is shown, so contributed dockable factories are
+/// registered before a saved layout is restored - a plugin panel saved in a layout resolves normally
+/// instead of being reported as unresolved.
+/// </para>
+/// </summary>
+public sealed class PluginController : IDisposable
+{
+    private readonly AppPluginServices _services;
+    private readonly AppPluginHostAdapter _adapter;
+    private readonly PluginManager _manager;
+
+    public PluginController(AppPluginServices services, DockViewModel dock)
+    {
+        _services = services;
+        _adapter = new AppPluginHostAdapter(dock, _services, _services.Log);
+        _manager = new PluginManager(_adapter, new PluginManagerOptions());
+
+        _adapter.Menus.CollectionChanged += (_, _) => RebuildMenuTree();
+
+        _manager.Changed += () =>
+        {
+            RefreshLoadedList();
+            RebuildMenuTree();
+            RefreshToolList();
+        };
+    }
+
+    /// <summary>Plugins currently loaded, as shown in the plugin manager menu.</summary>
+    public ObservableCollection<LoadedPlugin> Loaded { get; } = new();
+
+    /// <summary>Tools contributed by loaded plugins.</summary>
+    public ObservableCollection<ContributedTool> Tools { get; } = new();
+
+    /// <summary>Nested menu tree built from contributed paths.</summary>
+    public IReadOnlyList<PluginMenuNode> MenuNodes { get; private set; } = Array.Empty<PluginMenuNode>();
+
+    /// <summary>Raised when <see cref="MenuNodes"/> changed, so the window can rebuild its menu.</summary>
+    public event Action? MenuChanged;
+
+    /// <summary>Raised when <see cref="Tools"/> changed.</summary>
+    public event Action? ToolsChanged;
+
+    /// <summary>Raised when <see cref="Loaded"/> changed.</summary>
+    public event Action? PluginsChanged;
+
+    /// <summary>Root plugin directory, shown in diagnostics.</summary>
+    public string PluginDirectory => _manager.Options.PluginDirectory;
+
+    /// <summary>Development plugin directory (scanned first, so local builds shadow installed ones).</summary>
+    public string DevelopmentPluginDirectory => _manager.Options.DevelopmentPluginDirectory;
+
+    /// <summary>Loads every plugin from the configured directories.</summary>
+    public IReadOnlyList<string> LoadAll()
+    {
+        var loaded = _manager.LoadAll();
+        RefreshLoadedList();
+        return loaded;
+    }
+
+    /// <summary>Loads a single plugin assembly (used by tests and by "load from file" tooling).</summary>
+    public string? LoadAssembly(string path) => _manager.LoadAssembly(path);
+
+    /// <summary>Runs plugin sources again, e.g. after new files appear in a script folder.</summary>
+    public IReadOnlyList<string> RefreshSources() => _manager.ReloadAllSources();
+
+    /// <summary>Unloads a plugin, including everything it loaded as a plugin loader.</summary>
+    public bool Unload(string pluginId) => _manager.Unload(pluginId);
+
+    /// <summary>Hot reloads a plugin: unload, then load again from the same location.</summary>
+    public bool Reload(string pluginId) => _manager.Reload(pluginId);
+
+    /// <summary>
+    /// Unloads everything and verifies each load context was actually collected. Returns the ids that
+    /// leaked, so a regression in teardown shows up as a number rather than as mysterious memory growth.
+    /// </summary>
+    public IReadOnlyList<string> VerifyUnload()
+    {
+        var leaked = _manager.VerifyUnloaded();
+        if (leaked.Count > 0)
+            _services.Log.Warn($"Plugin load contexts still alive after unload: {string.Join(", ", leaked)}");
+        return leaked;
+    }
+
+    /// <summary>Opens a contributed tool panel in the dock, bringing it to the front if already open.</summary>
+    public void OpenTool(ContributedTool tool, DockViewModel dock)
+    {
+        if (!dock.OpenToolById(tool.TypeId, tool.Title))
+            _services.Log.Warn($"Could not open tool '{tool.Title}' ({tool.TypeId}).");
+    }
+
+    private void RefreshLoadedList()
+    {
+        Loaded.Clear();
+        foreach (var plugin in _manager.Plugins)
+            Loaded.Add(plugin);
+        PluginsChanged?.Invoke();
+    }
+
+    private void RefreshToolList()
+    {
+        Tools.Clear();
+        foreach (var tool in _adapter.Tools)
+            Tools.Add(tool);
+        ToolsChanged?.Invoke();
+    }
+
+    private void RebuildMenuTree()
+    {
+        MenuNodes = PluginMenuNode.Build(_adapter.Menus);
+        MenuChanged?.Invoke();
+    }
+
+    /// <summary>Creates the plugin directories so a first run has somewhere to drop plugins.</summary>
+    public void EnsureDirectories()
+    {
+        foreach (var directory in new[] { PluginDirectory, DevelopmentPluginDirectory })
+        {
+            try
+            {
+                Directory.CreateDirectory(directory);
+            }
+            catch (Exception ex)
+            {
+                _services.Log.Warn($"Could not create plugin directory '{directory}': {ex.Message}");
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        // UnloadAll first (which tears down every plugin), then verify collection, then release the
+        // services the plugins were using.
+        _manager.Dispose();
+        _services.Dispose();
+    }
+}

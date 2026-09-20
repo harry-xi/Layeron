@@ -20,6 +20,89 @@ namespace Layeron.Big3DArray
         /// <summary>The physical bit depth of each voxel.</summary>
         public abstract PixelElementType ElementType { get; }
 
+        /// <summary>
+        /// Edge length of one storage block. Volumes are stored as cubic blocks of
+        /// <see cref="BlockEdge"/>^3 elements, so bulk consumers iterate blocks instead of voxels.
+        /// </summary>
+        public const int BlockEdge = 64;
+
+        /// <summary>Number of elements in one storage block (<see cref="BlockEdge"/>^3).</summary>
+        public const int BlockVolumeElements = BlockEdge * BlockEdge * BlockEdge;
+
+        /// <summary>Total number of storage blocks (<see cref="BlocksX"/> * <see cref="BlocksY"/> * <see cref="BlocksZ"/>).</summary>
+        public int BlockCount => BlocksX * BlocksY * BlocksZ;
+
+        /// <summary>
+        /// Block index of the block containing voxel (x, y, z), in the same order as
+        /// <see cref="BlockCount"/> enumerates blocks: <c>bx + BlocksX * (by + BlocksY * bz)</c>.
+        /// </summary>
+        public int GetBlockIndex(int x, int y, int z)
+        {
+            if ((uint)x >= (uint)X || (uint)y >= (uint)Y || (uint)z >= (uint)Z)
+                throw new IndexOutOfRangeException();
+            return x / BlockEdge + BlocksX * (y / BlockEdge + BlocksY * (z / BlockEdge));
+        }
+
+        /// <summary>
+        /// World-space origin (minimum corner) of the block with the given index.
+        /// Voxel <c>(origin.X + lx, origin.Y + ly, origin.Z + lz)</c> of the block is at
+        /// local offset <c>lz * BlockEdge * BlockEdge + ly * BlockEdge + lx</c> in the block span.
+        /// </summary>
+        public (int X, int Y, int Z) GetBlockOrigin(int blockIndex)
+        {
+            if ((uint)blockIndex >= (uint)BlockCount)
+                throw new ArgumentOutOfRangeException(nameof(blockIndex));
+
+            var bx = blockIndex % BlocksX;
+            var by = blockIndex / BlocksX % BlocksY;
+            var bz = blockIndex / (BlocksX * BlocksY);
+            return (bx * BlockEdge, by * BlockEdge, bz * BlockEdge);
+        }
+
+        /// <summary>
+        /// True when the block lies entirely inside the volume, i.e. every element of its span is a real
+        /// voxel. False for blocks on the far edge of a volume whose size is not a multiple of
+        /// <see cref="BlockEdge"/>.
+        /// </summary>
+        public bool IsBlockFullyInside(int blockIndex)
+        {
+            var origin = GetBlockOrigin(blockIndex);
+            return origin.X + BlockEdge <= X && origin.Y + BlockEdge <= Y && origin.Z + BlockEdge <= Z;
+        }
+
+        /// <summary>
+        /// Enumerates the parts of a storage block that are inside the volume, as (offset, count) ranges
+        /// over <c>GetBlockSpan(blockIndex)</c>.
+        /// <para>
+        /// This is what a whole-volume traversal must use: storage always allocates complete
+        /// <see cref="BlockEdge"/>^3 blocks, so an edge block of a volume whose size is not a multiple of
+        /// the block edge contains padding that holds no data - and, being untouched memory, could hold
+        /// anything. Interior blocks yield one range covering the whole block, so the common case pays
+        /// nothing for this; edge blocks yield one range per in-volume row. Reading the raw span instead
+        /// is only correct when <see cref="IsBlockFullyInside"/> holds or the padding is irrelevant.
+        /// </para>
+        /// </summary>
+        public void ForEachInVolumeRange(int blockIndex, Action<int, int> range)
+        {
+            ArgumentNullException.ThrowIfNull(range);
+
+            if (IsBlockFullyInside(blockIndex))
+            {
+                range(0, BlockVolumeElements);
+                return;
+            }
+
+            var origin = GetBlockOrigin(blockIndex);
+            var columns = Math.Min(BlockEdge, X - origin.X);
+            var rows = Math.Min(BlockEdge, Y - origin.Y);
+
+            for (var localZ = 0; localZ < BlockEdge && origin.Z + localZ < Z; localZ++)
+            {
+                for (var localY = 0; localY < rows; localY++)
+                    range(localZ * BlockEdge * BlockEdge + localY * BlockEdge, columns);
+            }
+        }
+
         protected ReadonlyBig3DArray(int x, int y, int z)
         {
             if (x <= 0 || y <= 0 || z <= 0)
@@ -121,6 +204,44 @@ namespace Layeron.Big3DArray
         }
 
         public T this[int x, int y, int z] => GetAt(x, y, z);
+
+        /// <summary>
+        /// Direct, zero-copy view of one storage block's raw elements. The returned span is
+        /// the live backing store of the volume: treat it as read-only for the lifetime of
+        /// the call and do not cache it. Elements are laid out z - y - x, i.e. the voxel at
+        /// block-local (lx, ly, lz) is at index <c>lz * 64 * 64 + ly * 64 + lx</c>.
+        /// <para>
+        /// This is the high-performance global traversal primitive: iterate
+        /// <c>for (int i = 0; i &lt; volume.BlockCount; i++)</c>, read
+        /// <c>GetBlockSpan(i)</c> and process 262144 elements with scalar/SIMD code, instead of
+        /// calling the per-voxel indexer. It never copies or widens the volume, so peak memory
+        /// stays at one copy regardless of element type.
+        /// </para>
+        /// </summary>
+        public ReadOnlySpan<T> GetBlockSpan(int blockIndex)
+        {
+            if ((uint)blockIndex >= (uint)blocks.Length)
+                throw new ArgumentOutOfRangeException(nameof(blockIndex));
+            return blocks[blockIndex];
+        }
+
+        /// <summary>Direct, zero-copy view of one storage block addressed by block grid position.</summary>
+        public ReadOnlySpan<T> GetBlockSpan(int blockX, int blockY, int blockZ)
+        {
+            if ((uint)blockX >= (uint)BlocksX || (uint)blockY >= (uint)BlocksY || (uint)blockZ >= (uint)BlocksZ)
+                throw new ArgumentOutOfRangeException(nameof(blockX));
+            return blocks[blockX + BlocksX * (blockY + BlocksY * blockZ)];
+        }
+
+        /// <summary>Copies one storage block into a caller-owned buffer (no allocation).</summary>
+        public void CopyBlock(int blockIndex, Span<T> destination)
+        {
+            if ((uint)blockIndex >= (uint)blocks.Length)
+                throw new ArgumentOutOfRangeException(nameof(blockIndex));
+            if (destination.Length < BlockVolumeElements)
+                throw new ArgumentException($"Destination must hold at least {BlockVolumeElements} elements.", nameof(destination));
+            blocks[blockIndex].AsSpan().CopyTo(destination);
+        }
 
         /// <summary>
         /// Extract the XY-slice at the given z. The returned array has shape [Y, X] and

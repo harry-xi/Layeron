@@ -1,0 +1,32 @@
+<Project Sdk="MSTest.Sdk/4.0.2">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UseVSTest>true</UseVSTest>
+    <!--
+      MSTEST0037 is a stylistic preference between Assert.AreEqual(0, x.Count) and Assert.HasCount(0, x).
+      The count form keeps the failure message readable when the collection is not materialised.
+    -->
+    <NoWarn>$(NoWarn);MSTEST0037</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Layeron.Big3DArray\Layeron.Big3DArray.csproj" />
+    <ProjectReference Include="..\Layeron.Plugin.Abstractions\Layeron.Plugin.Abstractions.csproj" />
+    <ProjectReference Include="..\Layeron.Plugin.Host\Layeron.Plugin.Host.csproj" />
+    <!--
+      The script host is built but not referenced: the tests only need its assembly on disk, because it
+      is exercised through the plugin loader exactly as a user's plugin would be.
+    -->
+    <ProjectReference Include="..\Layeron.Plugins.ScriptHost\Layeron.Plugins.ScriptHost.csproj" ReferenceOutputAssembly="false" />
+    <!--
+      The threshold plugin is referenced so its algorithm can be tested directly, unit-test style,
+      in addition to being loaded and unloaded as an isolated plugin by AssemblyPluginTests.
+    -->
+    <ProjectReference Include="..\Layeron.Plugins.Threshold\Layeron.Plugins.Threshold.csproj" />
+  </ItemGroup>
+
+</Project>

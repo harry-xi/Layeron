@@ -11,7 +11,7 @@ namespace Layeron.Big3DArray
     internal static class VolumeIO
     {
         /// <summary>Edge length of a cubic storage block.</summary>
-        internal const int BlockSize = 64;
+        internal const int BlockSize = ReadonlyBig3DArray.BlockEdge;
 
         /// <summary>Number of elements per block (64^3).</summary>
         internal const int BlockVolume = BlockSize * BlockSize * BlockSize;

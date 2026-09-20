@@ -10,9 +10,11 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Dock.Model.ReactiveUI.Controls;
 using Layeron.App.Models;
+using Layeron.App.Session;
 using Layeron.App.Views;
 using Layeron.App.Views.Overlays;
 using Layeron.Big3DArray;
+using Layeron.Plugin.Abstractions;
 using ReactiveUI;
 using RxVoid = ReactiveUI.Primitives.RxVoid;
 using Big3DBitMap = Layeron.Big3DArray.Big3DBitMap;
@@ -41,9 +43,14 @@ public class SliceViewerViewModel : Document
     private readonly HashSet<MaskLayer> _maskLayerSubscriptions = new();
     private CrosshairOverlay? _crosshairOverlay;
     private MaskOverlay? _maskOverlay;
+    private MaskOverlay? _previewOverlay;
+    private WriteableBitmap? _previewImage;
+    private PreviewOverlay? _renderedOverlay;
+    private IPreviewChannel? _previewChannel;
     private ImageBorderOverlay? _imageBorderOverlay;
     private WindowLevelViewModel? _windowLevel;
     private object? _lastSlice;
+    private IDisposable? _sessionSubscription;
 
     public SliceViewerViewModel()
     {
@@ -72,6 +79,34 @@ public class SliceViewerViewModel : Document
         Title = title;
         _axis = axis;
         _axisLabel = axis.ToString();
+    }
+
+    /// <summary>
+    /// Session-aware constructor: subscribes to the session stream so the view rebinds
+    /// (or clears) itself when a session is created or closed, instead of holding an
+    /// object graph captured at build time.
+    /// </summary>
+    public SliceViewerViewModel(SliceAxis axis, ISessionManager sessions, IPreviewChannel? preview = null) : this(axis, axis.ToString())
+    {
+        _previewChannel = preview;
+        _sessionSubscription = sessions.CurrentSession.Subscribe(s =>
+        {
+            SharedData = s?.SharedData;
+            WindowLevel = s?.WindowLevel;
+        });
+
+        if (_previewChannel != null)
+            _previewChannel.Changed += OnPreviewChanged;
+    }
+
+    /// <summary>Releases the session subscription; called by the factory when the dockable closes.</summary>
+    public void Dispose()
+    {
+        _sessionSubscription?.Dispose();
+        if (_previewChannel != null)
+            _previewChannel.Changed -= OnPreviewChanged;
+        _previewImage?.Dispose();
+        _previewImage = null;
     }
 
     public ReactiveCommand<Point, RxVoid> ClickCommand { get; }
@@ -132,6 +167,7 @@ public class SliceViewerViewModel : Document
             this.RaisePropertyChanged(nameof(SliceInfoText));
             PushOverlayState();
             RefreshSlice();
+            RefreshPreviewOverlay();
         }
     }
 
@@ -187,6 +223,8 @@ public class SliceViewerViewModel : Document
             PositionYBrush = CrosshairPositionYBrush
         };
         _maskOverlay = new MaskOverlay();
+        _previewOverlay = new MaskOverlay();
+        _renderedOverlay = null;
         _imageBorderOverlay = new ImageBorderOverlay
         {
             Brush = new SolidColorBrush(Color.FromRgb(96, 96, 96)),
@@ -195,7 +233,10 @@ public class SliceViewerViewModel : Document
 
         viewer.Overlays.Add(_crosshairOverlay);
         viewer.Overlays.Add(_maskOverlay);
+        viewer.Overlays.Add(_previewOverlay);
         viewer.Overlays.Add(_imageBorderOverlay);
+
+        RefreshPreviewOverlay();
     }
 
     private void UnregisterOverlays(CustomImageViewer? viewer)
@@ -203,10 +244,115 @@ public class SliceViewerViewModel : Document
         if (viewer == null) return;
         if (_crosshairOverlay != null) viewer.Overlays.Remove(_crosshairOverlay);
         if (_maskOverlay != null) viewer.Overlays.Remove(_maskOverlay);
+        if (_previewOverlay != null) viewer.Overlays.Remove(_previewOverlay);
         if (_imageBorderOverlay != null) viewer.Overlays.Remove(_imageBorderOverlay);
         _crosshairOverlay = null;
         _maskOverlay = null;
+        _previewOverlay = null;
         _imageBorderOverlay = null;
+    }
+
+    // -----------------------------------------------------------------------
+    //  Plugin preview overlays
+    // -----------------------------------------------------------------------
+
+    private void OnPreviewChanged()
+    {
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+            RefreshPreviewOverlay();
+        else
+            Avalonia.Threading.Dispatcher.UIThread.Post(RefreshPreviewOverlay);
+    }
+
+    /// <summary>
+    /// Renders the preview overlay a plugin published for the plane and slice currently shown.
+    /// Preview overlays are separate from mask layers: they are transient, plugin-owned, and must not
+    /// be confused with the session's mask data.
+    /// </summary>
+    private void RefreshPreviewOverlay()
+    {
+        if (_previewOverlay == null)
+            return;
+
+        var plane = CurrentPlane;
+        var index = CurrentSlice;
+        PreviewOverlay? overlay = null;
+
+        if (_previewChannel != null)
+        {
+            foreach (var candidate in _previewChannel.Overlays)
+            {
+                if (candidate.Plane == plane && candidate.Index == index && candidate.Mask != null)
+                {
+                    overlay = candidate;
+                    break;
+                }
+            }
+        }
+
+        // A panel that publishes several planes at once raises Changed once per publish, so this runs
+        // again for every one of them. Rebuilding an overlay whose instance is unchanged would allocate
+        // a slice-sized bitmap per publish and throw the previous one away.
+        if (ReferenceEquals(overlay, _renderedOverlay))
+            return;
+
+        _renderedOverlay = overlay;
+
+        var old = _previewImage;
+        _previewImage = overlay?.Mask is { } mask
+            ? RenderSingleMaskToBitmap(mask, overlay.Color, overlay.Opacity)
+            : null;
+        _previewOverlay.SliceImage = _previewImage;
+        old?.Dispose();
+    }
+
+    private SlicePlane CurrentPlane => _axis switch
+    {
+        SliceAxis.Axial => SlicePlane.XY,
+        SliceAxis.Coronal => SlicePlane.XZ,
+        _ => SlicePlane.YZ
+    };
+
+    private static WriteableBitmap? RenderSingleMaskToBitmap(bool[,] data, MaskColor color, double opacity)
+    {
+        var height = data.GetLength(0);
+        var width = data.GetLength(1);
+        if (height == 0 || width == 0 || opacity <= 0)
+            return null;
+
+        var fb = new WriteableBitmap(
+            new PixelSize(width, height),
+            new Vector(96, 96),
+            PixelFormats.Bgra8888,
+            AlphaFormat.Premul);
+
+        var alpha = (int)Math.Round(Math.Clamp(opacity, 0, 1) * 255);
+        var argb = ((uint)alpha << 24)
+                 | (uint)(color.R * alpha / 255) << 16
+                 | (uint)(color.G * alpha / 255) << 8
+                 | (uint)(color.B * alpha / 255);
+
+        using (var lockData = fb.Lock())
+        {
+            unsafe
+            {
+                var ptr = (uint*)lockData.Address;
+                var stride = lockData.RowBytes / 4;
+
+                new Span<byte>(ptr, lockData.RowBytes * height).Clear();
+
+                for (var y = 0; y < height; y++)
+                {
+                    for (var x = 0; x < width; x++)
+                    {
+                        if (data[y, x])
+                            ptr[y * stride + x] = argb;
+                    }
+                }
+            }
+        }
+
+        return fb;
     }
 
     private void PushOverlayState()

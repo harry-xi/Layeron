@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Layeron.Plugins.ScriptHost</AssemblyName>
+    <!--
+      A plugin is a library, and libraries do not copy their NuGet dependencies to the output folder by
+      default. Roslyn is a private dependency that must ship next to the plugin so the plugin's own load
+      context can resolve it, so this has to be switched on explicitly.
+    -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="LayeronPluginId" Value="layeron.scripthost" />
+    <AssemblyMetadata Include="LayeronPluginName" Value="C# Script Host" />
+    <AssemblyMetadata Include="LayeronPluginVersion" Value="1.0.0" />
+    <AssemblyMetadata Include="LayeronPluginDescription" Value="Loads .csx scripts from the scripts folder as plugins." />
+    <AssemblyMetadata Include="LayeronPluginApiVersion" Value="1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Layeron.Big3DArray\Layeron.Big3DArray.csproj" Private="false" />
+    <ProjectReference Include="..\Layeron.Plugin.Abstractions\Layeron.Plugin.Abstractions.csproj" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Roslyn is a private dependency: it ships inside this plugin's folder and is loaded by the
+      plugin's own load context, not by the host. That is exactly why the host only defers the
+      framework assemblies it owns.
+    -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.0.0" />
+  </ItemGroup>
+
+</Project>

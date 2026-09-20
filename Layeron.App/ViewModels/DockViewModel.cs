@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
@@ -7,6 +7,7 @@ using Dock.Model.Controls;
 using Dock.Model.Core;
 using Layeron.App.Layout;
 using Layeron.App.Session;
+using Layeron.Plugin.Abstractions;
 using ReactiveUI;
 using RxVoid = ReactiveUI.Primitives.RxVoid;
 
@@ -14,8 +15,7 @@ namespace Layeron.App.ViewModels;
 
 public class DockViewModel : ViewModelBase
 {
-    private readonly DockFactory _factory;
-    private readonly SessionContext _session;
+    private readonly ISessionManager _sessionManager;
 
     private static readonly string LayoutFilePath =
         Path.Combine(
@@ -29,11 +29,11 @@ public class DockViewModel : ViewModelBase
         NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals
     };
 
-    public DockViewModel(SessionContext session)
+    public DockViewModel(ISessionManager sessions, IPreviewChannel? preview = null)
     {
-        _session = session;
-        _factory = new DockFactory(session);
-        Layout = _factory.BuildOrFallback(null);
+        _sessionManager = sessions;
+        Factory = new DockFactory(sessions, preview);
+        Layout = Factory.BuildOrFallback(null);
         CreateAxialCommand = ReactiveCommand.Create(() => AddSlice(SliceAxis.Axial));
         CreateCoronalCommand = ReactiveCommand.Create(() => AddSlice(SliceAxis.Coronal));
         CreateSagittalCommand = ReactiveCommand.Create(() => AddSlice(SliceAxis.Sagittal));
@@ -45,6 +45,12 @@ public class DockViewModel : ViewModelBase
         OpenWindowLevelCommand = ReactiveCommand.Create(OpenWindowLevel);
     }
 
+    /// <summary>
+    /// The dock factory. Exposed so the plugin host can register and unregister tool factories: every
+    /// dockable type - built in or contributed - is wired up in exactly one place.
+    /// </summary>
+    public DockFactory Factory { get; }
+
     public IRootDock? Layout
     {
         get;
@@ -52,7 +58,7 @@ public class DockViewModel : ViewModelBase
     }
 
     /// <summary>Dockables that could not be restored on the last load.</summary>
-    public IReadOnlyList<UnresolvedDockable> Unresolved => _factory.Unresolved;
+    public IReadOnlyList<UnresolvedDockable> Unresolved => Factory.Unresolved;
 
     /// <summary>True when the last load had unresolvable dockables.</summary>
     public bool HasUnresolved => Unresolved.Count > 0;
@@ -72,14 +78,10 @@ public class DockViewModel : ViewModelBase
 
     private void AddSlice(SliceAxis axis)
     {
-        var name = axis.ToString();
-        var newSlice = new SliceViewerViewModel(axis)
-        {
-            SharedData = _session.SharedData,
-            WindowLevel = _session.WindowLevel
-        };
-        if (Layout is { } root)
-            _factory.AddDocument(root, newSlice);
+        if (Layout is not { } root)
+            return;
+        if (Factory.CreateDockable(DockableIds.ForSliceAxis(axis)) is { } slice)
+            Factory.AddDocument(root, slice);
     }
 
     private void AddCodeEditor()
@@ -87,26 +89,56 @@ public class DockViewModel : ViewModelBase
         var newEditor = new CodeEditorViewModel("Code Editor");
 
         if (Layout is { } root)
-            _factory.AddDocument(root, newEditor);
+            Factory.AddDocument(root, newEditor);
+    }
+
+    /// <summary>
+    /// Opens a dockable by type id. An instance of the same type that is already docked is brought to
+    /// the front instead of opening a second copy, which is what a menu entry is expected to do. Used by
+    /// the plugin host for contributed tools and safe to call for any registered dockable.
+    /// </summary>
+    public bool OpenToolById(string typeId, string? title = null)
+    {
+        if (Layout is not { } root)
+            return false;
+
+        if (Factory.FindDockable(root, d => d.Id == typeId) is { } existing)
+        {
+            Factory.SetActiveDockable(existing);
+            Factory.SetFocusedDockable(existing.Owner as IDock ?? root, existing);
+            return true;
+        }
+
+        if (Factory.CreateDockable(typeId, title) is not { } tool)
+            return false;
+
+        Factory.AddTool(root, tool);
+        return true;
     }
     
     private void OpenMaskManager()
-    {
-        if (Layout is { } root)
-            _factory.AddTool(root, new MaskManagerViewModel { SharedData = _session.SharedData });
-    }
+        => OpenSessionTool(DockableIds.MaskManager, _sessionManager.Current?.MaskManager);
     
     private void OpenWindowLevel()
+        => OpenSessionTool(DockableIds.WindowLevel, _sessionManager.Current?.WindowLevel);
+
+    /// <summary>Opens a session-owned tool unless the same instance is already docked.</summary>
+    private void OpenSessionTool(string typeId, IDockable? tool)
     {
-        if (Layout is { } root)
-            _factory.AddTool(root, new WindowLevelViewModel { SharedData = _session.SharedData });
+        if (Layout is not { } root || tool == null)
+            return;
+        if (Factory.FindDockable(root, d => ReferenceEquals(d, tool)) != null)
+            return; // already open
+        Factory.AddTool(root, tool);
     }
 
     // ── Layout reset ──────────────────────────────────────────────────
 
     private void ResetLayout()
     {
-        var root = _factory.BuildOrFallback(null);
+        if (Layout is { } old)
+            Factory.DisposeTree(old);
+        var root = Factory.BuildOrFallback(null);
         Layout = root;
         this.RaisePropertyChanged(nameof(Unresolved));
         this.RaisePropertyChanged(nameof(HasUnresolved));
@@ -122,7 +154,7 @@ public class DockViewModel : ViewModelBase
 
         try
         {
-            var dockLayout = _factory.CaptureLayout(root);
+            var dockLayout = Factory.CaptureLayout(root);
             var dir = Path.GetDirectoryName(LayoutFilePath);
             if (dir != null && !Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
@@ -165,9 +197,12 @@ public class DockViewModel : ViewModelBase
             return;
         }
 
+        if (Layout is { } old)
+            Factory.DisposeTree(old);
+
         // Use BuildOrFallback so ContextLocator/DockableLocator are set up
         // and the factory is fully initialised, just like construction time.
-        Layout = _factory.BuildOrFallback(dockLayout);
+        Layout = Factory.BuildOrFallback(dockLayout);
 
         this.RaisePropertyChanged(nameof(Unresolved));
         this.RaisePropertyChanged(nameof(HasUnresolved));

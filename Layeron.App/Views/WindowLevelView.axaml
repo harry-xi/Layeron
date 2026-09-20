@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Layeron.App.ViewModels"
+             xmlns:local="using:Layeron.App.Views"
              mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="220"
              x:Class="Layeron.App.Views.WindowLevelView"
              x:DataType="vm:WindowLevelViewModel">
@@ -23,6 +24,11 @@
                        FontSize="12"
                        Opacity="0.7"
                        Margin="0,-6,0,0"/>
+
+            <local:GrayHistogramView Bins="{Binding Histogram}"
+                                     Low="{Binding Low}"
+                                     High="{Binding High}"
+                                     ValueMax="{Binding HighMax}"/>
 
             <Grid ColumnDefinitions="64,*,64" ColumnSpacing="8">
                 <TextBlock Text="灰度下界" VerticalAlignment="Center"/>

@@ -38,6 +38,7 @@
                 <MenuItem Header="遮罩管理器" Command="{Binding Dock.OpenMaskManagerCommand}"/>
                 <MenuItem Header="窗宽窗位" Command="{Binding Dock.OpenWindowLevelCommand}"/>
             </MenuItem>
+            <MenuItem x:Name="PluginMenu" Header="插件"/>
         </Menu>
         
         <Border DockPanel.Dock="Bottom" Padding="10,4" Background="{DynamicResource SukiCardBackground}">

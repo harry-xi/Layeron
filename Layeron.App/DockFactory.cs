@@ -8,6 +8,7 @@ using Dock.Model.ReactiveUI;
 using Layeron.App.Session;
 using Layeron.App.ViewModels;
 using Layeron.App.Layout;
+using Layeron.Plugin.Abstractions;
 
 namespace Layeron.App;
 
@@ -24,7 +25,8 @@ public class DockFactory : Factory
 {
     private int _windowCount;
 
-    private readonly SessionContext _session;
+    private readonly ISessionManager _sessions;
+    private readonly IPreviewChannel? _preview;
 
     /// <summary>Registered factory functions keyed by <see cref="DockableIds"/> value.</summary>
     private readonly Dictionary<string, Func<DockableDescriptor, IDockable?>> _registry = new();
@@ -32,10 +34,49 @@ public class DockFactory : Factory
     /// <summary>Dockables that could not be created during the most recent build (calling <see cref="TryBuildLayout"/>).</summary>
     public IReadOnlyList<UnresolvedDockable> Unresolved { get; private set; } = Array.Empty<UnresolvedDockable>();
 
-    public DockFactory(SessionContext session)
+    public DockFactory(ISessionManager sessions, IPreviewChannel? preview = null)
     {
-        _session = session;
+        _sessions = sessions;
+        _preview = preview;
         RegisterBuiltIns();
+
+        // Dockables may hold session subscriptions; release them on close so a removed
+        // slice view does not stay rooted to the session manager.
+        DockableClosed += (_, e) => (e.Dockable as IDisposable)?.Dispose();
+    }
+
+    /// <summary>
+    /// Removes every dockable matching a predicate from the tree, disposing it first so plugin
+    /// content detaches while the plugin is still loaded. Used when a plugin unloads or its tool is
+    /// unregistered: the layout must not keep a panel whose type no longer exists.
+    /// </summary>
+    public int CloseDockables(IDockable root, Func<IDockable, bool> predicate)
+    {
+        var removed = 0;
+
+        if (root is IDock dock && dock.VisibleDockables is { } children)
+        {
+            for (var i = children.Count - 1; i >= 0; i--)
+            {
+                var child = children[i];
+                if (child is IDock childDock)
+                    removed += CloseDockables(childDock, predicate);
+
+                if (!predicate(child))
+                    continue;
+
+                if (ReferenceEquals(dock.ActiveDockable, child))
+                    dock.ActiveDockable = children.FirstOrDefault(c => !ReferenceEquals(c, child));
+                if (ReferenceEquals(dock.FocusedDockable, child))
+                    dock.FocusedDockable = null;
+
+                children.RemoveAt(i);
+                (child as IDisposable)?.Dispose();
+                removed++;
+            }
+        }
+
+        return removed;
     }
 
     // -----------------------------------------------------------------------
@@ -53,6 +94,20 @@ public class DockFactory : Factory
 
     /// <summary>Removes a previously registered type id.</summary>
     public void Unregister(string typeId) => _registry.Remove(typeId);
+
+    /// <summary>
+    /// Creates a dockable through the registry. Runtime creation (menu commands) and
+    /// layout restore share this single assembly point, so each dockable type is wired
+    /// up in exactly one place. Returns null when the id is unregistered or creation failed.
+    /// </summary>
+    public IDockable? CreateDockable(string typeId, string? title = null)
+    {
+        var unresolved = new List<UnresolvedDockable>();
+        var dockable = ResolveDockable(new DockableDescriptor { TypeId = typeId, Title = title }, unresolved);
+        foreach (var item in unresolved)
+            Console.WriteLine($"[Dock] Create failed '{item.Title}' ({item.TypeId}): {item.Reason}");
+        return dockable;
+    }
 
     // -----------------------------------------------------------------------
     //  Build from descriptor tree (deserialize)
@@ -169,6 +224,18 @@ public class DockFactory : Factory
         OpenAsFloatingWindow(root, newTool);
     }
 
+    /// <summary>
+    /// Disposes every disposable dockable in the tree, releasing their session
+    /// subscriptions; used before a layout is replaced by reset or restore.
+    /// </summary>
+    public void DisposeTree(IDockable root)
+    {
+        (root as IDisposable)?.Dispose();
+        if (root is IDock { VisibleDockables: { } children })
+            foreach (var child in children)
+                DisposeTree(child);
+    }
+
     // -----------------------------------------------------------------------
     //  Built-in dockable factories
     // -----------------------------------------------------------------------
@@ -178,21 +245,13 @@ public class DockFactory : Factory
         Register(DockableIds.SliceAxial, d => CreateSliceViewer(d, SliceAxis.Axial));
         Register(DockableIds.SliceCoronal, d => CreateSliceViewer(d, SliceAxis.Coronal));
         Register(DockableIds.SliceSagittal, d => CreateSliceViewer(d, SliceAxis.Sagittal));
-        Register(DockableIds.MaskManager, _ => _session.MaskManager);
-        Register(DockableIds.WindowLevel, _ => _session.WindowLevel);
+        Register(DockableIds.MaskManager, _ => _sessions.Current!.MaskManager);
+        Register(DockableIds.WindowLevel, _ => _sessions.Current!.WindowLevel);
         Register(DockableIds.CodeEditor, CreateCodeEditor);
     }
 
     private IDockable CreateSliceViewer(DockableDescriptor _, SliceAxis axis)
-    {
-
-        var vm = new SliceViewerViewModel(axis)
-        {
-            SharedData = _session.SharedData,
-            WindowLevel = _session.WindowLevel
-        };
-        return vm;
-    }
+        => new SliceViewerViewModel(axis, _sessions, _preview);
 
     private IDockable CreateCodeEditor(DockableDescriptor desc)
     {

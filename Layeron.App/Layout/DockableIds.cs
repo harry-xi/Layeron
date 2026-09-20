@@ -1,3 +1,4 @@
+using System;
 using Layeron.App.ViewModels;
 
 namespace Layeron.App.Layout;
@@ -16,6 +17,28 @@ public static class DockableIds
     public const string MaskManager = "layeron.tool.maskManager";
     public const string WindowLevel = "layeron.tool.windowLevel";
     public const string CodeEditor = "layeron.document.codeEditor";
+
+    /// <summary>
+    /// Type id for a tool contributed by a plugin. Stable across sessions and independent of the
+    /// plugin's CLR type names, so a saved layout can reference a plugin panel and a missing plugin
+    /// simply shows up as an unresolved dockable instead of breaking the layout.
+    /// </summary>
+    public static string ForPluginTool(string pluginId, string toolId) => $"layeron.tool.plugin.{pluginId}.{toolId}";
+
+    /// <summary>True when the type id denotes a plugin-contributed tool.</summary>
+    public static bool IsPluginTool(string typeId) =>
+        typeId.StartsWith("layeron.tool.plugin.", StringComparison.Ordinal);
+
+    /// <summary>Recovers the plugin id from a plugin tool type id, or null when it is not one.</summary>
+    public static string? PluginIdOf(string typeId)
+    {
+        if (!IsPluginTool(typeId))
+            return null;
+
+        var rest = typeId["layeron.tool.plugin.".Length..];
+        var lastDot = rest.LastIndexOf('.');
+        return lastDot <= 0 ? null : rest[..lastDot];
+    }
 
     public static string ForSliceAxis(SliceAxis axis) => axis switch
     {

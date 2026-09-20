@@ -2,10 +2,20 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="Layeron.App.App"
              xmlns:local="using:Layeron.App"
+             xmlns:plugins="using:Layeron.App.Plugins"
+             xmlns:views="using:Layeron.App.Views"
              
              RequestedThemeVariant="Default">
 
     <Application.DataTemplates>
+        <!--
+            Plugin panels are resolved explicitly and listed first: the type-name convention cannot map
+            them (the content is plugin code), and the view locator below would otherwise claim the view
+            model and render a "Not Found" placeholder.
+        -->
+        <DataTemplate DataType="plugins:PluginToolViewModel">
+            <views:PluginToolView/>
+        </DataTemplate>
         <local:ViewLocator/>
     </Application.DataTemplates>
   

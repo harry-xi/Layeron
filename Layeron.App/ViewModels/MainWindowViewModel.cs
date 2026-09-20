@@ -1,27 +1,42 @@
-﻿using Layeron.App.Session;
+﻿using Layeron.App.Plugins;
+using Layeron.App.Session;
 
 namespace Layeron.App.ViewModels;
 
 public class MainWindowViewModel : ViewModelBase
 {
+    /// <summary>Parameterless constructor used only by the designer preview in MainWindow.axaml.</summary>
     public MainWindowViewModel()
     {
-        SharedData = new SharedDataSourceViewModel();
-        MaskManager = new MaskManagerViewModel();
-        WindowLevel = new WindowLevelViewModel();
-        SharedData.MaskManager = MaskManager;
-        MaskManager.SharedData = SharedData;
-        WindowLevel.SharedData = SharedData;
-
-        var session = new SessionContext(SharedData, MaskManager, WindowLevel);
-        Dock = new DockViewModel(session);
     }
 
-    public DockViewModel Dock { get; }
+    public MainWindowViewModel(ISessionManager sessions)
+    {
+        Session = sessions.CreateSession();
 
-    public SharedDataSourceViewModel SharedData { get; }
+        // The services are created first because the dock needs the plugin preview channel: plugins
+        // and slice views must share one channel instance. The plugin host is then wired up before the
+        // window is shown, so contributed dockable factories exist by the time a saved layout is restored.
+        var services = new AppPluginServices(sessions, new ConsolePluginLog());
+        Dock = new DockViewModel(sessions, services.Preview);
+        Plugins = new PluginController(services, Dock);
 
-    public MaskManagerViewModel MaskManager { get; }
+        Plugins.EnsureDirectories();
+        Plugins.LoadAll();
+    }
 
-    public WindowLevelViewModel WindowLevel { get; }
+    /// <summary>The live session. Replaced when <see cref="ISessionManager"/> opens a new one.</summary>
+    public ISession Session { get; } = null!;
+
+    public DockViewModel Dock { get; } = null!;
+
+    /// <summary>Loaded plugins, contributed tools and menu entries.</summary>
+    public PluginController Plugins { get; } = null!;
+
+    // Forwarded for MainWindow.axaml bindings (menu commands, status bar).
+    public SharedDataSourceViewModel SharedData => Session.SharedData;
+
+    public MaskManagerViewModel MaskManager => Session.MaskManager;
+
+    public WindowLevelViewModel WindowLevel => Session.WindowLevel;
 }

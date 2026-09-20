@@ -2,6 +2,4 @@
 
 namespace Layeron.App.ViewModels;
 
-public abstract class ViewModelBase : ReactiveObject
-{
-}
+public abstract class ViewModelBase : ReactiveObject;

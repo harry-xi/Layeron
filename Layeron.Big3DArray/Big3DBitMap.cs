@@ -14,8 +14,14 @@ namespace Layeron.Big3DArray
     public class Big3DBitMap
     {
         // Block and indexing constants
-        private const int BlockSize = 64;
-        private const int BlockVolume = BlockSize * BlockSize * BlockSize; // 262144
+        private const int BlockSize = BlockEdge;
+        private const int BlockVolume = BlockEdge * BlockEdge * BlockEdge; // 262144
+
+        /// <summary>Edge length of one storage block; identical to the volume block layout.</summary>
+        public const int BlockEdge = 64;
+
+        /// <summary>Number of elements in one storage block (<see cref="BlockEdge"/>^3).</summary>
+        public const int BlockVolumeElements = BlockEdge * BlockEdge * BlockEdge;
 
         // overall sizes (in elements)
         private readonly int _sizeX, _sizeY, _sizeZ;
@@ -61,6 +67,69 @@ namespace Layeron.Big3DArray
         /// <summary>Returns true if the given dimensions match this bitmap's dimensions.</summary>
         public bool MatchesDimensions(int x, int y, int z) =>
             _sizeX == x && _sizeY == y && _sizeZ == z;
+
+        /// <summary>Number of blocks along the X axis.</summary>
+        public int BlocksX => _blocksX;
+
+        /// <summary>Number of blocks along the Y axis.</summary>
+        public int BlocksY => _blocksY;
+
+        /// <summary>Number of blocks along the Z axis.</summary>
+        public int BlocksZ => _blocksZ;
+
+        /// <summary>Total number of storage blocks.</summary>
+        public int BlockCount => _blocksX * _blocksY * _blocksZ;
+
+        /// <summary>
+        /// Replace one whole storage block from a value buffer, with the same block layout
+        /// as <see cref="ReadonlyBig3DArray{T}.GetBlockSpan"/>: <paramref name="values"/> holds
+        /// <see cref="BlockVolumeElements"/> booleans in z - y - x order, i.e. the bit for
+        /// block-local (lx, ly, lz) is at index <c>lz * 64 * 64 + ly * 64 + lx</c>.
+        /// <para>
+        /// This is the bulk counterpart of the per-voxel indexer for producers such as
+        /// segmentation: a whole 64^3 block is committed in one call, shared empty/full
+        /// blocks are reused automatically, and no per-voxel bounds check runs.
+        /// Values outside the bitmap (edge blocks) must be false; they are ignored.
+        /// </para>
+        /// </summary>
+        public void SetBlock(int blockX, int blockY, int blockZ, ReadOnlySpan<bool> values)
+        {
+            if ((uint)blockX >= (uint)_blocksX || (uint)blockY >= (uint)_blocksY || (uint)blockZ >= (uint)_blocksZ)
+                throw new ArgumentOutOfRangeException(nameof(blockX));
+            if (values.Length != BlockVolumeElements)
+                throw new ArgumentException($"Block buffer must hold {BlockVolumeElements} values.", nameof(values));
+
+            var setCount = 0;
+            for (var i = 0; i < BlockVolumeElements; i++)
+                if (values[i])
+                    setCount++;
+
+            if (setCount == 0)
+            {
+                _array[blockX, blockY, blockZ] = null;
+                return;
+            }
+
+            if (setCount == BlockVolumeElements)
+            {
+                _array[blockX, blockY, blockZ] = Block.Full;
+                return;
+            }
+
+            _array[blockX, blockY, blockZ] = Block.FromValues(values, setCount);
+        }
+
+        /// <summary>
+        /// Clears every block that is currently occupied, leaving an all-false bitmap.
+        /// Bulk reset for producers that rebuild a mask in place.
+        /// </summary>
+        public void ClearAllBlocks()
+        {
+            for (var x = 0; x < _blocksX; x++)
+            for (var y = 0; y < _blocksY; y++)
+            for (var z = 0; z < _blocksZ; z++)
+                _array[x, y, z] = null;
+        }
 
         /// <summary>Indexer access at element coordinates (x,y,z). Throws IndexOutOfRangeException if out of bounds.</summary>
         public bool this[int x, int y, int z]
@@ -485,6 +554,19 @@ namespace Layeron.Big3DArray
             /// populate it; it is not shared.
             /// </summary>
             public static Block CreateEmpty() => new(0, null, 0);
+
+            /// <summary>
+            /// Create an empty block (all-zero) and populate it from a value buffer laid out
+            /// in z - y - x order (index = lz * 4096 + ly * 64 + lx).
+            /// </summary>
+            public static Block FromValues(ReadOnlySpan<bool> values, int setCount)
+            {
+                var bits = new BitArray(BlockVolume);
+                for (var i = 0; i < BlockVolume; i++)
+                    if (values[i])
+                        bits.Set(i, true);
+                return new Block(2, bits, setCount);
+            }
 
             /// <summary>
             /// Copy-on-write: materialize a private mutable block from the shared

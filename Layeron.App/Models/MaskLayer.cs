@@ -4,10 +4,11 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using Avalonia.Media;
 using Layeron.Big3DArray;
+using Layeron.Plugin.Abstractions;
 
 namespace Layeron.App.Models;
 
-public class MaskLayer : INotifyPropertyChanged
+public class MaskLayer : INotifyPropertyChanged, IMaskLayer
 {
     private string _name = "Mask";
     private Color _color = Colors.Red;
@@ -55,6 +56,19 @@ public class MaskLayer : INotifyPropertyChanged
 
     public bool MatchesDimensions(int x, int y, int z) =>
         _bitmap != null && _bitmap.MatchesDimensions(x, y, z);
+
+    /// <summary>
+    /// Plugin-facing colour. Implemented explicitly because the app's own <see cref="Color"/> is the
+    /// Avalonia type that the XAML binds to; the plugin contract deliberately stays UI-framework free.
+    /// </summary>
+    MaskColor IMaskLayer.Color
+    {
+        get => new(_color.R, _color.G, _color.B);
+        set => Color = Avalonia.Media.Color.FromRgb(value.R, value.G, value.B);
+    }
+
+    /// <summary>Read-only bitmap view for plugins; the mutable instance is <see cref="Bitmap"/>.</summary>
+    Big3DBitMap IMaskLayer.Bitmap => _bitmap!;
 
     public void SaveStream(Stream stream)
     {

@@ -118,18 +118,35 @@ public class MaskManagerViewModel : Tool
             Name = $"Mask {_nextMaskIndex++}",
             Bitmap = new Big3DBitMap(ax.X, ax.Y, ax.Z)
         };
+        AddLayer(layer);
+    }
+
+    /// <summary>
+    /// Adds a layer and notifies listeners. Host code (notably the plugin mask service) uses this so
+    /// layers produced by plugins take exactly the same path as ones created in the panel.
+    /// </summary>
+    public void AddLayer(MaskLayer layer)
+    {
         Masks.Add(layer);
         ActiveMask = layer; // [TEMP-DEMO]
+        MasksCollectionChanged?.Invoke();
+    }
+
+    /// <summary>Removes a layer and notifies listeners.</summary>
+    public void RemoveLayer(MaskLayer layer)
+    {
+        if (!Masks.Remove(layer))
+            return;
+
+        if (ReferenceEquals(ActiveMask, layer))
+            ActiveMask = Masks.LastOrDefault(); // [TEMP-DEMO] keep active mask valid
         MasksCollectionChanged?.Invoke();
     }
 
     private void RemoveMask(MaskLayer? layer)
     {
         if (layer == null) return;
-        Masks.Remove(layer);
-        if (ReferenceEquals(ActiveMask, layer))
-            ActiveMask = Masks.LastOrDefault(); // [TEMP-DEMO] keep active mask valid
-        MasksCollectionChanged?.Invoke();
+        RemoveLayer(layer);
     }
 
     private async Task LoadMaskAsync()
