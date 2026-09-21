@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Templates;
 using Dock.Model.Core;
 using Layeron.App.ViewModels;
+using Layeron.App.Plugins;
 
 namespace Layeron.App;
 
@@ -19,6 +20,16 @@ public class ViewLocator : IDataTemplate
     {
         if (param is null)
             return null;
+
+        // Dock builds plugin panels through the DockControl, not through this locator, because
+        // PluginToolViewModel is not a ViewModelBase. Returning the plugin's own control here covers the
+        // paths that do come through the locator, and an opaque payload is shown as text rather than
+        // silently rendering nothing.
+        if (param is PluginToolViewModel plugin)
+        {
+            return plugin.Content as Control
+                ?? new TextBlock { Text = plugin.Content.ToString() ?? "" };
+        }
 
         var name = param.GetType().FullName!.Replace("ViewModel", "View", StringComparison.Ordinal);
         var type = Type.GetType(name);

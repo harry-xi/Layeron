@@ -9,18 +9,25 @@ using Layeron.App.Session;
 using Layeron.App.ViewModels;
 using Layeron.App.Layout;
 using Layeron.App.Logging;
+using Layeron.App.Plugins;
 using Layeron.Plugin.Abstractions;
 
 namespace Layeron.App;
 
 /// <summary>
-/// Manages the dock layout. The old constructor-driven <c>DockFactory</c> is
-/// replaced by a registry approach: each dockable type is registered with a
-/// stable string key (see <see cref="DockableIds"/>), and the factory builds
-/// layouts from <see cref="DockLayout"/> descriptor trees.
+/// Manages the dock layout. Each dockable type is registered with a stable string key
+/// (see <see cref="DockableIds"/>), and the factory builds layouts from
+/// <see cref="DockLayout"/> descriptor trees.
 ///
 /// Unrecognised type ids (e.g. a tool from a plugin that is not loaded) are
 /// skipped and recorded so callers can surface a non-fatal notice.
+/// <para>
+/// The descriptor tree is a deliberate replacement for Dock's own <c>DockSerializer</c>, which stores a
+/// layout by CLR type name and reconstructs it by reflection. That cannot express this app's panes: a
+/// slice viewer's axis is read-only state, its session subscription only exists in a constructor, a
+/// plugin panel's type lives in another load context, and one missing type fails the whole document.
+/// See docs/LAYOUT_PERSISTENCE.md for the measurements behind that decision.
+/// </para>
 /// </summary>
 public class DockFactory : Factory
 {
@@ -149,23 +156,35 @@ public class DockFactory : Factory
 
     public override void InitLayout(IDockable layout)
     {
-        // ContextLocator maps dock Ids to their Context (DataContext for the View).
-        // For a restored layout where every dockable already has its ViewModel as
-        // the dockable itself, we return the Id so Dock resolves it from the tree.
+        // Dock resolves a pane's DataContext from IDockable.Context and falls back to the dockable
+        // itself; every pane here is its own view model, so this map stays empty on purpose. Storing a
+        // descriptor in Context would make it the pane's DataContext and replace the view model.
         ContextLocator = new Dictionary<string, Func<object?>>();
 
-        DockableLocator = new Dictionary<string, Func<IDockable>>
-        {
-            ["Root"] = () => layout,
-            ["MainLayout"] = () => layout,
-            ["CenterColumn"] = () => layout,
-            ["Documents"] = () => layout,
-            ["LeftToolDock"] = () => layout,
-            ["RightToolDock"] = () => layout,
-            ["BottomToolDock"] = () => layout
-        }!;
+        // Real id lookup: each node answers for its own id. Mapping every id to the root (as this used
+        // to) turns any GetDockable("CenterColumn") into the whole tree.
+        DockableLocator = BuildLocators(layout);
 
         base.InitLayout(layout);
+    }
+
+    /// <summary>Walks the live tree and records every id it finds, so Dock can resolve a dockable by id.</summary>
+    private static Dictionary<string, Func<IDockable?>> BuildLocators(IDockable layout)
+    {
+        var locators = new Dictionary<string, Func<IDockable?>>();
+        Collect(layout);
+
+        return locators;
+
+        void Collect(IDockable node)
+        {
+            if (node.Id is { Length: > 0 } id)
+                locators[id] = () => node;
+
+            if (node is IDock { VisibleDockables: { } children })
+                foreach (var child in children)
+                    Collect(child);
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -175,9 +194,9 @@ public class DockFactory : Factory
     /// <summary>
     /// Walks the live <see cref="IRootDock"/> tree and produces a
     /// <see cref="DockLayout"/> descriptor tree suitable for serialisation.
-    /// Only dockables whose <see cref="IDockable.Context"/> contains a
-    /// <see cref="DockableDescriptor"/> or whose Id is known to the registry
-    /// can be captured; others are logged and skipped.
+    /// Every pane built by this factory can be captured: it carries its own descriptor
+    /// (<see cref="IDescribedDockable"/>) or its type id is known to the registry. Anything else is
+    /// logged and skipped so one unrecognised panel cannot cost the whole layout.
     /// </summary>
     public DockLayout CaptureLayout(IRootDock root)
     {
@@ -355,7 +374,24 @@ public class DockFactory : Factory
         {
             try
             {
-                return factory(desc);
+                var dockable = factory(desc);
+
+                if (dockable == null)
+                    return null;
+
+                // Let the pane remember what it was built as. Its own title (and any state a later
+                // version adds) then survives a save/load cycle instead of being guessed from its type.
+                if (dockable is IDescribedDockable described)
+                    described.Descriptor = desc;
+
+                // A pane with no id is anonymous: DockableLocator cannot resolve it, the menu cannot tell
+                // whether it is already open, and a plugin unload cannot find it to close. The descriptor
+                // always names one, so it is the fallback - the pane's own id wins when it has one, since
+                // a session tool is a shared instance that must keep the id it was created with.
+                if (string.IsNullOrEmpty(dockable.Id))
+                    dockable.Id = string.IsNullOrEmpty(desc.Id) ? desc.TypeId : desc.Id;
+
+                return dockable;
             }
             catch (Exception ex)
             {
@@ -480,17 +516,26 @@ public class DockFactory : Factory
 
     /// <summary>
     /// Tries to recover a <see cref="DockableDescriptor"/> from a live dockable.
-    /// When the dockable was built by this factory its <see cref="IDockable.Context"/>
-    /// already holds the descriptor; otherwise we guess from the type and Id.
     /// </summary>
     private static DockableDescriptor? ExtractDescriptor(IDockable dockable)
     {
-        // Best path: the Context was set when the dockable was built.
-        if (dockable.Context is DockableDescriptor existing)
-            return existing;
+        // Identity comes from the dockable: a pane built by the registry carries the descriptor it was
+        // built from, which is what preserves a title that was not in DefaultLayout. IDockable.Context
+        // is deliberately not consulted - DockControl treats it as the pane's DataContext, so a
+        // descriptor stored there would replace the view model rather than describe it.
+        if (dockable is IDescribedDockable { Descriptor: { } described })
+        {
+            return new DockableDescriptor
+            {
+                TypeId = described.TypeId,
+                Id = dockable.Id,
+                Title = dockable.Title
+            };
+        }
 
-        // Fallback: synthesise from Id / Title / type.
-        var typeId = ResolveTypeId(dockable);
+        // Fallback for panes the registry did not build (a view model constructed directly by a menu
+        // command) and for the panes whose identity is fully implied by their type.
+        var typeId = TypeIdOf(dockable);
         if (typeId == null)
             return null;
 
@@ -502,13 +547,24 @@ public class DockFactory : Factory
         };
     }
 
-    private static string? ResolveTypeId(IDockable dockable) => dockable switch
+    /// <summary>
+    /// The type id a view model restores to, or null when this factory is not the one that knows it.
+    /// <para>
+    /// A pane may answer for itself (<see cref="IDockableIdentity"/>); the switch below covers the ones
+    /// that do not - the session-owned tools, whose identity follows entirely from their type, and a
+    /// plugin panel, which can only be identified by the id its factory was registered under because its
+    /// own view model type lives in the plugin's load context.
+    /// </para>
+    /// </summary>
+    public static string? TypeIdOf(IDockable dockable) => dockable switch
     {
+        IDockableIdentity identified => identified.TypeId,
         SliceViewerViewModel svm => DockableIds.ForSliceAxis(svm.Axis),
         MaskManagerViewModel => DockableIds.MaskManager,
         WindowLevelViewModel => DockableIds.WindowLevel,
-        CodeEditorViewModel => DockableIds.CodeEditor,
         LogViewerViewModel => DockableIds.Log,
+        // Without this, a plugin panel still open at shutdown is dropped from the saved layout.
+        PluginToolViewModel plugin => plugin.TypeId,
         _ => null
     };
 
