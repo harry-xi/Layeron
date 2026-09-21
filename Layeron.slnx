@@ -1,7 +1,8 @@
 <Solution>
   <Project Path="Layeron.App/Layeron.App.csproj" />
+  <Project Path="Layeron.App.Test/Layeron.App.Test.csproj" />
   <Project Path="Layeron.Big3DArray.Bench/Layeron.Big3DArray.Bench.csproj" />
-  <Project Path="Layeron.Big3DArray.Test/Layeron.Big3DArray.Test.csproj"/>
+  <Project Path="Layeron.Big3DArray.Test/Layeron.Big3DArray.Test.csproj" />
   <Project Path="Layeron.Big3DArray/Layeron.Big3DArray.csproj" />
   <Project Path="Layeron.Plugin.Abstractions/Layeron.Plugin.Abstractions.csproj" />
   <Project Path="Layeron.Plugin.Host/Layeron.Plugin.Host.csproj" />

@@ -1,0 +1,289 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Layeron.App.ViewModels"
+             xmlns:log="using:Layeron.App.Logging"
+             xmlns:views="using:Layeron.App.Views"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="220"
+             x:Class="Layeron.App.Views.LogViewerView"
+             x:DataType="vm:LogViewerViewModel">
+
+    <Design.DataContext>
+        <vm:LogViewerViewModel/>
+    </Design.DataContext>
+
+    <UserControl.Resources>
+        <views:LogLevelBrushConverter x:Key="LevelBrush"/>
+        <views:LogLevelBackgroundConverter x:Key="LevelBackground"/>
+
+        <!-- Density lives in one place: this panel is short and wide, so a single number has to change
+             when the layout tightens, not a dozen duplicated attributes. -->
+        <x:Double x:Key="RowFontSize">11.5</x:Double>
+        <Thickness x:Key="PanePadding">8,3</Thickness>
+    </UserControl.Resources>
+
+    <UserControl.Styles>
+        <!-- The Fluent defaults (32px tall, generous padding) waste most of a toolbar's height on a
+             caption like "复制"; these classes are what keep the whole bar to one row. -->
+        <Style Selector="Button.tight">
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="Padding" Value="8,1"/>
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style Selector="Button.icon">
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="Width" Value="18"/>
+            <Setter Property="Height" Value="18"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style Selector="CheckBox.tight">
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="Padding" Value="4,0,0,0"/>
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style Selector="TextBlock.mono">
+            <Setter Property="FontFamily" Value="Consolas,Menlo,monospace"/>
+            <Setter Property="FontSize" Value="{StaticResource RowFontSize}"/>
+        </Style>
+
+        <!--
+            The two halves of the filter control give up their own chrome so the surrounding border is the
+            only frame the eye sees. Nothing is nested: the level picker and the text box are separate
+            controls that simply stop drawing a border, which keeps their normal keyboard and popup
+            behaviour intact.
+        -->
+        <Style Selector="ComboBox.embedded">
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="Padding" Value="6,1"/>
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style Selector="TextBox.embedded">
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="Padding" Value="6,1"/>
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Border Background="{DynamicResource SukiCardBackground}" Margin="4">
+        <DockPanel>
+
+            <!-- ── Toolbar ────────────────────────────────────────────────────────
+                 One row: the panel is wide, so every control fits side by side and the filter field can
+                 take all the leftover width instead of being squeezed to make room. -->
+            <Border DockPanel.Dock="Top"
+                    Padding="{StaticResource PanePadding}"
+                    Background="{DynamicResource SukiControlBackground}">
+                <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="6">
+
+                    <!-- Filter: level and text read as one field. The border, the corner radius and the
+                         divider are what make two controls look like a single input. -->
+                    <Border Grid.Column="0"
+                            Background="{DynamicResource SukiCardBackground}"
+                            BorderBrush="{DynamicResource SukiControlBackground}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            MinWidth="220"
+                            MaxWidth="520"
+                            HorizontalAlignment="Left">
+                        <Grid ColumnDefinitions="Auto,Auto,*">
+                            <ComboBox Grid.Column="0"
+                                      Classes="embedded"
+                                      ItemsSource="{Binding LevelOptions}"
+                                      SelectedItem="{Binding MinimumLevel, Mode=TwoWay}"
+                                      MinWidth="64"
+                                      ToolTip.Tip="最低显示级别">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="log:LogLevel">
+                                        <TextBlock Text="{Binding}"
+                                                   FontSize="11.5"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{Binding Converter={StaticResource LevelBrush}}"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+
+                            <!-- A hairline, not a full separator: it reads as the seam inside one field. -->
+                            <Rectangle Grid.Column="1"
+                                       Width="1"
+                                       Margin="0,3"
+                                       Fill="{DynamicResource SukiControlBackground}"
+                                       Opacity="0.6"/>
+
+                            <TextBox Grid.Column="2"
+                                     Classes="embedded"
+                                     Text="{Binding Filter, Mode=TwoWay}"
+                                     PlaceholderText="过滤 类别 / 消息 / 属性…"/>
+                        </Grid>
+                    </Border>
+
+                    <TextBlock Grid.Column="1"
+                               Classes="mono"
+                               Text="{Binding LevelCounts}"
+                               ToolTip.Tip="{Binding StatusText}"
+                               VerticalAlignment="Center"
+                               Opacity="0.7"/>
+
+                    <CheckBox Grid.Column="2"
+                              Classes="tight"
+                              Content="跟随"
+                              ToolTip.Tip="自动滚动到最新记录"
+                              IsChecked="{Binding Follow, Mode=TwoWay}"/>
+
+                    <Button Grid.Column="3"
+                            Classes="tight"
+                            Content="清空"
+                            ToolTip.Tip="清空窗口（日志文件保留）"
+                            Command="{Binding ClearCommand}"/>
+                    <Button Grid.Column="4"
+                            Classes="tight"
+                            Content="复制"
+                            ToolTip.Tip="复制当前显示的记录"
+                            Command="{Binding CopyCommand}"/>
+                    <Button Grid.Column="5"
+                            Classes="tight"
+                            Content="目录"
+                            ToolTip.Tip="{Binding LogPathTip}"
+                            Command="{Binding OpenFolderCommand}"/>
+                </Grid>
+            </Border>
+
+            <!-- ── Detail ─────────────────────────────────────────────────────────
+                 On the right, not below: the panel is wide and short, so the detail spends horizontal
+                 space (abundant here) rather than vertical space (scarce), and the list keeps its full
+                 height. Bound to the selection, so clicking a row opens it and ✕ closes it; there is no
+                 separate "is the pane open" flag that could disagree with the list's selection. -->
+            <Border DockPanel.Dock="Right"
+                    IsVisible="{Binding HasSelection}"
+                    Width="340"
+                    Padding="{StaticResource PanePadding}"
+                    Background="{DynamicResource SukiControlBackground}">
+                <DockPanel>
+                    <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="6">
+                        <TextBlock Grid.Column="0"
+                                   Classes="mono"
+                                   Text="{Binding SelectedRecord.TimeText}"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="1"
+                                   Classes="mono"
+                                   Text="{Binding SelectedRecord.LevelText}"
+                                   FontWeight="Bold"
+                                   VerticalAlignment="Center"
+                                   Foreground="{Binding SelectedRecord.Level, Converter={StaticResource LevelBrush}}"/>
+                        <TextBlock Grid.Column="2"
+                                   Text="{Binding SelectedRecord.Category}"
+                                   FontSize="11.5"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"/>
+                        <Button Grid.Column="3"
+                                Classes="icon"
+                                Content="✕"
+                                ToolTip.Tip="关闭详情"
+                                Command="{Binding CloseDetailCommand}"/>
+                    </Grid>
+
+                    <ScrollViewer Margin="0,4,0,0" VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="3">
+                            <TextBlock Text="{Binding SelectedRecord.Message}"
+                                       FontSize="11.5"
+                                       TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding SelectedRecord.Template, StringFormat=模板: {0}}"
+                                       IsVisible="{Binding SelectedRecord.HasTemplate}"
+                                       FontSize="11"
+                                       TextWrapping="Wrap"
+                                       Opacity="0.6"/>
+                            <TextBlock Text="{Binding SelectedRecord.DetailText}"
+                                       IsVisible="{Binding SelectedRecord.HasDetail}"
+                                       Classes="mono"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <!-- ── Records ──────────────────────────────────────────────────────── -->
+            <Panel>
+                <ListBox x:Name="RecordList"
+                         ItemsSource="{Binding Records}"
+                         SelectedItem="{Binding SelectedRecord, Mode=TwoWay}"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         Padding="0">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <VirtualizingStackPanel/>
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <!-- The container's own minimum height and padding are what make a log list
+                         unnecessarily airy; a row only has to be clickable and selectable. -->
+                    <ListBox.ItemContainerTheme>
+                        <ControlTheme TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                            <Setter Property="MinHeight" Value="0"/>
+                            <Setter Property="Padding" Value="0"/>
+                        </ControlTheme>
+                    </ListBox.ItemContainerTheme>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="log:LogRecord">
+                            <Border Padding="6,0"
+                                    Background="{Binding Converter={StaticResource LevelBackground}}">
+                                <!-- Fixed leading columns keep the eye able to scan down timestamp and
+                                     level; the message takes everything left, which is the whole reason
+                                     this panel is wide. -->
+                                <Grid ColumnDefinitions="78,32,140,*">
+                                    <TextBlock Grid.Column="0"
+                                               Classes="mono"
+                                               Text="{Binding TimeText}"
+                                               VerticalAlignment="Center"
+                                               Opacity="0.65"/>
+                                    <TextBlock Grid.Column="1"
+                                               Classes="mono"
+                                               Text="{Binding LevelText}"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center"
+                                               Foreground="{Binding Converter={StaticResource LevelBrush}}"/>
+                                    <TextBlock Grid.Column="2"
+                                               Text="{Binding Category}"
+                                               FontSize="11.5"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"
+                                               Opacity="0.8"/>
+                                    <TextBlock Grid.Column="3"
+                                               Text="{Binding Message}"
+                                               FontSize="11.5"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"/>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <TextBlock Text="暂无日志"
+                           IsVisible="{Binding HasNoRecords}"
+                           FontSize="11.5"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Opacity="0.45"/>
+            </Panel>
+        </DockPanel>
+    </Border>
+</UserControl>

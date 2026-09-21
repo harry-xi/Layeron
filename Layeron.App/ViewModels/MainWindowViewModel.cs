@@ -2,7 +2,6 @@
 using Layeron.App.Session;
 
 namespace Layeron.App.ViewModels;
-
 public class MainWindowViewModel : ViewModelBase
 {
     /// <summary>Parameterless constructor used only by the designer preview in MainWindow.axaml.</summary>

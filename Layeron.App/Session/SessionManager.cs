@@ -1,5 +1,6 @@
 using System;
 using System.Reactive.Subjects;
+using Layeron.App.Logging;
 using Layeron.App.ViewModels;
 
 namespace Layeron.App.Session;
@@ -24,7 +25,10 @@ public sealed class SessionManager : ISessionManager
     public ISession CreateSession()
     {
         if (_current.Value is { } existing)
+        {
+            Log.Info("Session", "Replacing session {SessionId}", existing.GetHashCode());
             CloseSession();
+        }
 
         var sharedData = new SharedDataSourceViewModel();
         var maskManager = new MaskManagerViewModel();
@@ -35,6 +39,7 @@ public sealed class SessionManager : ISessionManager
 
         var session = new SessionContext(sharedData, maskManager, _windowLevel);
         _current.OnNext(session);
+        Log.Debug("Session", "Session {SessionId} created", session.GetHashCode());
         return session;
     }
 
@@ -47,6 +52,7 @@ public sealed class SessionManager : ISessionManager
         // Two-phase shutdown: consumers detach and save while the session is still
         // fully usable (Closing), rebind to an empty state (null), then get the final
         // notice. Nothing may be used after Closed.
+        Log.Debug("Session", "Closing session {SessionId} (phase 1: consumers detach)", session.GetHashCode());
         session.RaiseClosing();
         _current.OnNext(null);
 
@@ -55,5 +61,6 @@ public sealed class SessionManager : ISessionManager
         _windowLevel.SharedData = null;
 
         session.RaiseClosed();
+        Log.Debug("Session", "Session {SessionId} closed (phase 2 complete)", session.GetHashCode());
     }
 }

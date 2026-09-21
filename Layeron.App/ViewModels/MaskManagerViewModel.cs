@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Avalonia.Platform.Storage;
 using Dock.Model.ReactiveUI.Controls;
 using Avalonia.Controls;
+using Layeron.App.Logging;
 using Layeron.App.Models;
 using Layeron.Big3DArray;
 using ReactiveUI;
@@ -42,7 +43,7 @@ public class MaskManagerViewModel : Tool
     // [TEMP-DEMO] log-and-swallow for mask commands
     private static void HandleCommandError(Exception ex)
     {
-        Console.WriteLine($"[MaskManager] command error: {ex}");
+        Log.Error("Masks", ex, "Command failed");
     }
 
     public ObservableCollection<MaskLayer> Masks { get; } = new();

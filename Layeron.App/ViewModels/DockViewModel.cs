@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using Dock.Model.Controls;
 using Dock.Model.Core;
 using Layeron.App.Layout;
+using Layeron.App.Logging;
 using Layeron.App.Session;
 using Layeron.Plugin.Abstractions;
 using ReactiveUI;
@@ -43,6 +44,7 @@ public class DockViewModel : ViewModelBase
 
         OpenMaskManagerCommand = ReactiveCommand.Create(OpenMaskManager);
         OpenWindowLevelCommand = ReactiveCommand.Create(OpenWindowLevel);
+        OpenLogCommand = ReactiveCommand.Create(OpenLog);
     }
 
     /// <summary>
@@ -73,6 +75,7 @@ public class DockViewModel : ViewModelBase
 
     public ReactiveCommand<RxVoid, RxVoid> OpenMaskManagerCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> OpenWindowLevelCommand { get; }
+    public ReactiveCommand<RxVoid, RxVoid> OpenLogCommand { get; }
 
     // ── Runtime dockable creation ─────────────────────────────────────
 
@@ -122,6 +125,8 @@ public class DockViewModel : ViewModelBase
     private void OpenWindowLevel()
         => OpenSessionTool(DockableIds.WindowLevel, _sessionManager.Current?.WindowLevel);
 
+    private void OpenLog() => OpenToolById(DockableIds.Log, "Log");
+
     /// <summary>Opens a session-owned tool unless the same instance is already docked.</summary>
     private void OpenSessionTool(string typeId, IDockable? tool)
     {
@@ -161,11 +166,11 @@ public class DockViewModel : ViewModelBase
 
             var json = JsonSerializer.Serialize(dockLayout, JsonOptions);
             File.WriteAllText(LayoutFilePath, json);
-            Console.WriteLine($"[Dock] Layout saved ({json.Length} bytes)");
+            Log.Debug("Dock", "Layout saved ({Bytes} bytes) to {Path}", json.Length, LayoutFilePath);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Dock] Failed to save layout: {ex.Message}");
+            Log.Error("Dock", ex, "Failed to save layout to {Path}", LayoutFilePath);
         }
     }
 
@@ -174,7 +179,7 @@ public class DockViewModel : ViewModelBase
     {
         if (!File.Exists(LayoutFilePath))
         {
-            Console.WriteLine("[Dock] No saved layout file found, keeping default");
+            Log.Debug("Dock", "No saved layout at {Path}; keeping the default", LayoutFilePath);
             return;
         }
 
@@ -182,18 +187,18 @@ public class DockViewModel : ViewModelBase
         try
         {
             var json = await File.ReadAllTextAsync(LayoutFilePath);
-            Console.WriteLine($"[Dock] Loading layout ({json.Length} bytes)");
             dockLayout = JsonSerializer.Deserialize<DockLayout>(json, JsonOptions);
+            Log.Debug("Dock", "Loading layout ({Bytes} bytes) from {Path}", json.Length, LayoutFilePath);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Dock] Failed to deserialize layout: {ex.Message}");
+            Log.Error("Dock", ex, "Failed to read the saved layout from {Path}", LayoutFilePath);
             return;
         }
 
         if (dockLayout == null)
         {
-            Console.WriteLine("[Dock] Deserialized layout is null, keeping default");
+            Log.Warn("Dock", "Saved layout at {Path} deserialised to null; keeping the default", LayoutFilePath);
             return;
         }
 
@@ -206,6 +211,15 @@ public class DockViewModel : ViewModelBase
 
         this.RaisePropertyChanged(nameof(Unresolved));
         this.RaisePropertyChanged(nameof(HasUnresolved));
-        Console.WriteLine($"[Dock] Layout restored, unresolved={Unresolved.Count}");
+
+        if (Unresolved.Count > 0)
+        {
+            foreach (var item in Unresolved)
+                Log.Warn("Dock", "Unresolved dockable '{Title}' ({TypeId}): {Reason}", item.Title, item.TypeId, item.Reason);
+        }
+        else
+        {
+            Log.Info("Dock", "Layout restored from {Path}", LayoutFilePath);
+        }
     }
 }

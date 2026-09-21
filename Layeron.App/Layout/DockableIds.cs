@@ -16,6 +16,7 @@ public static class DockableIds
     public const string SliceSagittal = "layeron.slice.sagittal";
     public const string MaskManager = "layeron.tool.maskManager";
     public const string WindowLevel = "layeron.tool.windowLevel";
+    public const string Log = "layeron.tool.log";
     public const string CodeEditor = "layeron.document.codeEditor";
 
     /// <summary>

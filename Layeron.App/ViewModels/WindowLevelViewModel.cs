@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Threading;
 using Dock.Model.ReactiveUI.Controls;
+using Layeron.App.Logging;
 using Layeron.Big3DArray;
 using ReactiveUI;
 using RxVoid = ReactiveUI.Primitives.RxVoid;
@@ -38,7 +39,7 @@ public class WindowLevelViewModel : Tool
 
     private static void HandleCommandError(Exception ex)
     {
-        Console.WriteLine($"[WindowLevel] command error: {ex}");
+        Log.Error("WindowLevel", ex, "Command failed");
     }
 
     /// <summary>Shared data source; a new array resets the range to cover the whole element type.</summary>
@@ -110,7 +111,7 @@ public class WindowLevelViewModel : Tool
         {
             // The chart is diagnostic: a volume the histogram cannot describe leaves it empty
             // rather than failing the tool that owns the window range.
-            Console.WriteLine($"[WindowLevel] histogram failed: {ex.Message}");
+            Log.Write(LogLevel.Warn, "WindowLevel", ex, "Histogram failed; leaving the chart empty");
             return;
         }
 

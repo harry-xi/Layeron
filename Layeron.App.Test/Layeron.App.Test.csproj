@@ -1,0 +1,20 @@
+<Project Sdk="MSTest.Sdk/4.0.2">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UseVSTest>true</UseVSTest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      The app is referenced, not its logging file alone: Log.cs lives in the application and that is
+      where it should stay. The tests cover the parts that are hard to eyeball - template arity, ring
+      eviction order, concurrent writers.
+    -->
+    <ProjectReference Include="..\Layeron.App\Layeron.App.csproj" />
+  </ItemGroup>
+
+</Project>

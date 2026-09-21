@@ -9,6 +9,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Dock.Model.ReactiveUI.Controls;
+using Layeron.App.Logging;
 using Layeron.App.Models;
 using Layeron.App.Session;
 using Layeron.App.Views;
@@ -67,7 +68,7 @@ public class SliceViewerViewModel : Document
     // [TEMP-DEMO] never let an interactive command failure break the app
     private static void HandleInteractiveError(Exception ex)
     {
-        Console.WriteLine($"[SliceViewer] command error: {ex}");
+        Log.Error("SliceViewer", ex, "Interactive command failed");
     }
 
     public SliceViewerViewModel(SliceAxis axis) : this(axis, axis.ToString())

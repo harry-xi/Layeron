@@ -8,6 +8,7 @@ using Dock.Model.ReactiveUI;
 using Layeron.App.Session;
 using Layeron.App.ViewModels;
 using Layeron.App.Layout;
+using Layeron.App.Logging;
 using Layeron.Plugin.Abstractions;
 
 namespace Layeron.App;
@@ -105,7 +106,7 @@ public class DockFactory : Factory
         var unresolved = new List<UnresolvedDockable>();
         var dockable = ResolveDockable(new DockableDescriptor { TypeId = typeId, Title = title }, unresolved);
         foreach (var item in unresolved)
-            Console.WriteLine($"[Dock] Create failed '{item.Title}' ({item.TypeId}): {item.Reason}");
+            Log.Error("Dock", "Create failed '{Title}' ({TypeId}): {Reason}", item.Title, item.TypeId, item.Reason);
         return dockable;
     }
 
@@ -156,9 +157,12 @@ public class DockFactory : Factory
         DockableLocator = new Dictionary<string, Func<IDockable>>
         {
             ["Root"] = () => layout,
+            ["MainLayout"] = () => layout,
+            ["CenterColumn"] = () => layout,
             ["Documents"] = () => layout,
             ["LeftToolDock"] = () => layout,
-            ["RightToolDock"] = () => layout
+            ["RightToolDock"] = () => layout,
+            ["BottomToolDock"] = () => layout
         }!;
 
         base.InitLayout(layout);
@@ -180,7 +184,7 @@ public class DockFactory : Factory
         var unresolved = new List<UnresolvedDockable>();
         var rootNode = CaptureNode(root, unresolved);
         foreach (var item in unresolved)
-            Console.WriteLine($"[Dock] Capture skipped '{item.Title}' ({item.TypeId}): {item.Reason}");
+            Log.Warn("Dock", "Capture skipped '{Title}' ({TypeId}): {Reason}", item.Title, item.TypeId, item.Reason);
         return new DockLayout
         {
             Version = 1,
@@ -248,6 +252,7 @@ public class DockFactory : Factory
         Register(DockableIds.MaskManager, _ => _sessions.Current!.MaskManager);
         Register(DockableIds.WindowLevel, _ => _sessions.Current!.WindowLevel);
         Register(DockableIds.CodeEditor, CreateCodeEditor);
+        Register(DockableIds.Log, _ => new LogViewerViewModel());
     }
 
     private IDockable CreateSliceViewer(DockableDescriptor _, SliceAxis axis)
@@ -503,6 +508,7 @@ public class DockFactory : Factory
         MaskManagerViewModel => DockableIds.MaskManager,
         WindowLevelViewModel => DockableIds.WindowLevel,
         CodeEditorViewModel => DockableIds.CodeEditor,
+        LogViewerViewModel => DockableIds.Log,
         _ => null
     };
 

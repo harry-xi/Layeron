@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Layeron.App.Models;
+using Layeron.App.Logging;
 using Layeron.App.Session;
 using Layeron.App.ViewModels;
 using Layeron.Big3DArray;
@@ -265,19 +266,25 @@ internal sealed class AppPreviewChannel : IPreviewChannel
     }
 }
 
-/// <summary>Routes plugin log messages into the app's diagnostic output with the plugin id attached.</summary>
+/// <summary>
+/// Routes plugin log messages into the app log under the <c>Plugin</c> category, so the log window can
+/// isolate everything plugin-related with one filter. <see cref="IPluginLog"/> stays a plain string
+/// API on purpose: it is the published plugin contract, and a plugin should not have to know this
+/// application's record type.
+/// </summary>
 internal sealed class ConsolePluginLog : IPluginLog
 {
-    public void Debug(string message) => Write("DBG", message);
+    public void Debug(string message) => Log.Debug("Plugin", "{Message}", message);
 
-    public void Info(string message) => Write("INF", message);
+    public void Info(string message) => Log.Info("Plugin", "{Message}", message);
 
-    public void Warn(string message) => Write("WRN", message);
+    public void Warn(string message) => Log.Warn("Plugin", "{Message}", message);
 
     public void Error(string message, Exception? exception = null)
     {
-        Write("ERR", exception == null ? message : $"{message}{Environment.NewLine}{exception}");
+        if (exception == null)
+            Log.Error("Plugin", "{Message}", message);
+        else
+            Log.Error("Plugin", exception, "{Message}", message);
     }
-
-    private static void Write(string level, string message) => Console.WriteLine($"[Plugin:{level}] {message}");
 }

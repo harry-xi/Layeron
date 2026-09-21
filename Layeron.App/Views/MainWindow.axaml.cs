@@ -1,5 +1,6 @@
 using System;
 using Avalonia.Controls;
+using Layeron.App.Logging;
 using Layeron.App.Plugins;
 using Layeron.App.ViewModels;
 
@@ -117,9 +118,10 @@ public partial class MainWindow : Window
             Command = new RelayCommand(() =>
             {
                 var leaked = _plugins.VerifyUnload();
-                Console.WriteLine(leaked.Count == 0
-                    ? "[Plugin] All unloaded load contexts were collected."
-                    : $"[Plugin] Leaked load contexts: {string.Join(", ", leaked)}");
+                if (leaked.Count == 0)
+                    Log.Info("Plugin", "All unloaded load contexts were collected.");
+                else
+                    Log.Warn("Plugin", "Leaked load contexts: {Ids}", string.Join(", ", leaked));
             })
         });
     }
@@ -135,9 +137,9 @@ public partial class MainWindow : Window
     }
 
     private static void ReportPluginLocation(string? location) =>
-        Console.WriteLine(string.IsNullOrEmpty(location)
-            ? "[Plugin] This plugin has no file location (it was created in-process by another plugin)."
-            : $"[Plugin] {location}");
+        Log.Info("Plugin", location is null or ""
+            ? "This plugin has no file location (it was created in-process by another plugin)."
+            : "{Location}", location ?? "");
 
     /// <summary>Minimal command adapter so code-built menu items need no view model.</summary>
     private sealed class RelayCommand(Action execute, Func<bool>? canExecute = null) : System.Windows.Input.ICommand

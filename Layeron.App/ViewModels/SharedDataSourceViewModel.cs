@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Platform.Storage;
 using Layeron.Big3DArray;
+using Layeron.App.Logging;
 using ReactiveUI;
 using RxVoid = ReactiveUI.Primitives.RxVoid;
 using SixLabors.ImageSharp;
@@ -37,6 +38,7 @@ public class SharedDataSourceViewModel : ViewModelBase
     private void OnDataCommandError(Exception ex)
     {
         StatusText = $"Error: {ex.Message}";
+        Log.Error("Data", ex, "Data command failed");
     }
 
     public ReadonlyBig3DArray? Array
@@ -55,6 +57,18 @@ public class SharedDataSourceViewModel : ViewModelBase
             StatusText = value != null
                 ? $"Loaded: {value.X}x{value.Y}x{value.Z} {DescribeElementType(value)}"
                 : "No data loaded";
+
+            // The volume's shape and element type are exactly the facts a bug report needs, and they
+            // are logged as named properties so the log window can filter for them.
+            if (value != null)
+            {
+                Log.Info("Data", "Volume loaded: {SizeX}x{SizeY}x{SizeZ} {ElementType}",
+                    value.X, value.Y, value.Z, value.ElementType);
+            }
+            else
+            {
+                Log.Info("Data", "Volume cleared; no data loaded");
+            }
         }
     }
 
@@ -149,6 +163,7 @@ public class SharedDataSourceViewModel : ViewModelBase
         {
             var path = files[0].Path.LocalPath;
             StatusText = "Loading...";
+            Log.Info("Data", "Loading volume from {Path}", path);
             try
             {
                 var array = await Task.Run(() =>
@@ -163,6 +178,7 @@ public class SharedDataSourceViewModel : ViewModelBase
             catch (Exception ex)
             {
                 StatusText = $"Error: {ex.Message}";
+                Log.Error("Data", ex, "Failed to load {Path}", path);
             }
         }
     }
@@ -198,16 +214,19 @@ public class SharedDataSourceViewModel : ViewModelBase
                 });
                 FilePath = path;
                 StatusText = $"Saved to {Path.GetFileName(path)}";
+                Log.Info("Data", "Volume saved to {Path}", path);
             }
             catch (Exception ex)
             {
                 StatusText = $"Error: {ex.Message}";
+                Log.Error("Data", ex, "Failed to save to {Path}", path);
             }
         }
     }
 
     private void GenerateDemoData()
     {
+        Log.Debug("Data", "Generating 8-bit demo volume 128x128x64");
         var array = new Big3DArray<byte>(128, 128, 64);
         array.Fill((x, y, z) =>
         {
@@ -224,6 +243,7 @@ public class SharedDataSourceViewModel : ViewModelBase
 
     private void GenerateDemoData16()
     {
+        Log.Debug("Data", "Generating 16-bit demo volume 128x128x64");
         var array = new Big3DArray<ushort>(128, 128, 64);
         array.Fill((x, y, z) =>
         {
@@ -257,7 +277,8 @@ public class SharedDataSourceViewModel : ViewModelBase
         if (files.Count == 0) return;
 
         StatusText = $"Loading {files.Count} images...";
-        
+        Log.Info("Data", "Building a volume from {Count} image(s)", files.Count);
+
         try
         {
             var imagePaths = files.Select(f => f.Path.LocalPath).ToList();
@@ -295,6 +316,7 @@ public class SharedDataSourceViewModel : ViewModelBase
         catch (Exception ex)
         {
             StatusText = $"Error: {ex.Message}";
+            Log.Error("Data", ex, "Failed to build a volume from images");
         }
     }
 
