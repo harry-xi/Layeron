@@ -183,13 +183,13 @@
                                    VerticalAlignment="Center"/>
                         <TextBlock Grid.Column="1"
                                    Classes="mono"
-                                   Text="{Binding SelectedRecord.LevelText}"
+                                   Text="{Binding SelectedRecord.Level}"
                                    FontWeight="Bold"
                                    VerticalAlignment="Center"
                                    Foreground="{Binding SelectedRecord.Level, Converter={StaticResource LevelBrush}}"/>
                         <TextBlock Grid.Column="2"
+                                   Classes="mono"
                                    Text="{Binding SelectedRecord.Category}"
-                                   FontSize="11.5"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis"/>
@@ -205,7 +205,7 @@
                             <TextBlock Text="{Binding SelectedRecord.Message}"
                                        FontSize="11.5"
                                        TextWrapping="Wrap"/>
-                            <TextBlock Text="{Binding SelectedRecord.Template, StringFormat=模板: {0}}"
+                            <TextBlock Text="{Binding SelectedRecord.Template}"
                                        IsVisible="{Binding SelectedRecord.HasTemplate}"
                                        FontSize="11"
                                        TextWrapping="Wrap"
@@ -247,7 +247,7 @@
                                 <!-- Fixed leading columns keep the eye able to scan down timestamp and
                                      level; the message takes everything left, which is the whole reason
                                      this panel is wide. -->
-                                <Grid ColumnDefinitions="78,32,140,*">
+                                <Grid ColumnDefinitions="80,36,140,*">
                                     <TextBlock Grid.Column="0"
                                                Classes="mono"
                                                Text="{Binding TimeText}"
@@ -255,20 +255,20 @@
                                                Opacity="0.65"/>
                                     <TextBlock Grid.Column="1"
                                                Classes="mono"
-                                               Text="{Binding LevelText}"
+                                               Text="{Binding Level}"
                                                FontWeight="SemiBold"
                                                VerticalAlignment="Center"
                                                Foreground="{Binding Converter={StaticResource LevelBrush}}"/>
                                     <TextBlock Grid.Column="2"
                                                Text="{Binding Category}"
-                                               FontSize="11.5"
+                                               Classes="mono"
                                                FontWeight="SemiBold"
                                                VerticalAlignment="Center"
                                                TextTrimming="CharacterEllipsis"
                                                Opacity="0.8"/>
                                     <TextBlock Grid.Column="3"
                                                Text="{Binding Message}"
-                                               FontSize="11.5"
+                                               Classes="mono"
                                                VerticalAlignment="Center"
                                                TextTrimming="CharacterEllipsis"/>
                                 </Grid>

@@ -1,4 +1,6 @@
 using Layeron.Plugin.Abstractions;
+using System.Numerics;
+using Layeron.Big3DArray;
 
 namespace Layeron.Plugin.Test;
 
@@ -130,4 +132,38 @@ internal sealed class ProducerPlugin : IPlugin
             Mask = new bool[volume.Y, volume.X]
         });
     }
+}
+
+/// <summary>
+/// A pass-through volume filter (copies <c>src</c> to <c>dst</c> inside the requested region
+/// only) used to prove filter registration, host-owned point survival and unload removal.
+/// </summary>
+internal sealed class CopyFilter : IVolumeFilter
+{
+    public string Id => "test.copy";
+
+    public string DisplayName => "Copy";
+
+    public string? Description => "test filter";
+
+    public void Run<T>(ReadonlyBig3DArray<T> src, Big3DArray<T> dst, FilterRegion region, FilterContext ctx)
+        where T : unmanaged, INumber<T>
+    {
+        for (var z = region.Z0; z < region.Z0 + region.Z; z++)
+        {
+            ctx.CancellationToken.ThrowIfCancellationRequested();
+            for (var y = region.Y0; y < region.Y0 + region.Y; y++)
+                for (var x = region.X0; x < region.X0 + region.X; x++)
+                    dst[x, y, z] = src[x, y, z];
+        }
+    }
+}
+
+/// <summary>Contributes a volume filter through the first-class registry method.</summary>
+[Plugin("test.filter", Name = "Filter")]
+internal sealed class FilterPlugin : IPlugin
+{
+    public static readonly CopyFilter Filter = new();
+
+    public void Activate(IPluginContext context) => context.Registry.AddFilter(Filter);
 }

@@ -11,7 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Layeron.App;
 
-public partial class App : Application
+public class App : Application
 {
     public override void Initialize()
     {

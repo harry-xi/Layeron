@@ -48,8 +48,6 @@ public sealed class LogRecord
 
     public string TimeText => Time.ToString("HH:mm:ss.fff");
 
-    public string LevelText => Log.LevelText(Level);
-
     /// <summary>Properties plus exception: everything the one-line message drops.</summary>
     public string DetailText
     {
@@ -84,7 +82,7 @@ public sealed class LogRecord
     {
         var text = new StringBuilder()
             .Append(Time.ToString("yyyy-MM-dd HH:mm:ss.fff"))
-            .Append(' ').Append(LevelText)
+            .Append(' ').Append(Level.ToString())
             .Append(' ').Append(Category)
             .Append(": ").Append(Message);
 

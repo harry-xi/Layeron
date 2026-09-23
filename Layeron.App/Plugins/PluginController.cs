@@ -30,6 +30,10 @@ public sealed class PluginController : IDisposable
         _adapter = new AppPluginHostAdapter(dock, _services, _services.Log);
         _manager = new PluginManager(_adapter, new PluginManagerOptions());
 
+        // 设置窗口的插件扩展点由宿主拥有：先定义再加载，点随宿主存活,
+        // 只有各插件的贡献随其卸载摘除。
+        _manager.Points.DefinePoint<SettingsPageContribution>(SettingsPoints.Pages, "设置页面");
+
         _adapter.Menus.CollectionChanged += (_, _) => RebuildMenuTree();
 
         _manager.Changed += () =>
@@ -57,6 +61,10 @@ public sealed class PluginController : IDisposable
 
     /// <summary>Raised when <see cref="Loaded"/> changed.</summary>
     public event Action? PluginsChanged;
+
+    /// <summary>设置页扩展点（宿主拥有），设置窗口订阅其增删以追加插件页。</summary>
+    public ExtensionPoint<SettingsPageContribution>? SettingsPoint =>
+        _manager.Points.GetPoint<SettingsPageContribution>(SettingsPoints.Pages);
 
     /// <summary>Root plugin directory, shown in diagnostics.</summary>
     public string PluginDirectory => _manager.Options.PluginDirectory;
@@ -149,3 +157,4 @@ public sealed class PluginController : IDisposable
         _services.Dispose();
     }
 }
+

@@ -19,6 +19,7 @@ public class MainWindowViewModel : ViewModelBase
         var services = new AppPluginServices(sessions, new ConsolePluginLog());
         Dock = new DockViewModel(sessions, services.Preview);
         Plugins = new PluginController(services, Dock);
+        Settings = new SettingsWindowViewModel(Plugins);
 
         Plugins.EnsureDirectories();
         Plugins.LoadAll();
@@ -31,6 +32,9 @@ public class MainWindowViewModel : ViewModelBase
 
     /// <summary>Loaded plugins, contributed tools and menu entries.</summary>
     public PluginController Plugins { get; } = null!;
+
+    /// <summary>通用设置窗口的视图模型（独立弹出窗口，不走 dock），与应用同寿命。</summary>
+    public SettingsWindowViewModel Settings { get; } = null!;
 
     // Forwarded for MainWindow.axaml bindings (menu commands, status bar).
     public SharedDataSourceViewModel SharedData => Session.SharedData;

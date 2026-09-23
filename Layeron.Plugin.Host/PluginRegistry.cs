@@ -57,6 +57,29 @@ internal sealed class PluginRegistry : IPluginRegistry
         }));
     }
 
+    public void AddFilter(IVolumeFilter filter)
+    {
+        ArgumentNullException.ThrowIfNull(filter);
+        ArgumentException.ThrowIfNullOrWhiteSpace(filter.Id);
+        ThrowIfDisposed();
+
+        // The point is host-owned (null owner) so it survives any single plugin's unload;
+        // only this plugin's contribution is tied to its context. Define is idempotent.
+        // Consumers read the point's Items; there is no second list to keep in sync.
+        var point = _points.Define<IVolumeFilter>(
+            FilterPoints.Volume, "Volume filters", ownerPluginId: null);
+
+        foreach (var existing in point.Items)
+        {
+            if (string.Equals(existing.Id, filter.Id, StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    $"A volume filter with id '{filter.Id}' is already registered. " +
+                    $"Filter ids must be globally unique; prefix yours with your plugin id.");
+        }
+
+        _context.Register(point.Add(filter, _context.PluginId));
+    }
+
     public ExtensionPoint<T> DefinePoint<T>(string pointId, string? displayName = null)
     {
         ThrowIfDisposed();

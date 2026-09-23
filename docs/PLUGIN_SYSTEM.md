@@ -113,7 +113,7 @@ plugins.dev/                     开发目录（默认在 exe 旁，先扫描，
 
 1. 收集该插件及其**所有嵌套子插件**（按作用域父子链）；
 2. 释放根作用域 → 子作用域先被释放 → 各作用域内贡献逆序回滚（工具/菜单/扩展点贡献/事件订阅）→ 清理该插件发布的预览覆盖层；
-3. 各插件的 `AssemblyLoadContext.Unload()`；
+3. 各插��的 `AssemblyLoadContext.Unload()`；
 4. 丢弃该插件定义的扩展点、其插件源与发现记录；
 5. 记录弱引用，`VerifyUnloaded()` 触发 GC 后报告**仍然存活**的加载上下文。
 
@@ -143,7 +143,7 @@ IPluginLog     Log
 
 - **主卷直接给核心类型，不做包装**。插件拿到 `ReadonlyBig3DArray`（非泛型基类），自己 pattern match 一次 `is ReadonlyBig3DArray<byte> / <ushort>`，然后完全用核心类型工作：无门面、无反射分发、无逐体素装箱。宿主的 `SliceViewerViewModel.ExtractScalarSlice` 就是这么写的，插件照抄即可。
 - **`Version` 存在的原因**：主卷是原子替换的。后台算完的结果如果 `version != Volumes.Version` 就丢弃，避免把过期掩膜交给用户；插件不需要额外锁。
-- **整卷统计由宿主提供，插件不重复实现**：`Volumes.ComputeHistogram(ct, progress)` 返回 `VolumeHistogram.BinCount` 个 bin（8-bit 一值一 bin，16-bit 256 值一 bin，覆盖元素类型全值域），可后台线程调用、可取消、按块报进度。宿主自己的窗宽窗位直方图与插件用的是**同一份实现**（核心 `Layeron.Big3DArray.VolumeHistogram`），所以两边永远不会对同一卷给出不同的统计；插件只负责画图。
+- **整卷统计由宿主提供，插件不重复实现**：`Volumes.ComputeHistogram(ct, progress)` 返回 `VolumeHistogram.BinCount` 个 bin（8-bit 一值一 bin，16-bit 256 值一 bin，覆盖元素类型全值域），可后台线程调用、可取消、按块报进度。宿主自己的窗宽窗位直方图与插件用的是**同一份实现**（核心 `Layeron.Big3DArray.VolumeHistogram`），所以两边永远不���对同一卷给出不同的统计；插件只负责画图。
 - **掩膜是用户数据，预览是插件状态**。掩膜（分割结果）在插件卸载后保留；预览覆盖层随插件卸载自动清空——所以卸载后不会留下幽灵叠加层。
 - `NotifyContentChanged()`：插件用块 API 整块写掩膜后主动通知。块级 API 故意不发逐体素事件。
 
@@ -163,7 +163,7 @@ void ClearAllBlocks();
 ```
 
 - 块布局固定：块内 `z-y-x`，即 `lz*64*64 + ly*64 + lx`；`GetBlockOrigin` 给出块的世界原点。
-- **必须用 `ForEachInVolumeRange` 而不是裸 `span` 遍历**：存储永远按 64³ 整块分配，尺寸不是 64 倍数的卷，边缘块里含有**卷外**的填充体素，那是不含数据的未初始化内存。该 API 在块完全在卷内时给出"整块一个区间"（常见情形零开销），边缘块才逐行给区间——把这条正确性规则收在核心一处，插件不必各自踩坑。裸 `GetBlockSpan` 只在 `IsBlockFullyInside` 成立（或填充确实无关）时才正确。
+- **必须用 `ForEachInVolumeRange` 而不是裸 `span` 遍历**：存储永远按 64³ 整块分配，尺寸不是 64 倍数的卷，边缘块里含有**卷外**的填充���素，那是不含数据的未初始化内存。该 API 在块完全在卷内时给出"整块一个区间"（常见情形零开销），边缘块才逐行给区间——把这条正确性规则收在核心一处，插件不必各自踩坑。裸 `GetBlockSpan` 只在 `IsBlockFullyInside` 成立（或填充确实无关）时才正确。
 - 核心已经把整卷统计按这条规则写好了（`VolumeHistogram`），插件要直方图就走 `Volumes.ComputeHistogram`，不要自己再写一遍块遍历。
 - **不做宽化、不做整卷拷贝**：512³ 8-bit 卷阈值分割只用 ~256 KB 临时缓冲；把 8-bit 拉平成 16-bit 会让 128 MB 变 256 MB，明确禁止。
 
@@ -183,7 +183,7 @@ context.Registry.Contribute("layeron.threshold.actions", new VolumeAction {
 });
 ```
 
-**类型归属规则（重要）**：扩展点的贡献类型必须是**宿主标准类型**（`Layeron.Plugin.Abstractions` 中的类型，如 `VolumeAction`、`MenuContribution`）。如果定义方用自己的类型，贡献方就得引用它在运行时的那份拷贝，而每个插件各有一份拷贝，类型不再相等 → 静默失败。这是程序集隔离的必然约束，也是 `VolumeAction` 放在 Abstractions 的原因。
+**类型归属规则（重要）**：扩展点的���献类型必须是**宿主标准类型**（`Layeron.Plugin.Abstractions` 中的类型，如 `VolumeAction`、`MenuContribution`）。如果定义方用自己的类型，贡献方就得引用它在运行时的那份拷贝，而每个插件各有一份拷贝，类型不再相等 → 静默失败。这是程序集隔离的必然约束，也是 `VolumeAction` 放在 Abstractions 的原因。
 
 消费方订阅 `point.Added/Removed` 保持同步，并把订阅登记到作用域（或在自己的 `Dispose` 里解绑，如 `ThresholdToolView`）。
 
@@ -343,7 +343,52 @@ public sealed class MyPlugin : IPlugin
 
 ---
 
-## 13. 已知限制
+## 14. 体滤波器（已实现契约，未实现驱动）
+
+设计取舍：**核心定域，插件只算映射**。源卷常驻内存（1024³ 16-bit 即 2 GiB），预览读邻域不需要裁剪拷贝，只需少算输出——因此预览与应用是同一个函数，区别只在核心传入的 `FilterRegion`（预览 = 可见片的厚 1 盒，应用 = 全卷盒）。没有 halo 元数据：插件需要邻域就直接读 `src` 的任意坐标，谎报即无从谈起；没有切片特化函数：一份 `Run<T>` 同时服务预览与应用。
+
+```csharp
+public interface IVolumeFilter
+{
+    string Id { get; }
+    string DisplayName { get; }
+    string? Description { get; }
+    void Run<T>(ReadonlyBig3DArray<T> src, Big3DArray<T> dst, FilterRegion region, FilterContext ctx)
+        where T : unmanaged, INumber<T>;
+}
+
+// 注册：落在宿主拥有的 layeron.filters.volume 点上
+context.Registry.AddFilter(new Mean3x3Filter());
+
+// 实现骨架：只写 region，只读 src，邻域越界一律钳制到边缘
+public void Run<T>(ReadonlyBig3DArray<T> src, Big3DArray<T> dst, FilterRegion region, FilterContext ctx)
+    where T : unmanaged, INumber<T>
+{
+    for (var z = region.Z0; z < region.Z0 + region.Z; z++)
+    for (var y = region.Y0; y < region.Y0 + region.Y; y++)
+    for (var x = region.X0; x < region.X0 + region.X; x++)
+    {
+        ctx.CancellationToken.ThrowIfCancellationRequested();
+        // VolumeFilterSampling.GetClamped(src, ...) 读 3×3×3 邻域，均值后写 dst[x, y, z]
+    }
+}
+```
+
+规则（写进契约注释，靠评审与测试执行，而非靠插件自报元数据）：
+
+- **只写 `region` 内体素**，预览盒与全卷盒由核心选择，插件不感知自己在算预览还是应用。
+- **不分配卷**：`dst` 由核心按源尺寸/类型预分配；插件 `new` 卷即错。
+- **不扫全卷取统计**：全局 min/max 由核心预扫后经 `FilterContext.GlobalMin/GlobalMax` 下发（直方图复用核心 `VolumeHistogram`）；`Run` 内自扫即错——切片预览与全卷应用会在该处分叉。
+- **邻域越界钳制到边缘**（`VolumeFilterSampling.GetClamped`），v1 固定此一种策略，无选项。
+- **读经块 API 语义**：边缘块填充不是数据；`GetClamped` 走索引器保证正确，热路径优化（块 span 直读）是核心后续工作，不进插件契约。
+- **每块查取消、每块报进度**；`region` 恒在卷内，`IsEmpty` 时直接返回。
+- **切片与全卷一致**：同一参数下全量结果切一片，必须与切片预览逐点一致（`FilterRegistrationTests.SliceAndFullRun_AgreeOnTheSlice` 守住这条线）。
+
+未实现（诚实记录）：`FilterContext.GlobalMin/GlobalMax` 的预扫驱动、`dst` 分配与 `FilterRegion` 驱动（含预览防抖/取消、`ReplaceVolume` 原子提交与版本过期丢弃）、`SliceViewer` 的预览片渲染分支、驱动侧 `byte/ushort` 一次派发、FFT/多轮迭代类的 ROI 试算降级。`AddFilter` 注册、宿主拥有点、卸载摘除、钳制采样已实现并有测试。
+
+---
+
+## 15. 已知限制
 
 1. **脚本宿主未完成**（§10）。
 2. **进程内信任模型**：插件与宿主同进程，不做沙箱。破坏性/恶意插件能做的事等于应用能做的事；v1 依靠"安装即信任 + 加载前元数据校验"。

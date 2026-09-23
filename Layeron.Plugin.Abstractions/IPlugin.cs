@@ -60,6 +60,16 @@ public interface IPluginRegistry
     void AddMenu(MenuContribution menu);
 
     /// <summary>
+    /// Contributes a volume filter (see <see cref="IVolumeFilter"/>). The filter lands on the
+    /// host-owned <see cref="FilterPoints.Volume"/> point, so unlike
+    /// <see cref="DefinePoint{T}"/> the point itself never belongs to this plugin and survives
+    /// its unload; only this plugin's contribution is removed when its context is disposed.
+    /// The plugin owns the mapping, the core owns the domain: the host allocates the
+    /// destination, chooses the <see cref="FilterRegion"/> to write, and drives execution.
+    /// </summary>
+    void AddFilter(IVolumeFilter filter);
+
+    /// <summary>
     /// Defines a new extension point other plugins can contribute to. Extension points are what
     /// make "almost everything" extensible without changing the host: a plugin publishes a
     /// contract, later plugins feed it. Returns the same instance when the id is defined twice

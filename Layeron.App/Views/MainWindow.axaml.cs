@@ -6,15 +6,37 @@ using Layeron.App.ViewModels;
 
 namespace Layeron.App.Views;
 
+
+
 public partial class MainWindow : Window
 {
     private PluginController? _plugins;
 
+    /// <summary>打开独立设置窗口（不走 dock），由“设置”菜单项触发。</summary>
+    public System.Windows.Input.ICommand OpenSettingsCommand { get; } = null!;
+
     public MainWindow()
     {
         InitializeComponent();
+
+        // 用名称接线而非 XAML 绑定：菜单项实际宿主在弹出层里，$parent[Window] 祖先
+        // 查找可能解析不到窗口，导致命令永远不触发。
+        OpenSettingsCommand = new RelayCommand(ShowSettings);
+        SettingsMenuItem.Command = OpenSettingsCommand;
+
         Opened += OnMainWindowOpened;
         Closing += OnMainWindowClosing;
+    }
+
+    private void ShowSettings()
+    {
+        Log.Info("App","Open settings window");
+        if (DataContext is not MainWindowViewModel vm)
+            return;
+        Log.Info("App","Open settings window2");
+        // 复用与应用同寿命的视图模型；窗口本体每次新建，关闭即丢。
+        var window = new SettingsWindow { DataContext = vm.Settings, ShowInTaskbar = false };
+        window.Show(this);
     }
 
     private async void OnMainWindowOpened(object? sender, EventArgs e)
@@ -22,13 +44,11 @@ public partial class MainWindow : Window
         if (DataContext is not MainWindowViewModel vm)
             return;
 
-        // The plugin menu is built in code rather than through a hierarchical item template: plugin
-        // menu paths nest arbitrarily deep, and constructing MenuItem instances keeps command and
-        // enable-state semantics identical at every level.
+        // The plugin menu keeps only entries contributed by plugins (tool panels and menu paths);
+        // plugin management (reload / unload / rescan / leak check) lives in the settings window.
         _plugins = vm.Plugins;
         _plugins.MenuChanged += RebuildPluginMenu;
         _plugins.ToolsChanged += RebuildPluginMenu;
-        _plugins.PluginsChanged += RebuildPluginMenu;
         RebuildPluginMenu();
 
         await vm.Dock.TryRestoreSavedLayoutAsync();
@@ -46,7 +66,6 @@ public partial class MainWindow : Window
 
         _plugins.MenuChanged -= RebuildPluginMenu;
         _plugins.ToolsChanged -= RebuildPluginMenu;
-        _plugins.PluginsChanged -= RebuildPluginMenu;
 
         // Unload plugins at shutdown so leaked load contexts are reported in the log instead of
         // silently surviving into process exit.
@@ -76,54 +95,6 @@ public partial class MainWindow : Window
 
         foreach (var node in _plugins.MenuNodes)
             PluginMenu.Items.Add(BuildMenuItem(node));
-
-        PluginMenu.Items.Add(new Separator());
-
-        // Development affordances: hot reload and unload are what make a plugin system usable day to
-        // day, so they are one click away instead of a debugger session.
-        foreach (var plugin in _plugins.Loaded)
-        {
-            var pluginItem = new MenuItem { Header = $"{plugin.Name ?? plugin.Id} ({plugin.Id})" };
-            pluginItem.Items.Add(new MenuItem
-            {
-                Header = "热重载",
-                Command = new RelayCommand(() => _plugins.Reload(plugin.Id))
-            });
-            pluginItem.Items.Add(new MenuItem
-            {
-                Header = "卸载",
-                Command = new RelayCommand(() => _plugins.Unload(plugin.Id))
-            });
-            pluginItem.Items.Add(new MenuItem
-            {
-                Header = "输出路径",
-                Command = new RelayCommand(() => ReportPluginLocation(plugin.Location))
-            });
-            PluginMenu.Items.Add(pluginItem);
-        }
-
-        PluginMenu.Items.Add(new MenuItem
-        {
-            Header = "重新扫描目录",
-            Command = new RelayCommand(() =>
-            {
-                _plugins.LoadAll();
-                _plugins.RefreshSources();
-            })
-        });
-
-        PluginMenu.Items.Add(new MenuItem
-        {
-            Header = "检查卸载泄漏",
-            Command = new RelayCommand(() =>
-            {
-                var leaked = _plugins.VerifyUnload();
-                if (leaked.Count == 0)
-                    Log.Info("Plugin", "All unloaded load contexts were collected.");
-                else
-                    Log.Warn("Plugin", "Leaked load contexts: {Ids}", string.Join(", ", leaked));
-            })
-        });
     }
 
     private static MenuItem BuildMenuItem(PluginMenuNode node)
@@ -135,11 +106,6 @@ public partial class MainWindow : Window
 
         return item;
     }
-
-    private static void ReportPluginLocation(string? location) =>
-        Log.Info("Plugin", location is null or ""
-            ? "This plugin has no file location (it was created in-process by another plugin)."
-            : "{Location}", location ?? "");
 
     /// <summary>Minimal command adapter so code-built menu items need no view model.</summary>
     private sealed class RelayCommand(Action execute, Func<bool>? canExecute = null) : System.Windows.Input.ICommand

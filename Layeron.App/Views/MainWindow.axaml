@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
             xmlns:vm="using:Layeron.App.ViewModels"
+            xmlns:views="using:Layeron.App.Views"
             xmlns:controls="clr-namespace:Dock.Avalonia.Controls;assembly=Dock.Avalonia"
             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -32,6 +33,7 @@
                 <MenuItem Header="代码编辑器" Command="{Binding Dock.CreateCodeEditorCommand}"/>
                 <Separator/>
                 <MenuItem Header="重置布局" Command="{Binding Dock.ResetLayoutCommand}"/>
+                <MenuItem x:Name="SettingsMenuItem" Header="设置"/>
 
             </MenuItem>
             <MenuItem Header="Tools">

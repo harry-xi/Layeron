@@ -1,0 +1,35 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Layeron.App.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+        x:Class="Layeron.App.Views.SettingsWindow"
+        x:DataType="vm:SettingsWindowViewModel"
+        Title="设置"
+        Width="900" Height="600"
+        WindowStartupLocation="CenterOwner">
+
+    <Design.DataContext>
+        <vm:SettingsWindowViewModel/>
+    </Design.DataContext>
+
+    <DockPanel>
+        <Border DockPanel.Dock="Left" Width="180" Padding="8">
+            <ListBox ItemsSource="{Binding Pages}"
+                     SelectedItem="{Binding SelectedPage, Mode=TwoWay}"
+                     BorderThickness="0"
+                     Background="Transparent">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ISettingsPage">
+                        <TextBlock Text="{Binding Title}" VerticalAlignment="Center"/>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Border>
+
+        <Border Padding="12">
+            <ContentControl Content="{Binding SelectedPage.Content}"/>
+        </Border>
+    </DockPanel>
+</Window>

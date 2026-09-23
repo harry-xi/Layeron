@@ -1,0 +1,55 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Layeron.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="400"
+             x:Class="Layeron.App.Views.DeclaredSettingsView"
+             x:DataType="vm:DeclaredSettingsPageViewModel">
+    <Design.DataContext>
+        <vm:DeclaredSettingsPageViewModel/>
+    </Design.DataContext>
+    <ScrollViewer>
+        <StackPanel Spacing="4" Margin="4">
+            <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="Bold" Margin="0,0,0,4"/>
+            <TextBlock Text="该页面没有声明任何设置项。" IsVisible="{Binding HasNoRows}" Opacity="0.5"/>
+            <ItemsControl ItemsSource="{Binding Rows}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:DeclaredSettingsPageViewModel+SettingRowViewModel">
+                        <Border Padding="4,6" Margin="0,0,0,2">
+                            <Grid ColumnDefinitions="*,260" ColumnSpacing="12">
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
+                                    <TextBlock Text="{Binding Description}" TextWrapping="Wrap" FontSize="11"
+                                               Opacity="0.7" IsVisible="{Binding Description, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                                </StackPanel>
+                                <ContentControl Grid.Column="1" HorizontalAlignment="Stretch">
+                                    <!-- 按声明类型选择控件：默认渲染全部在宿主，插件不写任何 UI。 -->
+                                    <Panel>
+                                        <ToggleSwitch IsChecked="{Binding BoolValue, Mode=TwoWay}"
+                                                      IsVisible="{Binding IsBoolean}"
+                                                      HorizontalContentAlignment="Left" Margin="0"/>
+                                        <NumericUpDown Value="{Binding IntValue, Mode=TwoWay}"
+                                                       Minimum="{Binding Minimum, FallbackValue=0}"
+                                                       Maximum="{Binding Maximum, FallbackValue=100}"
+                                                       Increment="1" IsVisible="{Binding IsInteger}"/>
+                                        <NumericUpDown Value="{Binding NumberValue, Mode=TwoWay}"
+                                                       Minimum="{Binding Minimum, FallbackValue=0}"
+                                                       Maximum="{Binding Maximum, FallbackValue=100}"
+                                                       Increment="0.1" IsVisible="{Binding IsNumber}"/>
+                                        <TextBox Text="{Binding TextValue, Mode=TwoWay}"
+                                                 IsVisible="{Binding IsText}"/>
+                                        <ComboBox ItemsSource="{Binding Options}"
+                                                  SelectedItem="{Binding ChoiceValue, Mode=TwoWay}"
+                                                  IsVisible="{Binding IsChoice}"/>
+                                    </Panel>
+                                </ContentControl>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
+

@@ -3,8 +3,8 @@
              x:Class="Layeron.App.App"
              xmlns:local="using:Layeron.App"
              xmlns:plugins="using:Layeron.App.Plugins"
+             xmlns:vm="using:Layeron.App.ViewModels"
              xmlns:views="using:Layeron.App.Views"
-             
              RequestedThemeVariant="Default">
 
     <Application.DataTemplates>
@@ -16,14 +16,25 @@
         <DataTemplate DataType="plugins:PluginToolViewModel">
             <views:PluginToolView/>
         </DataTemplate>
+        <!-- 设置窗口内置页与声明式页：显式映射，避免走类型名约定。 -->
+        <DataTemplate DataType="vm:GeneralSettingsViewModel">
+            <views:GeneralSettingsView/>
+        </DataTemplate>
+        <DataTemplate DataType="vm:PluginSettingsViewModel">
+            <views:PluginSettingsView/>
+        </DataTemplate>
+        <DataTemplate DataType="vm:DeclaredSettingsPageViewModel">
+            <views:DeclaredSettingsView/>
+        </DataTemplate>
         <local:ViewLocator/>
     </Application.DataTemplates>
   
     <Application.Styles>
         
-        <FluentTheme DensityStyle="Compact"/>
-        <StyleInclude Source="avares://Avalonia.Controls.ColorPicker/Themes/Fluent/Fluent.xaml"/>
-        <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml"/>
-        <DockFluentTheme/>
+        <SimpleTheme />
+        <StyleInclude Source="avares://Avalonia.Controls.ColorPicker/Themes/Simple/Simple.xaml"/>
+        <StyleInclude Source="avares://AvaloniaEdit/Themes/Simple/AvaloniaEdit.xaml"/>
+        <DockSimpleTheme/>
+        
     </Application.Styles>
 </Application>

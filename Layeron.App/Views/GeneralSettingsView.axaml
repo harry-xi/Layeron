@@ -1,0 +1,17 @@
+﻿<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Layeron.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="400"
+             x:Class="Layeron.App.Views.GeneralSettingsView"
+             x:DataType="vm:GeneralSettingsViewModel">
+    <Design.DataContext>
+        <vm:GeneralSettingsViewModel/>
+    </Design.DataContext>
+    <StackPanel Spacing="8" Margin="4">
+        <TextBlock Text="常规" FontSize="16" FontWeight="Bold"/>
+        <TextBlock Text="{Binding AppVersion, StringFormat='版本：{0}'}"/>
+        <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Opacity="0.7"/>
+    </StackPanel>
+</UserControl>
