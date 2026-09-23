@@ -22,7 +22,7 @@ public sealed class PluginSettingsViewModel : ViewModelBase, ISettingsPage
 {
     public const string PageId = "layeron.settings.plugins";
 
-    private static readonly ObservableCollection<LoadedPlugin> EmptyPlugins = new();
+    private static readonly ObservableCollection<LoadedPlugin> EmptyPlugins = [];
 
     private readonly PluginController? _controller;
     private LoadedPlugin? _selected;

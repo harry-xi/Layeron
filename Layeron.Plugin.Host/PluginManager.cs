@@ -99,8 +99,8 @@ public sealed class LoadedPlugin
 /// </summary>
 public sealed class PluginManager : IDisposable
 {
-    private readonly List<LoadedPlugin> _plugins = new();
-    private readonly List<PendingUnload> _pendingUnload = new();
+    private readonly List<LoadedPlugin> _plugins = [];
+    private readonly List<PendingUnload> _pendingUnload = [];
     private readonly Dictionary<string, SourceRegistration> _sources = new(StringComparer.Ordinal);
     private readonly HashSet<string> _processedCandidates = new(StringComparer.Ordinal);
     private readonly PointRegistry _points = new();
@@ -110,7 +110,12 @@ public sealed class PluginManager : IDisposable
     {
         Adapter = adapter;
         Options = options ?? new PluginManagerOptions();
-        Points = new ExtensionPointRegistry(_points);
+        Points = _points;
+
+        // Host-owned points: survive any single plugin's unload; only contributions are scoped.
+        // Pre-defined here so AddFilter/AddSettingsPage (Contribute sugar) never hit "not defined".
+        _points.DefinePoint<IVolumeFilter>(FilterPoints.Volume, "Volume filters");
+        _points.DefinePoint<SettingsPageContribution>(SettingsPoints.Pages, "设置页面");
     }
 
     /// <summary>The host adapter this manager drives.</summary>
@@ -123,7 +128,7 @@ public sealed class PluginManager : IDisposable
     public event Action? Changed;
 
     /// <summary>Shared extension points. Host code can define its own points here before loading.</summary>
-    public IExtensionPointRegistry Points { get; }
+    public PointRegistry Points { get; }
 
     internal PointRegistry PointRegistry => _points;
 
@@ -134,7 +139,7 @@ public sealed class PluginManager : IDisposable
         {
             lock (_gate)
             {
-                return _plugins.ToList();
+                return [.. _plugins];
             }
         }
     }
@@ -516,7 +521,7 @@ public sealed class PluginManager : IDisposable
             List<(SourceRegistration Registration, PluginCandidate Candidate)> work;
             lock (_gate)
             {
-                work = new List<(SourceRegistration, PluginCandidate)>();
+                work = [];
                 foreach (var registration in _sources.Values)
                 {
                     IEnumerable<PluginCandidate> candidates;
@@ -581,9 +586,9 @@ public sealed class PluginManager : IDisposable
         lock (_gate)
         {
             if (!_sources.TryGetValue(sourceId, out var registration))
-                return Array.Empty<string>();
+                return [];
 
-            previous = registration.LoadedIds.ToList();
+            previous = [.. registration.LoadedIds];
             registration.LoadedIds.Clear();
 
             foreach (var key in _processedCandidates
@@ -606,7 +611,7 @@ public sealed class PluginManager : IDisposable
         List<string> sourceIds;
         lock (_gate)
         {
-            sourceIds = _sources.Keys.ToList();
+            sourceIds = [.. _sources.Keys];
         }
 
         var loaded = new List<string>();
@@ -641,19 +646,23 @@ public sealed class PluginManager : IDisposable
 
             // Everything whose scope nests inside the root's scope goes too - that is the whole
             // contract of a plugin acting as a loader.
-            doomed = _plugins
-                .Where(p => ReferenceEquals(p, root) ||
-                            (p.Context != null && root.Context != null && p.Context.IsNestedInside(root.Context)))
-                .ToList();
+            doomed =
+            [
+                .. _plugins
+                    .Where(p => ReferenceEquals(p, root) ||
+                                (p.Context != null && root.Context != null && p.Context.IsNestedInside(root.Context)))
+            ];
 
             foreach (var plugin in doomed)
                 _plugins.Remove(plugin);
 
-            doomedSources = _sources
-                .Where(kv => kv.Value.OwnerContext != null &&
-                             doomed.Any(d => ReferenceEquals(d.Context, kv.Value.OwnerContext)))
-                .Select(kv => kv.Key)
-                .ToList();
+            doomedSources =
+            [
+                .. _sources
+                    .Where(kv => kv.Value.OwnerContext != null &&
+                                 doomed.Any(d => ReferenceEquals(d.Context, kv.Value.OwnerContext)))
+                    .Select(kv => kv.Key)
+            ];
         }
 
         // Disposing the root scope disposes the nested scopes first, so children are torn down inside out.
@@ -782,12 +791,14 @@ public sealed class PluginManager : IDisposable
         lock (_gate)
         {
             // Depth: a plugin is a root when it is not nested inside another loaded plugin's scope.
-            roots = _plugins
-                .Where(p => p.Context == null ||
-                            !_plugins.Any(other => !ReferenceEquals(other, p) &&
-                                                   other.Context != null &&
-                                                   p.Context.IsNestedInside(other.Context)))
-                .ToList();
+            roots =
+            [
+                .. _plugins
+                    .Where(p => p.Context == null ||
+                                !_plugins.Any(other => !ReferenceEquals(other, p) &&
+                                                       other.Context != null &&
+                                                       p.Context.IsNestedInside(other.Context)))
+            ];
         }
 
         foreach (var plugin in roots)
@@ -796,7 +807,7 @@ public sealed class PluginManager : IDisposable
         List<LoadedPlugin> leftovers;
         lock (_gate)
         {
-            leftovers = _plugins.ToList();
+            leftovers = [.. _plugins];
             _plugins.Clear();
             _sources.Clear();
             _processedCandidates.Clear();
@@ -816,11 +827,11 @@ public sealed class PluginManager : IDisposable
         List<PendingUnload> pending;
         lock (_gate)
         {
-            pending = _pendingUnload.ToList();
+            pending = [.. _pendingUnload];
         }
 
         if (pending.Count == 0)
-            return Array.Empty<string>();
+            return [];
 
         for (var i = 0; i < 3; i++)
         {

@@ -18,7 +18,7 @@ internal static class TestPoints
 [Plugin("test.publisher", Name = "Publisher")]
 internal sealed class PublisherPlugin : IPlugin
 {
-    public static readonly List<string> Seen = new();
+    public static readonly List<string> Seen = [];
 
     public void Activate(IPluginContext context)
     {

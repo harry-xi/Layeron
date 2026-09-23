@@ -62,7 +62,7 @@ public partial class SliceViewerView : UserControl
         
         if (!e.KeyModifiers.HasFlag(KeyModifiers.Shift))
         {
-            int delta = e.Delta.Y > 0 ? 1 : -1;
+            var delta = e.Delta.Y > 0 ? 1 : -1;
             ViewModel.CurrentSlice += delta;
             e.Handled = true;
         }

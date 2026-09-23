@@ -2,31 +2,24 @@ using Layeron.Plugin.Abstractions;
 
 namespace Layeron.Plugin.Host;
 
-/// <summary>Extension point definition surface for host code.</summary>
-public interface IExtensionPointRegistry
-{
-    /// <summary>Defines (or returns) an extension point owned by the host.</summary>
-    ExtensionPoint<T> DefinePoint<T>(string id, string? displayName = null);
-
-    /// <summary>Resolves a defined point, or null.</summary>
-    ExtensionPoint<T>? GetPoint<T>(string id);
-
-    /// <summary>Defined point ids, for diagnostics.</summary>
-    IReadOnlyList<string> PointIds { get; }
-}
-
 /// <summary>
 /// Registry of extension points, shared by every loaded plugin so that a point defined by one
 /// plugin can be fed by another. Points are keyed by id and validated against their contribution
 /// type, so a typo ("two plugins defining the same id differently") fails loudly instead of
 /// silently splitting contributions across two incompatible slots.
+/// <para>
+/// Host code uses this type directly (it defines host-owned points with a null owner);
+/// plugin code reaches it through <see cref="IPluginRegistry"/>, which stamps ownership
+/// so the point disappears with the plugin that defined it. One type, no facade.
+/// </para>
 /// </summary>
-internal sealed class PointRegistry
+public sealed class PointRegistry
 {
     private readonly Dictionary<string, IExtensionPoint> _points = new(StringComparer.Ordinal);
     private readonly Lock _gate = new();
 
-    public ExtensionPoint<T> Define<T>(string id, string? displayName, string? ownerPluginId)
+    /// <summary>Defines (or returns) an extension point. Host code passes a null owner.</summary>
+    public ExtensionPoint<T> DefinePoint<T>(string id, string? displayName = null, string? ownerPluginId = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
 
@@ -49,7 +42,10 @@ internal sealed class PointRegistry
         }
     }
 
-    public ExtensionPoint<T>? Get<T>(string id)
+    internal ExtensionPoint<T> Define<T>(string id, string? displayName, string? ownerPluginId) =>
+        DefinePoint<T>(id, displayName, ownerPluginId);
+
+    public ExtensionPoint<T>? GetPoint<T>(string id)
     {
         lock (_gate)
         {
@@ -57,13 +53,15 @@ internal sealed class PointRegistry
         }
     }
 
+    internal ExtensionPoint<T>? Get<T>(string id) => GetPoint<T>(id);
+
     /// <summary>Removes every contribution a plugin made, across all points. Called on unload.</summary>
     public void RemoveByOwner(string pluginId)
     {
         List<IExtensionPoint> points;
         lock (_gate)
         {
-            points = _points.Values.ToList();
+            points = [.. _points.Values];
         }
 
         foreach (var point in points)
@@ -94,7 +92,7 @@ internal sealed class PointRegistry
         {
             lock (_gate)
             {
-                return _points.Keys.ToList();
+                return [.. _points.Keys];
             }
         }
     }

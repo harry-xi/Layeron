@@ -32,7 +32,6 @@ public enum SliceAxis
 public class SliceViewerViewModel : Document
 {
     private SharedDataSourceViewModel? _sharedData;
-    private SliceAxis _axis;
     private string _axisLabel = "Axial";
 
     // Standard axis colors: X=red, Y=green, Z=blue.
@@ -41,7 +40,7 @@ public class SliceViewerViewModel : Document
     private static readonly IBrush ZAxisBrush = new SolidColorBrush(Color.FromRgb(68, 170, 255));
     private CancellationTokenSource? _renderCts;
     private CustomImageViewer? _imageViewer;
-    private readonly HashSet<MaskLayer> _maskLayerSubscriptions = new();
+    private readonly HashSet<MaskLayer> _maskLayerSubscriptions = [];
     private CrosshairOverlay? _crosshairOverlay;
     private MaskOverlay? _maskOverlay;
     private MaskOverlay? _previewOverlay;
@@ -78,7 +77,7 @@ public class SliceViewerViewModel : Document
     public SliceViewerViewModel(SliceAxis axis,string title) : this()
     {
         Title = title;
-        _axis = axis;
+        Axis = axis;
         _axisLabel = axis.ToString();
     }
 
@@ -307,7 +306,7 @@ public class SliceViewerViewModel : Document
         old?.Dispose();
     }
 
-    private SlicePlane CurrentPlane => _axis switch
+    private SlicePlane CurrentPlane => Axis switch
     {
         SliceAxis.Axial => SlicePlane.XY,
         SliceAxis.Coronal => SlicePlane.XZ,
@@ -400,7 +399,7 @@ public class SliceViewerViewModel : Document
 
     public int CurrentSlice
     {
-        get => _axis switch
+        get => Axis switch
         {
             SliceAxis.Axial => _sharedData?.CurrentZ ?? 0,
             SliceAxis.Coronal => _sharedData?.CurrentY ?? 0,
@@ -410,7 +409,7 @@ public class SliceViewerViewModel : Document
         set
         {
             if (_sharedData == null) return;
-            switch (_axis)
+            switch (Axis)
             {
                 case SliceAxis.Axial:
                     _sharedData.CurrentZ = value;
@@ -425,7 +424,7 @@ public class SliceViewerViewModel : Document
         }
     }
 
-    public int MaxSlice => _axis switch
+    public int MaxSlice => Axis switch
     {
         SliceAxis.Axial => _sharedData?.MaxZ ?? 0,
         SliceAxis.Coronal => _sharedData?.MaxY ?? 0,
@@ -463,11 +462,9 @@ public class SliceViewerViewModel : Document
             if (_windowLevel != null)
                 _windowLevel.WindowLevelChanged -= OnWindowLevelChanged;
             _windowLevel = value;
-            if (value != null)
-            {
-                value.WindowLevelChanged += OnWindowLevelChanged;
-                OnWindowLevelChanged();
-            }
+            if (value == null) return;
+            value.WindowLevelChanged += OnWindowLevelChanged;
+            OnWindowLevelChanged();
         }
     }
 
@@ -486,10 +483,10 @@ public class SliceViewerViewModel : Document
         return WindowLevelViewModel.BuildIdentityLut(_sharedData?.Array?.ElementType ?? PixelElementType.Byte);
     }
 
-    public SliceAxis Axis => _axis;
+    public SliceAxis Axis { get; }
 
     // View accent color = the color of the axis the view plane is perpendicular to.
-    public IBrush AxisBrush => _axis switch
+    public IBrush AxisBrush => Axis switch
     {
         SliceAxis.Axial => ZAxisBrush,
         SliceAxis.Coronal => YAxisBrush,
@@ -500,7 +497,7 @@ public class SliceViewerViewModel : Document
     // Crosshair line colors, each line painted with its representative axis color.
     // The vertical line (at PositionX) and the horizontal line (at PositionY) each
     // follow the axis they measure in the current view.
-    public IBrush CrosshairPositionXBrush => _axis switch
+    public IBrush CrosshairPositionXBrush => Axis switch
     {
         SliceAxis.Axial => XAxisBrush,
         SliceAxis.Coronal => XAxisBrush,
@@ -508,7 +505,7 @@ public class SliceViewerViewModel : Document
         _ => Brushes.Gray
     };
 
-    public IBrush CrosshairPositionYBrush => _axis switch
+    public IBrush CrosshairPositionYBrush => Axis switch
     {
         SliceAxis.Axial => YAxisBrush,
         SliceAxis.Coronal => ZAxisBrush,
@@ -518,7 +515,7 @@ public class SliceViewerViewModel : Document
 
     public string SliceInfoText => $"{CurrentSlice} / {MaxSlice}";
 
-    public int CrosshairXPosition => _axis switch
+    public int CrosshairXPosition => Axis switch
     {
         SliceAxis.Axial => _sharedData?.CurrentX ?? 0,
         SliceAxis.Coronal => _sharedData?.CurrentX ?? 0,
@@ -526,7 +523,7 @@ public class SliceViewerViewModel : Document
         _ => 0
     };
 
-    public int CrosshairYPosition => _axis switch
+    public int CrosshairYPosition => Axis switch
     {
         SliceAxis.Axial => _sharedData?.CurrentY ?? 0,
         SliceAxis.Coronal => _sharedData?.CurrentZ ?? 0,
@@ -534,7 +531,7 @@ public class SliceViewerViewModel : Document
         _ => 0
     };
 
-    public int CurrentImageWidth => _axis switch
+    public int CurrentImageWidth => Axis switch
     {
         SliceAxis.Axial => _sharedData?.Array?.X ?? 0,
         SliceAxis.Coronal => _sharedData?.Array?.X ?? 0,
@@ -542,7 +539,7 @@ public class SliceViewerViewModel : Document
         _ => 0
     };
 
-    public int CurrentImageHeight => _axis switch
+    public int CurrentImageHeight => Axis switch
     {
         SliceAxis.Axial => _sharedData?.Array?.Y ?? 0,
         SliceAxis.Coronal => _sharedData?.Array?.Z ?? 0,
@@ -557,7 +554,7 @@ public class SliceViewerViewModel : Document
         var pixelX = (int)pixel.X;
         var pixelY = (int)pixel.Y;
 
-        switch (_axis)
+        switch (Axis)
         {
             case SliceAxis.Axial:
                 _sharedData.CurrentX = pixelX;
@@ -583,11 +580,11 @@ public class SliceViewerViewModel : Document
         if (array == null || mask?.Bitmap == null || manager == null || _sharedData == null) return;
 
         var bitmap = mask.Bitmap;
-        int r = manager.BrushRadius;
-        int px = (int)pixel.X;
-        int py = (int)pixel.Y;
+        var r = manager.BrushRadius;
+        var px = (int)pixel.X;
+        var py = (int)pixel.Y;
 
-        int depth = _axis switch
+        var depth = Axis switch
         {
             SliceAxis.Axial => _sharedData.CurrentZ,
             SliceAxis.Coronal => _sharedData.CurrentY,
@@ -595,17 +592,17 @@ public class SliceViewerViewModel : Document
             _ => 0
         };
 
-        for (int dy = -r; dy <= r; dy++)
+        for (var dy = -r; dy <= r; dy++)
         {
-            for (int dx = -r; dx <= r; dx++)
+            for (var dx = -r; dx <= r; dx++)
             {
                 if (dx * dx + dy * dy > r * r) continue;
 
-                int u = px + dx;
-                int v = py + dy;
+                var u = px + dx;
+                var v = py + dy;
 
                 int wx, wy, wz;
-                switch (_axis)
+                switch (Axis)
                 {
                     case SliceAxis.Axial: wx = u; wy = v; wz = depth; break;
                     case SliceAxis.Coronal: wx = u; wy = depth; wz = v; break;
@@ -630,18 +627,18 @@ public class SliceViewerViewModel : Document
         var ct = _renderCts.Token;
 
         var slice = CurrentSlice;
-        var axis = _axis;
+        var axis = Axis;
 
         var masks = (_sharedData?.MaskManager?.Masks
             .Where(m => m.Bitmap != null)
-            .ToList()) ?? new List<MaskLayer>();
+            .ToList()) ?? [];
 
         Task.Run(() =>
         {
             var baseSlice = ExtractScalarSlice(array, axis, slice);
 
             var maskSlices = new bool[,]?[masks.Count];
-            for (int i = 0; i < masks.Count; i++)
+            for (var i = 0; i < masks.Count; i++)
                 maskSlices[i] = ExtractMaskSlice(masks[i].Bitmap!, slice);
 
             return (baseSlice, maskSlices);
@@ -664,7 +661,7 @@ public class SliceViewerViewModel : Document
            TaskScheduler.FromCurrentSynchronizationContext());
     }
 
-    private bool[,] ExtractMaskSlice(Big3DBitMap bitmap, int slice) => _axis switch
+    private bool[,] ExtractMaskSlice(Big3DBitMap bitmap, int slice) => Axis switch
     {
         SliceAxis.Axial => bitmap.GetXYSlice(slice),
         SliceAxis.Coronal => bitmap.GetXZSlice(slice),
@@ -701,7 +698,7 @@ public class SliceViewerViewModel : Document
 
                 new Span<byte>(ptr, lockData.RowBytes * height).Clear();
 
-                for (int i = 0; i < masks.Count; i++)
+                for (var i = 0; i < masks.Count; i++)
                 {
                     var layer = masks[i];
                     var data = slices[i];
@@ -714,9 +711,9 @@ public class SliceViewerViewModel : Document
                              | (uint)(layer.Color.G * ai / 255) << 8
                              | (uint)(layer.Color.B * ai / 255);
 
-                    for (int y = 0; y < height; y++)
+                    for (var y = 0; y < height; y++)
                     {
-                        for (int x = 0; x < width; x++)
+                        for (var x = 0; x < width; x++)
                         {
                             if (data[y, x])
                                 ptr[y * stride + x] = argb;
@@ -763,8 +760,8 @@ public class SliceViewerViewModel : Document
     // so this inner loop is a single indexed read, keeping 8/16-bit rendering equally fast.
     private static WriteableBitmap RenderSlice8ToBitmap(byte[,] data, uint[]? lut)
     {
-        int height = data.GetLength(0);
-        int width = data.GetLength(1);
+        var height = data.GetLength(0);
+        var width = data.GetLength(1);
 
         var fb = new WriteableBitmap(
             new PixelSize(width, height),
@@ -775,25 +772,25 @@ public class SliceViewerViewModel : Document
             unsafe
             {
                 var ptr = (uint*)lockData.Address;
-                int stride = lockData.RowBytes / 4;
+                var stride = lockData.RowBytes / 4;
 
                 if (lut != null)
                 {
-                    for (int y = 0; y < height; y++)
+                    for (var y = 0; y < height; y++)
                     {
-                        int row = y * stride;
-                        for (int x = 0; x < width; x++)
+                        var row = y * stride;
+                        for (var x = 0; x < width; x++)
                             ptr[row + x] = lut[data[y, x]];
                     }
                 }
                 else
                 {
-                    for (int y = 0; y < height; y++)
+                    for (var y = 0; y < height; y++)
                     {
-                        int row = y * stride;
-                        for (int x = 0; x < width; x++)
+                        var row = y * stride;
+                        for (var x = 0; x < width; x++)
                         {
-                            byte v = data[y, x];
+                            var v = data[y, x];
                             ptr[row + x] = 0xFF000000u | ((uint)v << 16) | ((uint)v << 8) | v;
                         }
                     }
@@ -806,8 +803,8 @@ public class SliceViewerViewModel : Document
 
     private static WriteableBitmap RenderSlice16ToBitmap(ushort[,] data, uint[]? lut)
     {
-        int height = data.GetLength(0);
-        int width = data.GetLength(1);
+        var height = data.GetLength(0);
+        var width = data.GetLength(1);
 
         var fb = new WriteableBitmap(
             new PixelSize(width, height),
@@ -818,12 +815,12 @@ public class SliceViewerViewModel : Document
             unsafe
             {
                 var ptr = (uint*)lockData.Address;
-                int stride = lockData.RowBytes / 4;
+                var stride = lockData.RowBytes / 4;
 
-                for (int y = 0; y < height; y++)
+                for (var y = 0; y < height; y++)
                 {
-                    int row = y * stride;
-                    for (int x = 0; x < width; x++)
+                    var row = y * stride;
+                    for (var x = 0; x < width; x++)
                         ptr[row + x] = lut![data[y, x]];
                 }
             }

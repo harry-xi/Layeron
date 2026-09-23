@@ -38,17 +38,17 @@
                 Enumerable.Range(0, Z).Select(z =>
                 {
                     var image = new byte[Y, X];
-                    for (int y = 0; y < Y; y++)
-                        for (int x = 0; x < X; x++)
+                    for (var y = 0; y < Y; y++)
+                        for (var x = 0; x < X; x++)
                             image[y, x] = (byte)(z * 100 + y * 10 + x);
                     return image;
                 }));
 
-            for (int z = 0; z < Z; z++)
+            for (var z = 0; z < Z; z++)
             {
                 var sliceXY = testarray.GetXYSlice(z);
-                for (int y = 0; y < Y; y++)
-                    for (int x = 0; x < X; x++)
+                for (var y = 0; y < Y; y++)
+                    for (var x = 0; x < X; x++)
                         Assert.AreEqual((byte)(z * 100 + y * 10 + x), sliceXY[y, x], $"XY z={z} y={y} x={x}");
             }
         }
@@ -62,17 +62,17 @@
                 Enumerable.Range(0, Z).Select(z =>
                 {
                     var image = new byte[Y, X];
-                    for (int y = 0; y < Y; y++)
-                        for (int x = 0; x < X; x++)
+                    for (var y = 0; y < Y; y++)
+                        for (var x = 0; x < X; x++)
                             image[y, x] = (byte)(z * 100 + y * 10 + x);
                     return image;
                 }));
 
-            for (int x = 0; x < X; x++)
+            for (var x = 0; x < X; x++)
             {
                 var sliceYZ = testarray.GetYZSlice(x);
-                for (int z = 0; z < Z; z++)
-                    for (int y = 0; y < Y; y++)
+                for (var z = 0; z < Z; z++)
+                    for (var y = 0; y < Y; y++)
                         Assert.AreEqual((byte)(z * 100 + y * 10 + x), sliceYZ[z, y], $"YZ x={x} z={z} y={y}");
             }
         }
@@ -86,17 +86,17 @@
                 Enumerable.Range(0, Z).Select(z =>
                 {
                     var image = new byte[Y, X];
-                    for (int y = 0; y < Y; y++)
-                        for (int x = 0; x < X; x++)
+                    for (var y = 0; y < Y; y++)
+                        for (var x = 0; x < X; x++)
                             image[y, x] = (byte)(z * 100 + y * 10 + x);
                     return image;
                 }));
 
-            for (int y = 0; y < Y; y++)
+            for (var y = 0; y < Y; y++)
             {
                 var sliceXZ = testarray.GetXZSlice(y);
-                for (int z = 0; z < Z; z++)
-                    for (int x = 0; x < X; x++)
+                for (var z = 0; z < Z; z++)
+                    for (var x = 0; x < X; x++)
                         Assert.AreEqual((byte)(z * 100 + y * 10 + x), sliceXZ[z, x], $"XZ y={y} z={z} x={x}");
             }
         }
@@ -123,8 +123,8 @@
                 Enumerable.Range(0, 128).Select(z =>
                 {
                     var image = new byte[128, 128];
-                    for (int y = 0; y < 128; y++)
-                        for (int x = 0; x < 128; x++)
+                    for (var y = 0; y < 128; y++)
+                        for (var x = 0; x < 128; x++)
                             image[y, x] = (byte)z;
                     return image;
                 }));
@@ -143,8 +143,8 @@
                 Enumerable.Range(0, 128).Select(z =>
                 {
                     var image = new byte[128, 128];
-                    for (int y = 0; y < 128; y++)
-                        for (int x = 0; x < 128; x++)
+                    for (var y = 0; y < 128; y++)
+                        for (var x = 0; x < 128; x++)
                             image[y, x] = (byte)x;
                     return image;
                 }));
@@ -163,8 +163,8 @@
                 Enumerable.Range(0, 128).Select(z =>
                 {
                     var image = new byte[128, 128];
-                    for (int y = 0; y < 128; y++)
-                        for (int x = 0; x < 128; x++)
+                    for (var y = 0; y < 128; y++)
+                        for (var x = 0; x < 128; x++)
                             image[y, x] = (byte)y;
                     return image;
                 }));
@@ -251,12 +251,12 @@
             Assert.AreEqual(66, loaded.Y);
             Assert.AreEqual(70, loaded.Z);
 
-            for (int z = 0; z < 70; z++)
+            for (var z = 0; z < 70; z++)
             {
                 var expected = testarray.GetXYSlice(z);
                 var actual = loaded.GetXYSlice(z);
-                for (int y = 0; y < 66; y++)
-                    for (int x = 0; x < 130; x++)
+                for (var y = 0; y < 66; y++)
+                    for (var x = 0; x < 130; x++)
                         Assert.AreEqual(expected[y, x], actual[y, x], $"z={z} y={y} x={x}");
             }
         }
@@ -276,12 +276,12 @@
             Assert.IsInstanceOfType(loaded, typeof(ReadonlyBig3DArray<ushort>));
             Assert.AreEqual(PixelElementType.UInt16, loaded.ElementType);
 
-            for (int z = 0; z < 70; z++)
+            for (var z = 0; z < 70; z++)
             {
                 var expected = testarray.GetXYSlice(z);
                 var actual = loaded.GetXYSlice(z);
-                for (int y = 0; y < 66; y++)
-                    for (int x = 0; x < 130; x++)
+                for (var y = 0; y < 66; y++)
+                    for (var x = 0; x < 130; x++)
                         Assert.AreEqual(expected[y, x], actual[y, x], $"z={z} y={y} x={x}");
             }
         }

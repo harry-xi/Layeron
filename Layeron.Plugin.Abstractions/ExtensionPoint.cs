@@ -38,7 +38,7 @@ public interface IExtensionPoint
 /// </summary>
 public sealed class ExtensionPoint<T> : IExtensionPoint
 {
-    private readonly List<Item> _items = new();
+    private readonly List<Item> _items = [];
 
     public ExtensionPoint(string id, string? displayName, string? ownerPluginId)
     {
@@ -81,9 +81,10 @@ public sealed class ExtensionPoint<T> : IExtensionPoint
     public int Count => _items.Count;
 
     /// <summary>
-    /// Adds a contribution owned by <paramref name="ownerPluginId"/>. Plugins normally reach this
-    /// through <see cref="IPluginRegistry.Contribute{T}"/>, which stamps their id automatically;
-    /// host code passes null. The returned handle removes the contribution immediately.
+    /// Adds a contribution. Plugins must go through <see cref="IPluginRegistry.Contribute{T}"/>,
+    /// which stamps the owner and ties the handle to the plugin lifetime; direct calls bypass
+    /// scoping and are reserved for the host and for tests.
+    /// The returned handle removes the contribution immediately.
     /// </summary>
     public IDisposable Add(T value, string? ownerPluginId = null)
     {

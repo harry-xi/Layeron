@@ -50,24 +50,19 @@ public interface IPluginContext : IDisposable
 /// Everything a plugin may contribute. All members are scoped: the registration is undone
 /// automatically when the owning <see cref="IPluginContext"/> is disposed, which is what makes
 /// unload and hot reload leak-free.
+/// <para>
+/// Tool/Menu are direct host attachments (single consumer: host Dock/Menu), not extension
+/// points. Points are reserved for multi-contributor aggregation
+/// (Filter / Settings / plugin-defined payloads like <see cref="VolumeAction"/>).
+/// </para>
 /// </summary>
 public interface IPluginRegistry
 {
-    /// <summary>Registers a dockable tool panel. <c>Id</c> is turned into the stable dockable type id.</summary>
-    void AddTool(ToolContribution tool);
+    /// <summary>Registers a dockable tool panel. Returns a handle that detaches it immediately.</summary>
+    IDisposable AddTool(ToolContribution tool);
 
     /// <summary>Registers a menu entry (optionally nested through a slash-separated path).</summary>
-    void AddMenu(MenuContribution menu);
-
-    /// <summary>
-    /// Contributes a volume filter (see <see cref="IVolumeFilter"/>). The filter lands on the
-    /// host-owned <see cref="FilterPoints.Volume"/> point, so unlike
-    /// <see cref="DefinePoint{T}"/> the point itself never belongs to this plugin and survives
-    /// its unload; only this plugin's contribution is removed when its context is disposed.
-    /// The plugin owns the mapping, the core owns the domain: the host allocates the
-    /// destination, chooses the <see cref="FilterRegion"/> to write, and drives execution.
-    /// </summary>
-    void AddFilter(IVolumeFilter filter);
+    IDisposable AddMenu(MenuContribution menu);
 
     /// <summary>
     /// Defines a new extension point other plugins can contribute to. Extension points are what
@@ -80,7 +75,8 @@ public interface IPluginRegistry
     /// <summary>
     /// Looks up a previously defined extension point, or null when it is not defined.
     /// Consumers subscribe to <see cref="ExtensionPoint{T}.Added"/>/<see cref="ExtensionPoint{T}.Removed"/>
-    /// to stay in sync and register their subscriptions on this context so they unsubscribe on unload.
+    /// and track the subscription on this context (see <see cref="PluginRegistryExtensions.Subscribe{T}"/>)
+    /// so they unsubscribe on unload.
     /// </summary>
     ExtensionPoint<T>? GetPoint<T>(string pointId);
 
@@ -95,16 +91,10 @@ public interface IPluginRegistry
     /// are activated as child scopes of this plugin, so unloading this plugin unloads everything
     /// it loaded.
     /// </summary>
-    void AddPluginSource(IPluginSource source);
+    IDisposable AddPluginSource(IPluginSource source);
 
     /// <summary>Tracks an arbitrary disposable so its disposal follows the plugin lifetime.</summary>
     IDisposable Track(IDisposable disposable);
-
-    /// <summary>Tools contributed by the owning plugin, in registration order.</summary>
-    IReadOnlyList<ToolContribution> Tools { get; }
-
-    /// <summary>Menus contributed by the owning plugin, in registration order.</summary>
-    IReadOnlyList<MenuContribution> Menus { get; }
 }
 
 /// <summary>A dockable tool panel contributed by a plugin.</summary>
@@ -131,8 +121,21 @@ public sealed class ToolContribution
     /// <summary>Whether the user may close the tool without unloading the plugin. Default true.</summary>
     public bool CanClose { get; init; } = true;
 
-    /// <summary>Optional preferred dock alignment hint: "left", "right", "bottom". Default right.</summary>
-    public string? PreferredDock { get; init; }
+    /// <summary>Preferred dock alignment hint. Default right.</summary>
+    public DockHint PreferredDock { get; init; } = DockHint.Right;
+}
+
+/// <summary>Preferred dock alignment for a tool panel.</summary>
+public enum DockHint
+{
+    /// <summary>Dock to the right.</summary>
+    Right = 0,
+
+    /// <summary>Dock to the left.</summary>
+    Left = 1,
+
+    /// <summary>Dock to the bottom.</summary>
+    Bottom = 2
 }
 
 /// <summary>A menu entry contributed by a plugin.</summary>

@@ -159,7 +159,7 @@ namespace Layeron.Big3DArray
         protected ReadonlyBig3DArray(int x, int y, int z) : base(x, y, z)
         {
             blocks = new T[BlocksX * BlocksY * BlocksZ][];
-            for (int i = 0; i < blocks.Length; i++)
+            for (var i = 0; i < blocks.Length; i++)
                 blocks[i] = new T[VolumeIO.BlockVolume];
         }
 
@@ -258,19 +258,19 @@ namespace Layeron.Big3DArray
             var localZ = z - blockZ * VolumeIO.BlockSize;
             var lzBase = localZ * VolumeIO.BlockSize * VolumeIO.BlockSize;
 
-            for (int blockY = 0; blockY < BlocksY; blockY++)
+            for (var blockY = 0; blockY < BlocksY; blockY++)
             {
                 var y0 = blockY * VolumeIO.BlockSize;
                 var rows = Math.Min(VolumeIO.BlockSize, Y - y0);
-                for (int blockX = 0; blockX < BlocksX; blockX++)
+                for (var blockX = 0; blockX < BlocksX; blockX++)
                 {
                     var x0 = blockX * VolumeIO.BlockSize;
                     var cols = Math.Min(VolumeIO.BlockSize, X - x0);
                     var block = blocks[blockX + BlocksX * (blockY + BlocksY * blockZ)];
-                    for (int ly = 0; ly < rows; ly++)
+                    for (var ly = 0; ly < rows; ly++)
                     {
                         var rowBase = lzBase + ly * VolumeIO.BlockSize;
-                        for (int lx = 0; lx < cols; lx++)
+                        for (var lx = 0; lx < cols; lx++)
                             slice[y0 + ly, x0 + lx] = block[rowBase + lx];
                     }
                 }
@@ -292,19 +292,19 @@ namespace Layeron.Big3DArray
             var localY = y - blockY * VolumeIO.BlockSize;
             var lyBase = localY * VolumeIO.BlockSize;
 
-            for (int blockZ = 0; blockZ < BlocksZ; blockZ++)
+            for (var blockZ = 0; blockZ < BlocksZ; blockZ++)
             {
                 var z0 = blockZ * VolumeIO.BlockSize;
                 var rows = Math.Min(VolumeIO.BlockSize, Z - z0);
-                for (int blockX = 0; blockX < BlocksX; blockX++)
+                for (var blockX = 0; blockX < BlocksX; blockX++)
                 {
                     var x0 = blockX * VolumeIO.BlockSize;
                     var cols = Math.Min(VolumeIO.BlockSize, X - x0);
                     var block = blocks[blockX + BlocksX * (blockY + BlocksY * blockZ)];
-                    for (int lz = 0; lz < rows; lz++)
+                    for (var lz = 0; lz < rows; lz++)
                     {
                         var zBase = lz * VolumeIO.BlockSize * VolumeIO.BlockSize + lyBase;
-                        for (int lx = 0; lx < cols; lx++)
+                        for (var lx = 0; lx < cols; lx++)
                             slice[z0 + lz, x0 + lx] = block[zBase + lx];
                     }
                 }
@@ -325,19 +325,19 @@ namespace Layeron.Big3DArray
             var blockX = x / VolumeIO.BlockSize;
             var localX = x - blockX * VolumeIO.BlockSize;
 
-            for (int blockZ = 0; blockZ < BlocksZ; blockZ++)
+            for (var blockZ = 0; blockZ < BlocksZ; blockZ++)
             {
                 var z0 = blockZ * VolumeIO.BlockSize;
                 var rows = Math.Min(VolumeIO.BlockSize, Z - z0);
-                for (int blockY = 0; blockY < BlocksY; blockY++)
+                for (var blockY = 0; blockY < BlocksY; blockY++)
                 {
                     var y0 = blockY * VolumeIO.BlockSize;
                     var cols = Math.Min(VolumeIO.BlockSize, Y - y0);
                     var block = blocks[blockX + BlocksX * (blockY + BlocksY * blockZ)];
-                    for (int lz = 0; lz < rows; lz++)
+                    for (var lz = 0; lz < rows; lz++)
                     {
                         var zBase = lz * VolumeIO.BlockSize * VolumeIO.BlockSize;
-                        for (int ly = 0; ly < cols; ly++)
+                        for (var ly = 0; ly < cols; ly++)
                             slice[z0 + lz, y0 + ly] = block[zBase + ly * VolumeIO.BlockSize + localX];
                     }
                 }
@@ -347,14 +347,14 @@ namespace Layeron.Big3DArray
 
         protected sealed override void WriteBlocks(BinaryWriter writer)
         {
-            for (int i = 0; i < blocks.Length; i++)
+            for (var i = 0; i < blocks.Length; i++)
                 VolumeIO.WriteBlock(writer, blocks[i]);
         }
 
         internal static T[][] ReadBlocks(BinaryReader reader, int blockCount)
         {
             var blocks = new T[blockCount][];
-            for (int i = 0; i < blockCount; i++)
+            for (var i = 0; i < blockCount; i++)
                 blocks[i] = VolumeIO.ReadBlock<T>(reader);
             return blocks;
         }
@@ -387,16 +387,16 @@ namespace Layeron.Big3DArray
         /// <param name="images">The images, shape [height, width] = [Y, X]</param>
         public void Init(IEnumerable<T[,]> images)
         {
-            int z = 0;
+            var z = 0;
             foreach (var image in images)
             {
                 if (z >= Z)
                     break;
-                int height = Math.Min(image.GetLength(0), Y);
-                int width = Math.Min(image.GetLength(1), X);
-                for (int y = 0; y < height; y++)
+                var height = Math.Min(image.GetLength(0), Y);
+                var width = Math.Min(image.GetLength(1), X);
+                for (var y = 0; y < height; y++)
                 {
-                    for (int x = 0; x < width; x++)
+                    for (var x = 0; x < width; x++)
                     {
                         this[x, y, z] = image[y, x];
                     }
@@ -415,11 +415,11 @@ namespace Layeron.Big3DArray
             if (generator == null)
                 throw new ArgumentNullException(nameof(generator));
 
-            for (int z = 0; z < Z; z++)
+            for (var z = 0; z < Z; z++)
             {
-                for (int y = 0; y < Y; y++)
+                for (var y = 0; y < Y; y++)
                 {
-                    for (int x = 0; x < X; x++)
+                    for (var x = 0; x < X; x++)
                     {
                         this[x, y, z] = generator(x, y, z);
                     }
@@ -443,15 +443,15 @@ namespace Layeron.Big3DArray
             int width, int height, int depth)
         {
             var array = new Big3DArray<T>(width, height, depth);
-            int z = 0;
+            var z = 0;
             foreach (var path in imagePaths)
             {
                 if (z >= depth) break;
                 var img = imageToValues(path);
-                int h = Math.Min(img.GetLength(0), height);
-                int w = Math.Min(img.GetLength(1), width);
-                for (int y = 0; y < h; y++)
-                    for (int x = 0; x < w; x++)
+                var h = Math.Min(img.GetLength(0), height);
+                var w = Math.Min(img.GetLength(1), width);
+                for (var y = 0; y < h; y++)
+                    for (var x = 0; x < w; x++)
                         array[x, y, z] = img[y, x];
                 z++;
             }

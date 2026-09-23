@@ -18,7 +18,6 @@ public class MaskManagerViewModel : Tool
 {
     private int _nextMaskIndex = 1;
     private SharedDataSourceViewModel? _sharedData;
-    private MaskLayer? _activeMask; // [TEMP-DEMO]
 
     public MaskManagerViewModel()
     {
@@ -46,7 +45,7 @@ public class MaskManagerViewModel : Tool
         Log.Error("Masks", ex, "Command failed");
     }
 
-    public ObservableCollection<MaskLayer> Masks { get; } = new();
+    public ObservableCollection<MaskLayer> Masks { get; } = [];
 
     public string LayersCountText => $"{Masks.Count} layer(s)";
 
@@ -56,8 +55,8 @@ public class MaskManagerViewModel : Tool
     // [TEMP-DEMO] mask painting support
     public MaskLayer? ActiveMask
     {
-        get => _activeMask;
-        set => this.RaiseAndSetIfChanged(ref _activeMask, value);
+        get;
+        set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public SharedDataSourceViewModel? SharedData
@@ -99,7 +98,7 @@ public class MaskManagerViewModel : Tool
         var ay = _sharedData.Array.Y;
         var az = _sharedData.Array.Z;
 
-        for (int i = Masks.Count - 1; i >= 0; i--)
+        for (var i = Masks.Count - 1; i >= 0; i--)
         {
             if (!Masks[i].MatchesDimensions(ax, ay, az))
                 Masks.RemoveAt(i);
@@ -162,11 +161,11 @@ public class MaskManagerViewModel : Tool
         {
             Title = "Load Mask",
             AllowMultiple = false,
-            FileTypeFilter = new[]
-            {
-                new FilePickerFileType("Mask Files") { Patterns = new[] { "*.b3m" } },
-                new FilePickerFileType("All Files") { Patterns = new[] { "*.*" } }
-            }
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Mask Files") { Patterns = ["*.b3m"] },
+                new FilePickerFileType("All Files") { Patterns = ["*.*"] }
+            ]
         });
 
         if (files.Count == 0) return;
@@ -203,10 +202,10 @@ public class MaskManagerViewModel : Tool
         {
             Title = "Save Mask",
             SuggestedFileName = $"{layer.Name}.b3m",
-            FileTypeChoices = new[]
-            {
-                new FilePickerFileType("Mask Files") { Patterns = new[] { "*.b3m" } }
-            }
+            FileTypeChoices =
+            [
+                new FilePickerFileType("Mask Files") { Patterns = ["*.b3m"] }
+            ]
         });
 
         if (file == null) return;

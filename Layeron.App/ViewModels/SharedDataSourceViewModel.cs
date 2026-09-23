@@ -152,11 +152,11 @@ public class SharedDataSourceViewModel : ViewModelBase
         {
             Title = "Open 3D Array File",
             AllowMultiple = false,
-            FileTypeFilter = new[]
-            {
-                new FilePickerFileType("3D Array Files") { Patterns = new[] { "*.b3d", "*.gz" } },
-                new FilePickerFileType("All Files") { Patterns = new[] { "*.*" } }
-            }
+            FileTypeFilter =
+            [
+                new FilePickerFileType("3D Array Files") { Patterns = ["*.b3d", "*.gz"] },
+                new FilePickerFileType("All Files") { Patterns = ["*.*"] }
+            ]
         });
 
         if (files.Count > 0)
@@ -194,10 +194,10 @@ public class SharedDataSourceViewModel : ViewModelBase
         {
             Title = "Save 3D Array File",
             SuggestedFileName = Path.GetFileName(FilePath ?? "volume.b3d"),
-            FileTypeChoices = new[]
-            {
-                new FilePickerFileType("3D Array Files") { Patterns = new[] { "*.b3d" } }
-            }
+            FileTypeChoices =
+            [
+                new FilePickerFileType("3D Array Files") { Patterns = ["*.b3d"] }
+            ]
         });
 
         if (file != null)
@@ -230,7 +230,7 @@ public class SharedDataSourceViewModel : ViewModelBase
         var array = new Big3DArray<byte>(128, 128, 64);
         array.Fill((x, y, z) =>
         {
-            int v = (int)(
+            var v = (int)(
                 Math.Sin(x * 0.1) * 40 +
                 Math.Cos(y * 0.1) * 40 +
                 Math.Sin(z * 0.15) * 40 +
@@ -247,7 +247,7 @@ public class SharedDataSourceViewModel : ViewModelBase
         var array = new Big3DArray<ushort>(128, 128, 64);
         array.Fill((x, y, z) =>
         {
-            int v = (int)(
+            var v = (int)(
                 Math.Sin(x * 0.1) * 8000 +
                 Math.Cos(y * 0.1) * 8000 +
                 Math.Sin(z * 0.15) * 8000 +
@@ -267,11 +267,13 @@ public class SharedDataSourceViewModel : ViewModelBase
         {
             Title = "Select Image Files (in slice order)",
             AllowMultiple = true,
-            FileTypeFilter = new[]
-            {
-                new FilePickerFileType("Image Files") { Patterns = new[] { "*.png", "*.jpg", "*.jpeg", "*.bmp", "*.gif", "*.tiff", "*.tif", "*.webp" } },
-                new FilePickerFileType("All Files") { Patterns = new[] { "*.*" } }
-            }
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Image Files") { Patterns = ["*.png", "*.jpg", "*.jpeg", "*.bmp", "*.gif", "*.tiff", "*.tif", "*.webp"
+                    ]
+                },
+                new FilePickerFileType("All Files") { Patterns = ["*.*"] }
+            ]
         });
 
         if (files.Count == 0) return;
@@ -282,41 +284,40 @@ public class SharedDataSourceViewModel : ViewModelBase
         try
         {
             var imagePaths = files.Select(f => f.Path.LocalPath).ToList();
-            
+
             var array = await Task.Run(() =>
             {
-                byte[,] ImageToBytes(string path)
-                {
-                    using var image = Image.Load<L8>(path);
-                    var w = image.Width;
-                    var h = image.Height;
-                    var data = new byte[h, w];
-                    image.ProcessPixelRows(accessor =>
-                    {
-                        for (int y = 0; y < h; y++)
-                        {
-                            var row = accessor.GetRowSpan(y);
-                            for (int x = 0; x < w; x++)
-                                data[y, x] = row[x].PackedValue;
-                        }
-                    });
-                    return data;
-                }
-
                 using var first = Image.Load<L8>(imagePaths[0]);
                 return Big3DArray<byte>.FromImages(imagePaths, ImageToBytes, first.Width, first.Height, imagePaths.Count);
             });
 
-            if (array != null)
-            {
-                Array = array;
-                FilePath = null;
-            }
+            Array = array;
+            FilePath = null;
         }
         catch (Exception ex)
         {
             StatusText = $"Error: {ex.Message}";
             Log.Error("Data", ex, "Failed to build a volume from images");
+        }
+
+        return;
+
+        byte[,] ImageToBytes(string path)
+        {
+            using var image = Image.Load<L8>(path);
+            var w = image.Width;
+            var h = image.Height;
+            var data = new byte[h, w];
+            image.ProcessPixelRows(accessor =>
+            {
+                for (var y = 0; y < h; y++)
+                {
+                    var row = accessor.GetRowSpan(y);
+                    for (var x = 0; x < w; x++)
+                        data[y, x] = row[x].PackedValue;
+                }
+            });
+            return data;
         }
     }
 

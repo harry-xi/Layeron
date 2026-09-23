@@ -46,6 +46,54 @@ internal sealed class HistogramView : Control
         InvalidateVisual();
     }
 
+    /// <summary>Histogram bins for direct property binding; null clears the chart.</summary>
+    public static readonly StyledProperty<long[]?> BinsProperty =
+        AvaloniaProperty.Register<HistogramView, long[]?>(nameof(Bins));
+
+    /// <summary>Gets or sets the histogram bins.</summary>
+    public long[]? Bins
+    {
+        get => GetValue(BinsProperty);
+        set => SetValue(BinsProperty, value);
+    }
+
+    /// <summary>Selection start fraction [0, 1].</summary>
+    public static readonly StyledProperty<double> SelectionStartProperty =
+        AvaloniaProperty.Register<HistogramView, double>(nameof(SelectionStart));
+
+    /// <summary>Gets or sets the selection start fraction.</summary>
+    public double SelectionStart
+    {
+        get => GetValue(SelectionStartProperty);
+        set => SetValue(SelectionStartProperty, value);
+    }
+
+    /// <summary>Selection end fraction [0, 1].</summary>
+    public static readonly StyledProperty<double> SelectionEndProperty =
+        AvaloniaProperty.Register<HistogramView, double>(nameof(SelectionEnd), 1.0);
+
+    /// <summary>Gets or sets the selection end fraction.</summary>
+    public double SelectionEnd
+    {
+        get => GetValue(SelectionEndProperty);
+        set => SetValue(SelectionEndProperty, value);
+    }
+
+    static HistogramView()
+    {
+        BinsProperty.Changed.AddClassHandler<HistogramView>((v, _) => v.OnBoundDataChanged());
+        SelectionStartProperty.Changed.AddClassHandler<HistogramView>((v, _) => v.OnBoundDataChanged());
+        SelectionEndProperty.Changed.AddClassHandler<HistogramView>((v, _) => v.OnBoundDataChanged());
+    }
+
+    private void OnBoundDataChanged()
+    {
+        _bins = Bins;
+        _selectionStart = Math.Clamp(Math.Min(SelectionStart, SelectionEnd), 0, 1);
+        _selectionEnd = Math.Clamp(Math.Max(SelectionStart, SelectionEnd), 0, 1);
+        InvalidateVisual();
+    }
+
     public override void Render(DrawingContext context)
     {
         var bounds = new Rect(Bounds.Size);

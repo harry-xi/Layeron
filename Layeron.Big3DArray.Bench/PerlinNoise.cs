@@ -21,7 +21,7 @@ internal static class PerlinNoise
         }
 
         // Duplicate to avoid wrapping checks.
-        return p.Concat(p).ToArray();
+        return [.. p, .. p];
     }
 
     /// <summary>Sample Perlin noise at (x, y, z) with the given spatial frequency. Result in [-1, 1].</summary>

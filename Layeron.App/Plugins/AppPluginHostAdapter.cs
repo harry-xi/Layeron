@@ -33,10 +33,10 @@ public sealed class AppPluginHostAdapter : IPluginHostAdapter
     public IPluginLog Log { get; }
 
     /// <summary>Contributed menu entries, in registration order; the window renders them as a tree.</summary>
-    public ObservableCollection<MenuDescription> Menus { get; } = new();
+    public ObservableCollection<MenuDescription> Menus { get; } = [];
 
     /// <summary>Type ids of tools contributed by plugins, for the window's plugin tool list.</summary>
-    public ObservableCollection<ContributedTool> Tools { get; } = new();
+    public ObservableCollection<ContributedTool> Tools { get; } = [];
 
     public IDisposable AttachTool(string pluginId, ToolContribution tool)
     {
@@ -49,7 +49,7 @@ public sealed class AppPluginHostAdapter : IPluginHostAdapter
             return new PluginToolViewModel(descriptor.Title ?? tool.Title, typeId, content, tool.CanClose);
         });
 
-        var entry = new ContributedTool(pluginId, tool.Title, typeId, tool.PreferredDock);
+        var entry = new ContributedTool(pluginId, tool.Title, typeId, tool.PreferredDock.ToString().ToLowerInvariant());
         Tools.Add(entry);
 
         return new Handle(() =>

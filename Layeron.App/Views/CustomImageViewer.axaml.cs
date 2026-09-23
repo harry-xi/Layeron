@@ -37,7 +37,7 @@ public partial class CustomImageViewer : UserControl
     private double _lastBoundsWidth;
     private double _lastBoundsHeight;
 
-    public ObservableCollection<IImageOverlay> Overlays { get; } = new();
+    public ObservableCollection<IImageOverlay> Overlays { get; } = [];
 
     public CustomImageViewer()
     {

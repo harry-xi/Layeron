@@ -136,7 +136,7 @@ public sealed class ThresholdEngineTests
         {
             for (var column = 0; column < width; column++)
             {
-                long value = plane switch
+                var value = plane switch
                 {
                     SlicePlane.XY => Voxel(volume, column, row, index),
                     SlicePlane.XZ => Voxel(volume, column, index, row),

@@ -40,7 +40,7 @@ public class DockFactory : Factory
     private readonly Dictionary<string, Func<DockableDescriptor, IDockable?>> _registry = new();
 
     /// <summary>Dockables that could not be created during the most recent build (calling <see cref="TryBuildLayout"/>).</summary>
-    public IReadOnlyList<UnresolvedDockable> Unresolved { get; private set; } = Array.Empty<UnresolvedDockable>();
+    public IReadOnlyList<UnresolvedDockable> Unresolved { get; private set; } = [];
 
     public DockFactory(ISessionManager sessions, IPreviewChannel? preview = null)
     {
@@ -128,7 +128,7 @@ public class DockFactory : Factory
     /// </summary>
     public IRootDock? TryBuildLayout(DockLayout? layout)
     {
-        Unresolved = Array.Empty<UnresolvedDockable>();
+        Unresolved = [];
 
         if (layout?.Root == null)
             return null;

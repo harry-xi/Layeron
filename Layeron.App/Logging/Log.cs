@@ -134,7 +134,7 @@ public static class Log
     {
         lock (Gate)
         {
-            return Buffer.ToArray();
+            return [.. Buffer];
         }
     }
 

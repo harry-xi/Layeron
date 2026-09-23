@@ -18,11 +18,11 @@ public class SliceBench
         arr.Fill((x, y, z) => (byte)((x + y + z) & 0xFF));
         // prepare YZ images for Init (images[x] -> x)
         var images = new List<byte[,]>();
-        for (int i = 0; i < Size; i++)
+        for (var i = 0; i < Size; i++)
         {
             var img = new byte[Size, Size];
-            for (int z = 0; z < Size; z++)
-                for (int y = 0; y < Size; y++)
+            for (var z = 0; z < Size; z++)
+                for (var y = 0; y < Size; y++)
                     img[z, y] = (byte)((i + y + z) & 0xFF);
             images.Add(img);
         }
@@ -54,11 +54,11 @@ public class Slice16Bench
         arr.Fill((x, y, z) => (ushort)((x + y + z) & 0xFFFF));
         // prepare YZ images for Init (images[x] -> x)
         var images = new List<ushort[,]>();
-        for (int i = 0; i < Size; i++)
+        for (var i = 0; i < Size; i++)
         {
             var img = new ushort[Size, Size];
-            for (int z = 0; z < Size; z++)
-                for (int y = 0; y < Size; y++)
+            for (var z = 0; z < Size; z++)
+                for (var y = 0; y < Size; y++)
                     img[z, y] = (ushort)((i + y + z) & 0xFFFF);
             images.Add(img);
         }
@@ -79,14 +79,13 @@ public class Program
 {
     public static void Main(string[] args)
     {
-        var switcher = new BenchmarkSwitcher(new[]
-        {
+        var switcher = new BenchmarkSwitcher([
             typeof(SliceBench),
             typeof(Slice16Bench),
             typeof(BitMapBench),
             typeof(BitMapSliceBench),
-            typeof(BitMapSparseFillBench),
-        });
+            typeof(BitMapSparseFillBench)
+        ]);
         switcher.Run(args);
     }
 }

@@ -30,8 +30,9 @@ public static class DefaultLayout
             Kind = LayoutNodeKind.Root,
             Id = "Root",
             Title = "Root",
-            VisibleDockables = new()
-            {
+            VisibleDockables =
+            [
+
                 new DockLayoutNode
                 {
                     Kind = LayoutNodeKind.ProportionalDock,
@@ -39,8 +40,9 @@ public static class DefaultLayout
                     Title = "MainLayout",
                     Orientation = LayoutOrientation.Horizontal,
                     Proportion = double.NaN,
-                    VisibleDockables = new()
-                    {
+                    VisibleDockables =
+                    [
+
                         new DockLayoutNode
                         {
                             Kind = LayoutNodeKind.ToolDock,
@@ -49,11 +51,12 @@ public static class DefaultLayout
                             Proportion = LeftToolDockProportion,
                             Alignment = LayoutAlignment.Left,
                             ActiveIndex = 0,
-                            VisibleDockables = new()
-                            {
+                            VisibleDockables =
+                            [
                                 Dockable(DockableIds.WindowLevel, "WindowLevel", "Window Level")
-                            }
+                            ]
                         },
+
                         Splitter(),
 
                         // A vertical stack here is what puts the log under the documents, spanning their
@@ -65,8 +68,9 @@ public static class DefaultLayout
                             Title = "CenterColumn",
                             Orientation = LayoutOrientation.Vertical,
                             Proportion = CenterColumnProportion,
-                            VisibleDockables = new()
-                            {
+                            VisibleDockables =
+                            [
+
                                 new DockLayoutNode
                                 {
                                     Kind = LayoutNodeKind.DocumentDock,
@@ -74,13 +78,14 @@ public static class DefaultLayout
                                     Title = "Documents",
                                     Proportion = 1 - BottomToolDockProportion,
                                     ActiveIndex = 0,
-                                    VisibleDockables = new()
-                                    {
+                                    VisibleDockables =
+                                    [
                                         Dockable(DockableIds.SliceAxial, "SliceAxial", "Axial"),
                                         Dockable(DockableIds.SliceCoronal, "SliceCoronal", "Coronal"),
                                         Dockable(DockableIds.SliceSagittal, "SliceSagittal", "Sagittal")
-                                    }
+                                    ]
                                 },
+
                                 Splitter(),
                                 new DockLayoutNode
                                 {
@@ -90,15 +95,16 @@ public static class DefaultLayout
                                     Proportion = BottomToolDockProportion,
                                     Alignment = LayoutAlignment.Bottom,
                                     ActiveIndex = 0,
-                                    VisibleDockables = new()
-                                    {
+                                    VisibleDockables =
+                                    [
                                         // Ships in the default layout: a developer should not have to know
                                         // the panel exists before the first run can be diagnosed.
                                         Dockable(DockableIds.Log, "Log", "Log")
-                                    }
+                                    ]
                                 }
-                            }
+                            ]
                         },
+
                         Splitter(),
 
                         new DockLayoutNode
@@ -109,14 +115,14 @@ public static class DefaultLayout
                             Proportion = RightToolDockProportion,
                             Alignment = LayoutAlignment.Right,
                             ActiveIndex = 0,
-                            VisibleDockables = new()
-                            {
+                            VisibleDockables =
+                            [
                                 Dockable(DockableIds.MaskManager, "MaskManager", "Mask Manager")
-                            }
+                            ]
                         }
-                    }
+                    ]
                 }
-            }
+            ]
         }
     };
 

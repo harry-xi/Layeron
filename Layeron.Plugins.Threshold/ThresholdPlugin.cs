@@ -36,7 +36,7 @@ public sealed class ThresholdPlugin : IPlugin
         {
             Id = "threshold",
             Title = "阈值分割",
-            PreferredDock = "right",
+            PreferredDock = DockHint.Right,
             ContentFactory = () => new ThresholdToolView(services, context.PluginId, point)
         });
 

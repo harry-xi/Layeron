@@ -23,11 +23,11 @@ public sealed class DeclaredSettingsPageViewModel : ViewModelBase, ISettingsPage
         {
             Id = "design.sample",
             Title = "示例页",
-            Settings = new[]
-            {
+            Settings =
+            [
                 new SettingItem { Key = "enabled", Title = "启用", Kind = SettingKind.Boolean },
-                new SettingItem { Key = "level", Title = "级别", Kind = SettingKind.Integer, Minimum = 0, Maximum = 100 },
-            },
+                new SettingItem { Key = "level", Title = "级别", Kind = SettingKind.Integer, Minimum = 0, Maximum = 100 }
+            ],
         })
     {
     }
@@ -36,7 +36,7 @@ public sealed class DeclaredSettingsPageViewModel : ViewModelBase, ISettingsPage
     {
         _contribution = contribution;
 
-        foreach (var item in contribution.Settings ?? Array.Empty<SettingItem>())
+        foreach (var item in contribution.Settings ?? [])
             Rows.Add(new SettingRowViewModel(item, contribution.ValueGetter, contribution.ValueSetter));
     }
 
@@ -48,7 +48,7 @@ public sealed class DeclaredSettingsPageViewModel : ViewModelBase, ISettingsPage
 
     public object? Content => this;
 
-    public ObservableCollection<SettingRowViewModel> Rows { get; } = new();
+    public ObservableCollection<SettingRowViewModel> Rows { get; } = [];
 
     /// <summary>设置项是否为空（用于显示空态提示）。</summary>
     public bool HasNoRows => Rows.Count == 0;
@@ -94,7 +94,7 @@ public sealed class DeclaredSettingsPageViewModel : ViewModelBase, ISettingsPage
         public double? Maximum => _item.Maximum;
 
         public IReadOnlyList<string> Options =>
-            _item.Options ?? Array.Empty<string>();
+            _item.Options ?? [];
 
         public bool BoolValue
         {

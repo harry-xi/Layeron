@@ -13,8 +13,8 @@ namespace Layeron.Plugin.Host;
 /// </summary>
 internal sealed class PluginContext : IPluginContext
 {
-    private readonly List<IDisposable> _undo = new();
-    private readonly List<PluginContext> _children = new();
+    private readonly List<IDisposable> _undo = [];
+    private readonly List<PluginContext> _children = [];
     private readonly PluginRegistry _registry;
     private readonly PluginManager _manager;
     private readonly PluginContext? _parent;

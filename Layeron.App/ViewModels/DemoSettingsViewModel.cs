@@ -73,10 +73,10 @@ public sealed class DemoSettingsViewModel : ViewModelBase, ISettingsPage
                     Description = "下拉项：从候选值中选择。",
                     Kind = SettingKind.Choice,
                     DefaultValue = "跟随系统",
-                    Options = new[] { "跟随系统", "浅色", "深色" },
+                    Options = ["跟随系统", "浅色", "深色"],
                 },
             },
-            ValueGetter = key => _values.TryGetValue(key, out var value) ? value : null,
+            ValueGetter = key => _values.GetValueOrDefault(key),
             ValueSetter = (key, value) => _values[key] = value,
         };
     }

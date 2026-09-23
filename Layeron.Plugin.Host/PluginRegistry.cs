@@ -12,8 +12,6 @@ internal sealed class PluginRegistry : IPluginRegistry
     private readonly PluginContext _context;
     private readonly PluginManager _manager;
     private readonly PointRegistry _points;
-    private readonly List<ToolContribution> _tools = new();
-    private readonly List<MenuContribution> _menus = new();
 
     public PluginRegistry(PluginContext context, IPluginServices services, PointRegistry points, PluginManager manager)
     {
@@ -25,59 +23,22 @@ internal sealed class PluginRegistry : IPluginRegistry
 
     public IPluginServices Services { get; }
 
-    public IReadOnlyList<ToolContribution> Tools => _tools;
-
-    public IReadOnlyList<MenuContribution> Menus => _menus;
-
-    public void AddTool(ToolContribution tool)
+    public IDisposable AddTool(ToolContribution tool)
     {
         ArgumentNullException.ThrowIfNull(tool);
         ThrowIfDisposed();
 
-        _tools.Add(tool);
         var attached = _manager.Adapter.AttachTool(_context.PluginId, tool);
-        _context.Register(new Undo(() =>
-        {
-            _tools.Remove(tool);
-            attached.Dispose();
-        }));
+        return _context.Register(attached);
     }
 
-    public void AddMenu(MenuContribution menu)
+    public IDisposable AddMenu(MenuContribution menu)
     {
         ArgumentNullException.ThrowIfNull(menu);
         ThrowIfDisposed();
 
-        _menus.Add(menu);
         var attached = _manager.Adapter.AttachMenu(_context.PluginId, menu);
-        _context.Register(new Undo(() =>
-        {
-            _menus.Remove(menu);
-            attached.Dispose();
-        }));
-    }
-
-    public void AddFilter(IVolumeFilter filter)
-    {
-        ArgumentNullException.ThrowIfNull(filter);
-        ArgumentException.ThrowIfNullOrWhiteSpace(filter.Id);
-        ThrowIfDisposed();
-
-        // The point is host-owned (null owner) so it survives any single plugin's unload;
-        // only this plugin's contribution is tied to its context. Define is idempotent.
-        // Consumers read the point's Items; there is no second list to keep in sync.
-        var point = _points.Define<IVolumeFilter>(
-            FilterPoints.Volume, "Volume filters", ownerPluginId: null);
-
-        foreach (var existing in point.Items)
-        {
-            if (string.Equals(existing.Id, filter.Id, StringComparison.Ordinal))
-                throw new InvalidOperationException(
-                    $"A volume filter with id '{filter.Id}' is already registered. " +
-                    $"Filter ids must be globally unique; prefix yours with your plugin id.");
-        }
-
-        _context.Register(point.Add(filter, _context.PluginId));
+        return _context.Register(attached);
     }
 
     public ExtensionPoint<T> DefinePoint<T>(string pointId, string? displayName = null)
@@ -105,7 +66,7 @@ internal sealed class PluginRegistry : IPluginRegistry
         return _context.Register(point.Add(value, _context.PluginId));
     }
 
-    public void AddPluginSource(IPluginSource source)
+    public IDisposable AddPluginSource(IPluginSource source)
     {
         ArgumentNullException.ThrowIfNull(source);
         ThrowIfDisposed();
@@ -113,7 +74,7 @@ internal sealed class PluginRegistry : IPluginRegistry
         // The source is registered against the owning scope; everything it discovers is loaded
         // as a child of that scope, so a loader never outlives the plugin that provided it.
         _manager.RegisterSource(source, _context);
-        _context.Register(new Undo(() => _manager.RemoveSource(source)));
+        return _context.Register(new Undo(() => _manager.RemoveSource(source)));
     }
 
     public IDisposable Track(IDisposable disposable)

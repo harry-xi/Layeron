@@ -24,7 +24,7 @@ public sealed class PluginMenuNode
 
     public int Order { get; }
 
-    public List<PluginMenuNode> Children { get; } = new();
+    public List<PluginMenuNode> Children { get; } = [];
 
     /// <summary>Present on leaves: the plugin-provided action.</summary>
     public ICommand? Command { get; private set; }

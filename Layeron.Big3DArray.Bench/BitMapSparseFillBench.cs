@@ -22,13 +22,12 @@ public class BitMapSparseFillBench
 
     // Islands scaled relative to Size so both 1024 and 2048 have comparable sparsity.
     private (int x, int y, int z, int edge)[] IslandSpecs =>
-        new (int, int, int, int)[]
-        {
-            (Size / 16, Size / 8, Size / 16, Size / 20),
+    [
+        (Size / 16, Size / 8, Size / 16, Size / 20),
             (Size / 2, Size / 8, Size / 3, Size / 30),
             (Size / 4, Size / 2, Size / 20, Size / 40),
-            (Size * 3 / 4, Size * 3 / 4, Size / 3, Size / 15),
-        };
+            (Size * 3 / 4, Size * 3 / 4, Size / 3, Size / 15)
+    ];
 
     private Big3DBitMap? _map;
     private (int x, int y, int z)[]? _islandPoints;

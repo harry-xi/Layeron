@@ -134,7 +134,7 @@ internal sealed class AppMaskService : IMaskService, IDisposable
     private readonly ISessionManager _sessions;
     private readonly AppVolumeService _volumes;
     private readonly IDisposable? _sessionSubscription;
-    private readonly List<IMaskLayer> _layers = new();
+    private readonly List<IMaskLayer> _layers = [];
 
     public AppMaskService(ISessionManager sessions, AppVolumeService volumes)
     {
@@ -220,7 +220,7 @@ internal sealed class AppMaskService : IMaskService, IDisposable
 /// </summary>
 internal sealed class AppPreviewChannel : IPreviewChannel
 {
-    private readonly List<PreviewOverlay> _overlays = new();
+    private readonly List<PreviewOverlay> _overlays = [];
     private readonly Lock _gate = new();
 
     public IReadOnlyList<PreviewOverlay> Overlays
@@ -229,7 +229,7 @@ internal sealed class AppPreviewChannel : IPreviewChannel
         {
             lock (_gate)
             {
-                return _overlays.ToList();
+                return [.. _overlays];
             }
         }
     }

@@ -45,13 +45,13 @@ public sealed class PluginController : IDisposable
     }
 
     /// <summary>Plugins currently loaded, as shown in the plugin manager menu.</summary>
-    public ObservableCollection<LoadedPlugin> Loaded { get; } = new();
+    public ObservableCollection<LoadedPlugin> Loaded { get; } = [];
 
     /// <summary>Tools contributed by loaded plugins.</summary>
-    public ObservableCollection<ContributedTool> Tools { get; } = new();
+    public ObservableCollection<ContributedTool> Tools { get; } = [];
 
     /// <summary>Nested menu tree built from contributed paths.</summary>
-    public IReadOnlyList<PluginMenuNode> MenuNodes { get; private set; } = Array.Empty<PluginMenuNode>();
+    public IReadOnlyList<PluginMenuNode> MenuNodes { get; private set; } = [];
 
     /// <summary>Raised when <see cref="MenuNodes"/> changed, so the window can rebuild its menu.</summary>
     public event Action? MenuChanged;

@@ -98,4 +98,17 @@ public sealed class SettingsPageContribution
     /// 与工具面板一样，宿主只持有 <see cref="object"/>。
     /// </summary>
     public Func<object>? ContentFactory { get; init; }
+
+    /// <summary>
+    /// Validates the contribution: <see cref="Settings"/> and <see cref="ContentFactory"/>
+    /// are mutually exclusive - exactly one must be set.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Neither or both content forms are set.</exception>
+    public void Validate()
+    {
+        var hasSettings = Settings is { Count: > 0 };
+        if (hasSettings == (ContentFactory is not null))
+            throw new InvalidOperationException(
+                $"Settings page '{Id}' must set exactly one of Settings or ContentFactory.");
+    }
 }

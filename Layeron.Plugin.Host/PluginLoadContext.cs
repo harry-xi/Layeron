@@ -26,7 +26,7 @@ internal sealed class PluginLoadContext : AssemblyLoadContext
     /// </para>
     /// </summary>
     private static readonly string[] SharedPrefixes =
-    {
+    [
         "System.",
         "Microsoft.Extensions.",
         "Microsoft.Win32",
@@ -45,7 +45,7 @@ internal sealed class PluginLoadContext : AssemblyLoadContext
         "HarfBuzzSharp",
         "MicroCom",
         "CommunityToolkit"
-    };
+    ];
 
     private readonly AssemblyDependencyResolver _resolver;
     private readonly string _pluginDirectory;

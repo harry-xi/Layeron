@@ -5,6 +5,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>Layeron.Plugins.Threshold</AssemblyName>
+    <!-- Avalonia XAML: enable compiled XAML for the plugin's own views.
+         The Avalonia package itself (compile assets) is needed to build the
+         XAML; only the runtime assets are excluded so the host's copy wins. -->
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
 
   <!--
@@ -29,8 +33,11 @@
     <ProjectReference Include="..\Layeron.Big3DArray\Layeron.Big3DArray.csproj" Private="false" />
     <ProjectReference Include="..\Layeron.Plugin.Abstractions\Layeron.Plugin.Abstractions.csproj" Private="false" />
 
-    <!-- UI plugins build their controls against the host's Avalonia; runtime assets are excluded. -->
-    <PackageReference Include="Avalonia" Version="12.1.2" ExcludeAssets="runtime" />
+    <!-- UI plugins declare views in XAML against the host's Avalonia; runtime assets are excluded. -->
+    <PackageReference Include="Avalonia" Version="12.1.3" GeneratePathProperty="true" ExcludeAssets="runtime" />
+    <!-- Same MVVM stack as the host App (ReactiveUI): shared at runtime via PluginLoadContext,
+         so the plugin never ships its own copy. Version must match Layeron.App. -->
+    <PackageReference Include="ReactiveUI.Avalonia" Version="12.1.2" ExcludeAssets="runtime" />
   </ItemGroup>
 
 </Project>

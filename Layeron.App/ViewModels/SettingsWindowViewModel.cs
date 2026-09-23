@@ -46,7 +46,7 @@ public sealed class SettingsWindowViewModel : ViewModelBase
     }
 
     /// <summary>导航页，按 Order / 标题排序。</summary>
-    public ObservableCollection<ISettingsPage> Pages { get; } = new();
+    public ObservableCollection<ISettingsPage> Pages { get; } = [];
 
     public ISettingsPage? SelectedPage
     {

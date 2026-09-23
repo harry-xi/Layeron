@@ -13,6 +13,9 @@ namespace Layeron.Plugin.Abstractions;
 /// </summary>
 public sealed class VolumeAction
 {
+    /// <summary>Stable id for ordering and de-duplication, e.g. <c>myplugin.preset.lung</c>.</summary>
+    public string? Id { get; init; }
+
     /// <summary>Button caption.</summary>
     public required string Header { get; init; }
 
@@ -24,4 +27,7 @@ public sealed class VolumeAction
 
     /// <summary>Optional availability predicate, re-evaluated by the rendering tool.</summary>
     public Func<IPluginServices, bool>? CanExecute { get; init; }
+
+    /// <summary>Sort key, lower first. Default 100, matching <see cref="MenuContribution.Order"/>.</summary>
+    public int Order { get; init; } = 100;
 }

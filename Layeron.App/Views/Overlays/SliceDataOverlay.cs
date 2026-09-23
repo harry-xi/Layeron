@@ -54,8 +54,8 @@ public class SliceDataOverlay : IImageOverlay
             _textBrush);
 
         var size = new Size(formatted.Width + _padding * 2, formatted.Height + _padding * 2);
-        double x = viewportBounds.Right - size.Width - _padding;
-        double y = viewportBounds.Y + _padding;
+        var x = viewportBounds.Right - size.Width - _padding;
+        var y = viewportBounds.Y + _padding;
         if (x < viewportBounds.X) x = viewportBounds.X;
         if (y < viewportBounds.Y) y = viewportBounds.Y;
         var rect = new Rect(new Point(x, y), size);

@@ -119,7 +119,7 @@ internal sealed class TestVolumeService : IVolumeService
 
 internal sealed class TestMaskService : IMaskService
 {
-    private readonly List<IMaskLayer> _layers = new();
+    private readonly List<IMaskLayer> _layers = [];
 
     public TestMaskService(IVolumeService volumes) => Volumes = volumes;
 
@@ -168,9 +168,9 @@ internal sealed class TestMaskLayer(string name, Big3DBitMap bitmap, MaskColor c
 
 internal sealed class TestPreviewChannel : IPreviewChannel
 {
-    private readonly List<PreviewOverlay> _overlays = new();
+    private readonly List<PreviewOverlay> _overlays = [];
 
-    public IReadOnlyList<PreviewOverlay> Overlays => _overlays.ToList();
+    public IReadOnlyList<PreviewOverlay> Overlays => [.. _overlays];
 
     public event Action? Changed;
 

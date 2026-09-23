@@ -20,10 +20,9 @@ public class WindowLevelViewModel : Tool
     private SharedDataSourceViewModel? _sharedData;
     private double _low;
     private double _high;
-    private uint[] _lut = Array.Empty<uint>();
+    private uint[] _lut = [];
     private PixelElementType _elementType = PixelElementType.Byte;
     private CancellationTokenSource? _histogramCts;
-    private long[]? _histogram;
 
     public WindowLevelViewModel()
     {
@@ -175,8 +174,8 @@ public class WindowLevelViewModel : Tool
     /// </summary>
     public long[]? Histogram
     {
-        get => _histogram;
-        private set => this.RaiseAndSetIfChanged(ref _histogram, value);
+        get;
+        private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
     public ReactiveCommand<RxVoid, RxVoid> ResetCommand { get; }
@@ -213,14 +212,14 @@ public class WindowLevelViewModel : Tool
 
     private static uint[] BuildLut(PixelElementType type, double low, double high)
     {
-        int bits = type == PixelElementType.UInt16 ? 16 : 8;
+        var bits = type == PixelElementType.UInt16 ? 16 : 8;
         var lut = new uint[1 << bits];
-        double range = high - low;
+        var range = high - low;
         if (range <= 0) range = 1;
-        for (int v = 0; v < lut.Length; v++)
+        for (var v = 0; v < lut.Length; v++)
         {
-            double f = (v - low) / range;
-            int g = (int)Math.Clamp(f * 255, 0, 255);
+            var f = (v - low) / range;
+            var g = (int)Math.Clamp(f * 255, 0, 255);
             lut[v] = 0xFF000000u | (uint)(g << 16) | (uint)(g << 8) | (uint)g;
         }
         return lut;
