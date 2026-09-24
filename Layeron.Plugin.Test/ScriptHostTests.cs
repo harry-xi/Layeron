@@ -133,7 +133,7 @@ public sealed class ScriptHostTests
             manager.LoadAssembly(TestPaths.ThresholdPluginAssembly);
             manager.LoadAssembly(TestPaths.ScriptHostPluginAssembly);
 
-            var point = manager.Points.GetPoint<VolumeAction>("layeron.threshold.actions");
+            var point = manager.PointRegistry.GetPoint<VolumeAction>("layeron.threshold.actions");
             Assert.IsNotNull(point);
             Assert.AreEqual(1, point.Count, "the script's action should be on the threshold plugin's point");
 

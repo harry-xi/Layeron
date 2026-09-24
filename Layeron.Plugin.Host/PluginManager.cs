@@ -1,5 +1,4 @@
 using System.Reflection;
-using System.Runtime.Loader;
 using Layeron.Plugin.Abstractions;
 
 namespace Layeron.Plugin.Host;
@@ -21,7 +20,7 @@ public sealed class PluginManagerOptions
         AppContext.BaseDirectory, "plugins.dev");
 
     /// <summary>
-    /// Reject candidates whose declared API major version differs from
+    /// Reject descriptors whose declared API major version differs from
     /// <see cref="PluginApi.Version"/>. A plugin with no declared version is accepted and logged.
     /// </summary>
     public bool EnforceApiVersion { get; set; } = true;
@@ -30,61 +29,37 @@ public sealed class PluginManagerOptions
     public bool VerifyUnload { get; set; } = true;
 }
 
-/// <summary>A plugin currently loaded in the process.</summary>
-public sealed class LoadedPlugin
+/// <summary>
+/// A plugin currently loaded in the process: the descriptor that discovery produced, plus the two things
+/// only the host learns while activating it - the instance and the owning source.
+/// <para>
+/// The identity reads straight through the descriptor rather than being copied here. Declaring id, name,
+/// version, description and location a second time meant the single construction site had to keep them in
+/// sync by hand, and the values could drift apart without anything noticing. Carrying the original object
+/// also makes a plugin followable from discovery to unload by identity instead of by matching id strings.
+/// </para>
+/// <para>
+/// This is composition and not inheritance for a binding reason: <see cref="PluginDescriptor"/> lives in
+/// the plugin-facing contract assembly, whereas <see cref="PluginContext"/> and
+/// <see cref="PluginLoadContext"/> are host internals, so one merged type would have to publish them.
+/// </para>
+/// </summary>
+/// <param name="Plugin">The activated instance: the descriptor's own one, or the one created from its assembly.</param>
+/// <param name="SourceId">Id of the source that discovered this plugin (null for the built-in assembly scanner).</param>
+public sealed record LoadedPlugin(PluginDescriptor Descriptor, IPlugin Plugin, string? SourceId)
 {
-    internal LoadedPlugin(
-        string id,
-        string? name,
-        string? version,
-        string? description,
-        string? location,
-        string? sourceId,
-        bool inProcess,
-        IPlugin plugin)
-    {
-        Id = id;
-        Name = name;
-        Version = version;
-        Description = description;
-        Location = location;
-        SourceId = sourceId;
-        IsInProcess = inProcess;
-        Plugin = plugin;
-    }
-
     /// <summary>Unique plugin id.</summary>
-    public string Id { get; }
-
-    /// <summary>Display name.</summary>
-    public string? Name { get; }
-
-    /// <summary>Informational version.</summary>
-    public string? Version { get; }
-
-    /// <summary>Description.</summary>
-    public string? Description { get; }
+    public string Id => Descriptor.Id;
 
     /// <summary>Assembly path for assembly-backed plugins, or the origin reported by the source.</summary>
-    public string? Location { get; }
-
-    /// <summary>Id of the source that discovered this plugin (null for the built-in assembly scanner).</summary>
-    public string? SourceId { get; }
+    public string? Location => Descriptor.Location ?? Descriptor.Origin;
 
     /// <summary>True when the plugin instance was created by another plugin (e.g. a script host).</summary>
-    public bool IsInProcess { get; }
-
-    /// <summary>The plugin instance itself.</summary>
-    public IPlugin Plugin { get; }
+    public bool IsInProcess => Descriptor.Instance != null;
 
     internal PluginContext? Context { get; set; }
 
     internal PluginLoadContext? LoadContext { get; set; }
-
-    internal WeakReference? LoadContextReference { get; set; }
-
-    /// <summary>Null while alive after unload means the load context was collected; false is a leak.</summary>
-    internal bool? Collected { get; set; }
 }
 
 /// <summary>
@@ -102,7 +77,7 @@ public sealed class PluginManager : IDisposable
     private readonly List<LoadedPlugin> _plugins = [];
     private readonly List<PendingUnload> _pendingUnload = [];
     private readonly Dictionary<string, SourceRegistration> _sources = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _processedCandidates = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _processedDescriptors = new(StringComparer.Ordinal);
     private readonly PointRegistry _points = new();
     private readonly Lock _gate = new();
 
@@ -110,7 +85,7 @@ public sealed class PluginManager : IDisposable
     {
         Adapter = adapter;
         Options = options ?? new PluginManagerOptions();
-        Points = _points;
+        PointRegistry = _points;
 
         // Host-owned points: survive any single plugin's unload; only contributions are scoped.
         // Pre-defined here so AddFilter/AddSettingsPage (Contribute sugar) never hit "not defined".
@@ -128,9 +103,9 @@ public sealed class PluginManager : IDisposable
     public event Action? Changed;
 
     /// <summary>Shared extension points. Host code can define its own points here before loading.</summary>
-    public PointRegistry Points { get; }
-
-    internal PointRegistry PointRegistry => _points;
+    public PointRegistry PointRegistry { get; 
+        private set;
+    }
 
     /// <summary>Snapshot of currently loaded plugins, in load order.</summary>
     public IReadOnlyList<LoadedPlugin> Plugins
@@ -250,7 +225,7 @@ public sealed class PluginManager : IDisposable
         ArgumentNullException.ThrowIfNull(plugin);
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
 
-        var candidate = new PluginCandidate
+        var descriptor = new PluginDescriptor
         {
             Id = id,
             Name = name,
@@ -261,16 +236,16 @@ public sealed class PluginManager : IDisposable
             Instance = plugin
         };
 
-        return ActivateCandidate(candidate, sourceId: null, parentContext: null, assemblyPath: null);
+        return ActivateDescriptor(descriptor, sourceId: null, parentContext: null);
     }
 
     private string? TryLoadAssemblyFile(string assemblyPath, string? sourceId, PluginContext? parentContext)
     {
-        var candidate = BuildCandidate(assemblyPath);
-        if (candidate == null)
+        var descriptor = BuildDescriptor(assemblyPath);
+        if (descriptor == null)
             return null;
 
-        return ActivateCandidate(candidate, sourceId, parentContext, assemblyPath);
+        return ActivateDescriptor(descriptor, sourceId, parentContext);
     }
 
     /// <summary>
@@ -278,7 +253,7 @@ public sealed class PluginManager : IDisposable
     /// Returns null for anything that declares no plugin identity, which is how private dependencies and
     /// reference assemblies sitting in a plugin folder are ignored without ever being loaded.
     /// </summary>
-    private PluginCandidate? BuildCandidate(string assemblyPath)
+    private PluginDescriptor? BuildDescriptor(string assemblyPath)
     {
         var metadata = PluginMetadataReader.TryRead(assemblyPath);
 
@@ -291,7 +266,7 @@ public sealed class PluginManager : IDisposable
         if (!IsApiCompatible(metadata.ApiVersion, assemblyPath))
             return null;
 
-        return new PluginCandidate
+        return new PluginDescriptor
         {
             Id = metadata.Id,
             Name = metadata.Name,
@@ -326,26 +301,27 @@ public sealed class PluginManager : IDisposable
         return false;
     }
 
-    private string? ActivateCandidate(
-        PluginCandidate candidate,
+    private string? ActivateDescriptor(
+        PluginDescriptor descriptor,
         string? sourceId,
-        PluginContext? parentContext,
-        string? assemblyPath)
+        PluginContext? parentContext)
     {
         IPlugin? plugin = null;
         PluginLoadContext? loadContext = null;
-        var id = candidate.Id;
+        var id = descriptor.Id;
 
         try
         {
-            if (candidate.Instance != null)
+            if (descriptor.Instance != null)
             {
-                plugin = candidate.Instance;
+                plugin = descriptor.Instance;
             }
             else
             {
-                var path = assemblyPath ?? candidate.Location
-                    ?? throw new InvalidOperationException("Candidate has neither an instance nor an assembly path.");
+                // The descriptor's location is the assembly to load; one with neither an instance nor a
+                // location cannot be activated, and that is a source bug rather than a host one.
+                var path = descriptor.Location
+                    ?? throw new InvalidOperationException("Descriptor has neither an instance nor an assembly path.");
 
                 loadContext = new PluginLoadContext(path);
                 var assembly = loadContext.LoadFromAssemblyPath(path);
@@ -368,7 +344,6 @@ public sealed class PluginManager : IDisposable
                 plugin = (IPlugin)Activator.CreateInstance(entry)!;
             }
 
-            id ??= candidate.Id;
             if (string.IsNullOrEmpty(id))
                 return null;
 
@@ -376,14 +351,14 @@ public sealed class PluginManager : IDisposable
             {
                 if (_plugins.Any(p => string.Equals(p.Id, id, StringComparison.Ordinal)))
                 {
-                    Adapter.Log.Debug($"Plugin '{id}' is already loaded; ignoring duplicate candidate.");
+                    Adapter.Log.Debug($"Plugin '{id}' is already loaded; ignoring duplicate descriptor.");
                     loadContext?.Unload();
                     return null;
                 }
             }
 
             var services = Adapter.Services;
-            var context = new PluginContext(id, candidate.Name, this, services, parentContext);
+            var context = new PluginContext(id, descriptor.Name, this, services, parentContext);
 
             try
             {
@@ -395,19 +370,10 @@ public sealed class PluginManager : IDisposable
                 throw;
             }
 
-            var loaded = new LoadedPlugin(
-                id,
-                candidate.Name,
-                candidate.Version,
-                candidate.Description,
-                assemblyPath ?? candidate.Location ?? candidate.Origin,
-                sourceId,
-                inProcess: candidate.Instance != null,
-                plugin)
+            var loaded = new LoadedPlugin(descriptor, plugin, sourceId)
             {
                 Context = context,
-                LoadContext = loadContext,
-                LoadContextReference = loadContext != null ? new WeakReference(loadContext) : null
+                LoadContext = loadContext
             };
 
             lock (_gate)
@@ -428,7 +394,7 @@ public sealed class PluginManager : IDisposable
         {
             loadContext?.Unload();
 
-            var origin = assemblyPath ?? candidate.Location ?? candidate.Origin ?? "(unknown)";
+            var origin = descriptor.Location ?? descriptor.Origin ?? "(unknown)";
             var subject = string.IsNullOrEmpty(id) ? origin : $"'{id}' from '{origin}'";
             Adapter.Log.Error($"Failed to load plugin {subject}: {ex.Message}", ex);
             return null;
@@ -438,8 +404,8 @@ public sealed class PluginManager : IDisposable
     private static string Describe(LoadedPlugin plugin)
     {
         var parts = new List<string>();
-        if (!string.IsNullOrEmpty(plugin.Version))
-            parts.Add($"v{plugin.Version}");
+        if (!string.IsNullOrEmpty(plugin.Descriptor.Version))
+            parts.Add($"v{plugin.Descriptor.Version}");
         if (!string.IsNullOrEmpty(plugin.SourceId))
             parts.Add($"via {plugin.SourceId}");
         if (plugin.IsInProcess)
@@ -518,16 +484,16 @@ public sealed class PluginManager : IDisposable
 
         while (guard++ < 64) // bound the loop: a source that keeps registering sources must not hang the app
         {
-            List<(SourceRegistration Registration, PluginCandidate Candidate)> work;
+            List<(SourceRegistration Registration, PluginDescriptor Descriptor)> work;
             lock (_gate)
             {
                 work = [];
                 foreach (var registration in _sources.Values)
                 {
-                    IEnumerable<PluginCandidate> candidates;
+                    IEnumerable<PluginDescriptor> descriptors;
                     try
                     {
-                        candidates = registration.Source.Discover(BuildSourceContext(registration));
+                        descriptors = registration.Source.Discover(BuildSourceContext(registration));
                     }
                     catch (Exception ex)
                     {
@@ -535,11 +501,11 @@ public sealed class PluginManager : IDisposable
                         continue;
                     }
 
-                    foreach (var candidate in candidates)
+                    foreach (var descriptor in descriptors)
                     {
-                        var key = $"{registration.Source.Id}::{candidate.Id}";
-                        if (_processedCandidates.Add(key))
-                            work.Add((registration, candidate));
+                        var key = $"{registration.Source.Id}::{descriptor.Id}";
+                        if (_processedDescriptors.Add(key))
+                            work.Add((registration, descriptor));
                     }
                 }
             }
@@ -547,13 +513,12 @@ public sealed class PluginManager : IDisposable
             if (work.Count == 0)
                 break;
 
-            foreach (var (registration, candidate) in work)
+            foreach (var (registration, descriptor) in work)
             {
-                var id = ActivateCandidate(
-                    candidate,
+                var id = ActivateDescriptor(
+                    descriptor,
                     registration.Source.Id,
-                    registration.OwnerContext,
-                    candidate.Location);
+                    registration.OwnerContext);
 
                 if (id != null)
                 {
@@ -591,11 +556,11 @@ public sealed class PluginManager : IDisposable
             previous = [.. registration.LoadedIds];
             registration.LoadedIds.Clear();
 
-            foreach (var key in _processedCandidates
+            foreach (var key in _processedDescriptors
                          .Where(k => k.StartsWith($"{sourceId}::", StringComparison.Ordinal))
                          .ToList())
             {
-                _processedCandidates.Remove(key);
+                _processedDescriptors.Remove(key);
             }
         }
 
@@ -687,11 +652,11 @@ public sealed class PluginManager : IDisposable
             // later scan) can pick the plugins up again instead of treating them as already processed.
             foreach (var plugin in doomed)
             {
-                var stale = _processedCandidates
+                var stale = _processedDescriptors
                     .Where(key => key.EndsWith($"::{plugin.Id}", StringComparison.Ordinal))
                     .ToList();
                 foreach (var key in stale)
-                    _processedCandidates.Remove(key);
+                    _processedDescriptors.Remove(key);
             }
         }
 
@@ -764,12 +729,12 @@ public sealed class PluginManager : IDisposable
     /// </summary>
     private void QueueForVerification(LoadedPlugin plugin)
     {
-        if (plugin.LoadContextReference is not { } reference)
+        if (plugin.LoadContext is not { } context)
             return;
 
         lock (_gate)
         {
-            _pendingUnload.Add(new PendingUnload(plugin.Id, reference));
+            _pendingUnload.Add(new PendingUnload(plugin.Id, new WeakReference(context)));
         }
     }
 
@@ -810,7 +775,7 @@ public sealed class PluginManager : IDisposable
             leftovers = [.. _plugins];
             _plugins.Clear();
             _sources.Clear();
-            _processedCandidates.Clear();
+            _processedDescriptors.Clear();
         }
 
         foreach (var plugin in leftovers)

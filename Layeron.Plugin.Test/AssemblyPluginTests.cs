@@ -22,8 +22,8 @@ public sealed class AssemblyPluginTests
 
         Assert.AreEqual("layeron.threshold", id, "the id must come from the assembly metadata");
         var plugin = manager.Plugins.Single();
-        Assert.AreEqual("Threshold Segmentation", plugin.Name);
-        Assert.AreEqual("1.0.0", plugin.Version);
+        Assert.AreEqual("Threshold Segmentation", plugin.Descriptor.Name);
+        Assert.AreEqual("1.0.0", plugin.Descriptor.Version);
         Assert.IsFalse(plugin.IsInProcess);
 
         Assert.IsTrue(adapter.Tools.ContainsKey("layeron.threshold::threshold"),
@@ -111,7 +111,7 @@ public sealed class AssemblyPluginTests
 
         // The threshold plugin owns this point. Another plugin (or a script) can feed it without
         // referencing the threshold assembly, because the payload is a host-standard type.
-        var point = manager.Points.GetPoint<VolumeAction>("layeron.threshold.actions");
+        var point = manager.PointRegistry.GetPoint<VolumeAction>("layeron.threshold.actions");
         Assert.IsNotNull(point, "the threshold plugin must publish its extension point");
 
         var handle = point.Add(new VolumeAction { Header = "contributed", Execute = _ => { } }, "some.other.plugin");
@@ -121,7 +121,7 @@ public sealed class AssemblyPluginTests
         Assert.AreEqual(0, point.Count, "removing a contribution must take effect immediately");
 
         manager.Unload("layeron.threshold");
-        Assert.IsNull(manager.Points.GetPoint<VolumeAction>("layeron.threshold.actions"),
+        Assert.IsNull(manager.PointRegistry.GetPoint<VolumeAction>("layeron.threshold.actions"),
             "the point must disappear with the plugin that defined it");
     }
 }

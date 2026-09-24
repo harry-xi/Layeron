@@ -30,7 +30,7 @@ public sealed class PluginLifecycleTests
         manager.LoadInProcess(new ConsumerPlugin(), "test.consumer");
 
         Assert.AreEqual(1, adapter.Tools.Count, "consumer tool should be attached");
-        var point = manager.Points.GetPoint<VolumeAction>(TestPoints.Actions);
+        var point = manager.PointRegistry.GetPoint<VolumeAction>(TestPoints.Actions);
         Assert.IsNotNull(point);
         Assert.AreEqual(1, point.Count, "consumer action should be on the point");
 
@@ -39,7 +39,7 @@ public sealed class PluginLifecycleTests
         Assert.AreEqual(0, adapter.Tools.Count, "tools must be detached on unload");
         Assert.IsEmpty(adapter.Menus.Where(k => k.Key.StartsWith("test.consumer")), "menus must be detached");
         Assert.AreEqual(0, point.Count, "contributions to another plugin's point must be removed");
-        Assert.IsTrue(manager.Points.GetPoint<VolumeAction>(TestPoints.Actions) is not null,
+        Assert.IsTrue(manager.PointRegistry.GetPoint<VolumeAction>(TestPoints.Actions) is not null,
             "the point itself belongs to the publisher and must survive");
     }
 
@@ -67,11 +67,11 @@ public sealed class PluginLifecycleTests
         using var manager = new PluginManager(adapter);
 
         manager.LoadInProcess(new PublisherPlugin(), "test.publisher");
-        Assert.IsNotNull(manager.Points.GetPoint<VolumeAction>(TestPoints.Actions));
+        Assert.IsNotNull(manager.PointRegistry.GetPoint<VolumeAction>(TestPoints.Actions));
 
         manager.Unload("test.publisher");
 
-        Assert.IsNull(manager.Points.GetPoint<VolumeAction>(TestPoints.Actions),
+        Assert.IsNull(manager.PointRegistry.GetPoint<VolumeAction>(TestPoints.Actions),
             "a point defined by a plugin must disappear with that plugin");
     }
 

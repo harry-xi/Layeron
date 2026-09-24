@@ -21,7 +21,7 @@ public sealed class FilterRegistrationTests
 
         Assert.IsNotNull(manager.LoadInProcess(new FilterPlugin(), "test.filter"));
 
-        var point = manager.Points.GetPoint<IVolumeFilter>(FilterPoints.Volume);
+        var point = manager.PointRegistry.GetPoint<IVolumeFilter>(FilterPoints.Volume);
         Assert.IsNotNull(point, "AddFilter must define the host-owned filter point");
         Assert.IsNull(point.OwnerPluginId, "the filter point is host-owned, not plugin-owned");
         Assert.AreEqual(1, point.Count);
@@ -38,7 +38,7 @@ public sealed class FilterRegistrationTests
         Assert.IsNull(manager.LoadInProcess(new FilterPlugin(), "test.filter.dup"),
             "a duplicate filter id must fail activation");
 
-        var point = manager.Points.GetPoint<IVolumeFilter>(FilterPoints.Volume);
+        var point = manager.PointRegistry.GetPoint<IVolumeFilter>(FilterPoints.Volume);
         Assert.IsNotNull(point);
         Assert.AreEqual(1, point.Count, "the failed registration must leave nothing behind");
         Assert.IsTrue(adapter.Log.Contains("test.copy"));
@@ -51,14 +51,14 @@ public sealed class FilterRegistrationTests
         using var manager = new PluginManager(adapter);
 
         manager.LoadInProcess(new FilterPlugin(), "test.filter");
-        var point = manager.Points.GetPoint<IVolumeFilter>(FilterPoints.Volume);
+        var point = manager.PointRegistry.GetPoint<IVolumeFilter>(FilterPoints.Volume);
         Assert.IsNotNull(point);
         Assert.AreEqual(1, point.Count);
 
         Assert.IsTrue(manager.Unload("test.filter"));
 
         Assert.AreEqual(0, point.Count, "the filter contribution must be removed on unload");
-        Assert.IsNotNull(manager.Points.GetPoint<IVolumeFilter>(FilterPoints.Volume),
+        Assert.IsNotNull(manager.PointRegistry.GetPoint<IVolumeFilter>(FilterPoints.Volume),
             "the host-owned point itself must survive the contributor's unload");
     }
 

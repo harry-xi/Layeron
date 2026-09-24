@@ -97,10 +97,10 @@ internal sealed class ConstantPluginSource(string sourceId, string pluginId, Fun
 
     public string? Description => "test source";
 
-    public IEnumerable<PluginCandidate> Discover(IPluginSourceContext context)
+    public IEnumerable<PluginDescriptor> Discover(IPluginSourceContext context)
     {
         DiscoverCount++;
-        yield return new PluginCandidate
+        yield return new PluginDescriptor
         {
             Id = pluginId,
             Name = pluginId,

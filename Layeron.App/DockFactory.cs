@@ -395,22 +395,20 @@ public class DockFactory : Factory
             }
             catch (Exception ex)
             {
-                unresolved.Add(new UnresolvedDockable
-                {
-                    TypeId = desc.TypeId,
-                    Title = desc.Title ?? desc.Id,
-                    Reason = $"Failed to create: {ex.Message}"
-                });
+                unresolved.Add(new UnresolvedDockable(
+                    desc.TypeId,
+                    desc.Title ?? desc.Id,
+                    $"Exception during creation: {ex.Message}"
+                ));
                 return null;
             }
         }
 
-        unresolved.Add(new UnresolvedDockable
-        {
-            TypeId = desc.TypeId,
-            Title = desc.Title ?? desc.Id,
-            Reason = "Unregistered type id — the plugin providing this window may not be loaded"
-        });
+        unresolved.Add(new UnresolvedDockable(
+            desc.TypeId,
+            desc.Title ?? desc.Id,
+            "Unregistered type id — the plugin providing this window may not be loaded"
+        ));
         return null;
     }
 
@@ -505,12 +503,11 @@ public class DockFactory : Factory
             };
         }
 
-        unresolved.Add(new UnresolvedDockable
-        {
-            TypeId = dockable.Id ?? "(no id)",
-            Title = dockable.Title,
-            Reason = "Dockable could not be serialised — no descriptor found"
-        });
+        unresolved.Add(new UnresolvedDockable(
+            TypeIdOf(dockable) ?? "(unknown type)",
+            dockable.Title,
+            "Dockable could not be serialised — no descriptor found"
+        ));
         return null;
     }
 
@@ -590,4 +587,12 @@ public class DockFactory : Factory
         AddWindow(root, window);
         window.Present(window.IsModal);
     }
+
+    /// <summary>Describes a dockable that a load could not restore.</summary>
 }
+
+public record UnresolvedDockable(
+    string TypeId,
+    string? Title,
+    string Reason
+);

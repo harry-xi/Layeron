@@ -4,7 +4,7 @@ namespace Layeron.Plugins.ScriptHost;
 
 /// <summary>
 /// A plugin loader implemented as a plugin. It scans the host's <c>scripts</c> folder and offers one
-/// candidate per <c>.csx</c> file; the host activates each under a child scope of the script host, so
+/// descriptor per <c>.csx</c> file; the host activates each under a child scope of the script host, so
 /// unloading the script host unloads every script it found.
 /// <para>
 /// This is the whole reason plugin sources exist: extending the set of plugin formats needs no host
@@ -27,7 +27,7 @@ internal sealed class ScriptPluginSource : IPluginSource
         Path.Combine(context.DevelopmentPluginDirectory, ScriptFolderName)
     ];
 
-    public IEnumerable<PluginCandidate> Discover(IPluginSourceContext context)
+    public IEnumerable<PluginDescriptor> Discover(IPluginSourceContext context)
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -47,7 +47,7 @@ internal sealed class ScriptPluginSource : IPluginSource
 
                 // Candidates are created in-process: the script host owns the code, and there is no
                 // reason to create a load context for a script it compiles itself.
-                yield return new PluginCandidate
+                yield return new PluginDescriptor
                 {
                     Id = $"script:{name}",
                     Name = $"Script: {name}",

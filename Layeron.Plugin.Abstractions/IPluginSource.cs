@@ -5,7 +5,7 @@ namespace Layeron.Plugin.Abstractions;
 /// <see cref="Location"/> is set: an instance is contributed in-process by the discovering
 /// plugin, a location points at a managed assembly the host loads in its own collectible context.
 /// </summary>
-public sealed class PluginCandidate
+public sealed class PluginDescriptor
 {
     /// <summary>Unique id used for de-duplication and for looking the plugin up later.</summary>
     public required string Id { get; init; }
@@ -71,5 +71,5 @@ public interface IPluginSource
     string? Description { get; }
 
     /// <summary>Enumerates the plugins this source can currently provide.</summary>
-    IEnumerable<PluginCandidate> Discover(IPluginSourceContext context);
+    IEnumerable<PluginDescriptor> Discover(IPluginSourceContext context);
 }
