@@ -538,7 +538,9 @@ public sealed class PluginManager : IDisposable
         Options.PluginDirectory,
         Options.DevelopmentPluginDirectory,
         LoadedPluginIds,
-        new PrefixLog(Adapter.Log, $"[{registration.Source.Id}] "));
+        // The source id rides along as a structured property instead of a string prefix glued onto
+        // every message, so the window can filter a source without parsing text.
+        Adapter.Log.ForContext("Source", registration.Source.Id));
 
     /// <summary>
     /// Unloads everything a source provided and discovers it again. This is the "reload my format"
@@ -858,11 +860,3 @@ public sealed class PluginManager : IDisposable
     }
 }
 
-/// <summary>Log wrapper that prefixes messages with the source that produced them.</summary>
-internal sealed class PrefixLog(IPluginLog inner, string prefix) : IPluginLog
-{
-    public void Debug(string message) => inner.Debug(prefix + message);
-    public void Info(string message) => inner.Info(prefix + message);
-    public void Warn(string message) => inner.Warn(prefix + message);
-    public void Error(string message, Exception? exception = null) => inner.Error(prefix + message, exception);
-}

@@ -137,9 +137,13 @@ public sealed class PluginSettingsViewModel : ViewModelBase, ISettingsPage
     {
         if (_selected is not { } plugin)
             return;
-        Log.Info("Plugin", "{Message}", string.IsNullOrEmpty(plugin.Location)
-            ? "该插件没有文件位置（由另一插件在进程内创建）。"
-            : plugin.Location);
+
+        // The location goes through a hole, not through the template text: a path is a value, and
+        // values are never re-parsed for braces.
+        if (string.IsNullOrEmpty(plugin.Location))
+            Log.Info("Plugin", "该插件没有文件位置（由另一插件在进程内创建）。");
+        else
+            Log.Info("Plugin", "{Location}", plugin.Location);
     }
 
     private void Rescan()

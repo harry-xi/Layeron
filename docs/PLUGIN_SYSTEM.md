@@ -132,6 +132,7 @@ IPluginLog     Log
 - **快照消除 TOCTOU**：`volumes.Snapshot()` 一次拿走 `Volume + Version`；后台算完对比版本后丢弃过期结果。
 - **整卷统计由宿主提供**：`Volumes.ComputeHistogram(ct, progress)`，插件只负责画图。
 - **掩膜是用户数据，预览是插件状态**。掩膜在插件卸载后保留；预览覆盖层随插件卸载自动清空。
+- **插件日志是结构化的**：`services.Log.Info("加载 {Count} 个文件", n)` 用消息模板携带值，`ForContext(key, value)` 挂可查询的上下文属性（宿主用它给源日志挂 `Source`，替代从前的字符串前缀）；宿主把它路由进 Serilog 管线，与宿主日志同窗口、同文件。
 
 ### 块级读写 API（高性能遍历）
 

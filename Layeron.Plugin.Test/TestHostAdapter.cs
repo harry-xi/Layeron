@@ -188,19 +188,47 @@ internal sealed class TestPreviewChannel : IPreviewChannel
     }
 }
 
-/// <summary>Log sink that keeps messages so tests can assert on warnings and errors.</summary>
+/// <summary>
+/// Log sink that keeps messages so tests can assert on warnings and errors. Structured templates
+/// are flattened the way a one-line text sink would - the template, then any values - so a test can
+/// keep asserting on plain fragments without the test project taking a logging dependency.
+/// </summary>
 internal sealed class CollectingLog : IPluginLog
 {
-    public ConcurrentQueue<string> Messages { get; } = new();
+    private readonly string _prefix;
 
-    public void Debug(string message) => Messages.Enqueue($"DBG {message}");
+    public CollectingLog()
+        : this(new ConcurrentQueue<string>(), "")
+    {
+    }
 
-    public void Info(string message) => Messages.Enqueue($"INF {message}");
+    private CollectingLog(ConcurrentQueue<string> messages, string prefix)
+    {
+        Messages = messages;
+        _prefix = prefix;
+    }
 
-    public void Warn(string message) => Messages.Enqueue($"WRN {message}");
+    public ConcurrentQueue<string> Messages { get; }
 
-    public void Error(string message, Exception? exception = null) =>
-        Messages.Enqueue($"ERR {message}{(exception == null ? "" : $" :: {exception.GetType().Name}")}");
+    public void Debug(string template, params object?[] args)
+        => Messages.Enqueue($"DBG {_prefix}{Flatten(template, args)}");
+
+    public void Info(string template, params object?[] args)
+        => Messages.Enqueue($"INF {_prefix}{Flatten(template, args)}");
+
+    public void Warn(string template, params object?[] args)
+        => Messages.Enqueue($"WRN {_prefix}{Flatten(template, args)}");
+
+    public void Error(string template, Exception? exception = null, params object?[] args) =>
+        Messages.Enqueue(
+            $"ERR {_prefix}{Flatten(template, args)}{(exception == null ? "" : $" :: {exception.GetType().Name}")}");
+
+    // Context stays textual here: a prefix is the simplest thing that keeps the source visible.
+    public IPluginLog ForContext(string property, object? value)
+        => new CollectingLog(Messages, $"{_prefix}[{property}={value}] ");
 
     public bool Contains(string fragment) => Messages.Any(m => m.Contains(fragment, StringComparison.Ordinal));
+
+    private static string Flatten(string template, object?[] args) =>
+        args.Length == 0 ? template : $"{template} [{string.Join(", ", args)}]";
 }

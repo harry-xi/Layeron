@@ -267,24 +267,27 @@ internal sealed class AppPreviewChannel : IPreviewChannel
 }
 
 /// <summary>
-/// Routes plugin log messages into the app log under the <c>Plugin</c> category, so the log window can
-/// isolate everything plugin-related with one filter. <see cref="IPluginLog"/> stays a plain string
-/// API on purpose: it is the published plugin contract, and a plugin should not have to know this
-/// application's record type.
+/// Routes plugin log messages into the app log under the <c>Plugin</c> category, so the log window
+/// can isolate everything plugin-related with one filter. A thin adapter over the same Serilog
+/// pipeline the host logs through: templates and structured values pass through untouched, and
+/// <see cref="IPluginLog"/> stays free of any logging library's types - it is the plugin contract.
 /// </summary>
-internal sealed class ConsolePluginLog : IPluginLog
+internal sealed class ConsolePluginLog(Serilog.ILogger logger) : IPluginLog
 {
-    public void Debug(string message) => Log.Debug("Plugin", "{Message}", message);
-
-    public void Info(string message) => Log.Info("Plugin", "{Message}", message);
-
-    public void Warn(string message) => Log.Warn("Plugin", "{Message}", message);
-
-    public void Error(string message, Exception? exception = null)
+    public ConsolePluginLog()
+        : this(Log.ForCategory("Plugin"))
     {
-        if (exception == null)
-            Log.Error("Plugin", "{Message}", message);
-        else
-            Log.Error("Plugin", exception, "{Message}", message);
     }
+
+    public void Debug(string template, params object?[] args) => logger.Debug(template, args);
+
+    public void Info(string template, params object?[] args) => logger.Information(template, args);
+
+    public void Warn(string template, params object?[] args) => logger.Warning(template, args);
+
+    public void Error(string template, Exception? exception = null, params object?[] args)
+        => logger.Error(exception, template, args);
+
+    public IPluginLog ForContext(string property, object? value)
+        => new ConsolePluginLog(logger.ForContext(property, value));
 }

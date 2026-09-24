@@ -1,8 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Threading;
+using Serilog;
+using Serilog.Core;
+using Serilog.Events;
 
 namespace Layeron.App.Logging;
 
@@ -16,8 +20,8 @@ public enum LogLevel
 }
 
 /// <summary>
-/// One structured log event. Immutable, and shared as-is by every destination - the console, the file
-/// and the log window - so no two views of the same event can disagree.
+/// One log event as the window receives it: a thin projection of Serilog's <c>LogEvent</c> keeping
+/// exactly what the list, the filter and the detail pane bind to.
 /// <para>
 /// Both forms of the message are kept: <see cref="Message"/> for a human, and the original
 /// <see cref="Template"/> plus <see cref="Properties"/> for a machine (and for the window's detail
@@ -70,7 +74,7 @@ public sealed class LogRecord
     public bool HasTemplate => Template.Length > 0 && !string.Equals(Template, Message, StringComparison.Ordinal);
 
     /// <summary>
-    /// Complete text of the record: what the file line and the window's copy contain.
+    /// Complete text of the record: what the window's copy command puts on the clipboard.
     /// <para>
     /// Only the exception is appended. The properties are deliberately not repeated: a template like
     /// <c>"Loading layout ({Bytes} bytes) from {Path}"</c> already renders them into the sentence, so
@@ -96,38 +100,36 @@ public sealed class LogRecord
 }
 
 /// <summary>
-/// The application's one logging entry point.
+/// The application's logging entry point: a thin static face over Serilog.
 /// <para>
-/// Every record goes to three places: a bounded in-memory ring (what the log window shows, and why it
-/// shows history from before it was opened), an appended text file, and optionally the console. All
-/// three are fed from one place, so the window can never display something the file lacks.
+/// Call sites pass a message template - <c>Log.Info("Dock", "Layout saved ({Bytes} bytes)", size)</c> -
+/// and Serilog does the rest: it renders the sentence, keeps the named values structured, and writes
+/// the event to every configured sink - a daily file, the console, and this assembly's memory sink.
 /// </para>
 /// <para>
-/// Call sites use a message template - <c>Log.Info("Dock", "Layout saved ({Bytes} bytes)", size)</c> -
-/// which is what makes the log structured: the name between the braces is carried on the record, so
-/// the window can filter and show values instead of a developer re-reading a sentence.
+/// The memory sink is the only part that is ours, and it exists for one reason: the log window needs
+/// the live records - level, category, structured values, exception - that a text sink cannot hand
+/// back, including history from before the window was opened.
 /// </para>
 /// </summary>
 public static class Log
 {
-    private const int DefaultCapacity = 5000;
+    private const int Capacity = 5000;
+
+    /// <summary>
+    /// Shared by the file and the console: timestamp, three-letter level, category, message. The
+    /// shape every line-oriented tool (grep, diff, a pasted report) already expects.
+    /// </summary>
+    private const string OutputTemplate =
+        "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} {Level:u3} {SourceContext}: {Message:lj}{NewLine}{Exception}";
 
     private static readonly Lock Gate = new();
     private static readonly Queue<LogRecord> Buffer = new();
-    private static readonly (string Name, string Value)[] NoProperties = [];
 
-    private static StreamWriter? _file;
-    private static string? _filePath;
-    private static bool _console;
+    // Declared before the logger: the logger's very first sink is this one.
+    private static readonly MemorySink Sink = new();
+    private static ILogger _logger = CreateLogger(directory: null, console: false);
     private static long _sequence;
-
-    /// <summary>
-    /// Lowest level written to the file and the console. This does not affect what is buffered: the
-    /// window has its own filter and can therefore show a record the file deliberately skipped, which
-    /// is what lets a developer raise this to <see cref="LogLevel.Warn"/> for a quiet file and still
-    /// browse the debug detail of a session in the window.
-    /// </summary>
-    public static LogLevel FileLevel { get; set; } = LogLevel.Debug;
 
     /// <summary>Records currently held for the log window.</summary>
     public static IReadOnlyList<LogRecord> Snapshot()
@@ -150,17 +152,8 @@ public static class Log
         }
     }
 
-    /// <summary>Path of the log file, or null when file logging is off.</summary>
-    public static string? FilePath
-    {
-        get
-        {
-            lock (Gate)
-            {
-                return _filePath;
-            }
-        }
-    }
+    /// <summary>Path of today's log file, or null when file logging is off.</summary>
+    public static string? FilePath { get; private set; }
 
     /// <summary>Raised for every record, on the thread that logged; subscribers must not block.</summary>
     public static event Action<LogRecord>? RecordAdded;
@@ -169,39 +162,29 @@ public static class Log
     public static event Action? Cleared;
 
     /// <summary>
-    /// Starts file (and optionally console) logging. Call once at startup; calling it again just moves
-    /// the file, which is what the "log folder changed" case wants.
+    /// Starts file (and optionally console) logging. Call once at startup, before anything logs:
+    /// reconfiguring builds a fresh logger, and loggers handed out earlier (see <see cref="ForCategory"/>)
+    /// would keep pointing at the old sinks.
     /// </summary>
-    public static void Start(string? directory = null, bool console = true, LogLevel fileLevel = LogLevel.Debug)
+    public static void Start(string? directory = null, bool console = true)
     {
-        FileLevel = fileLevel;
-        _console = console;
-
-        if (string.IsNullOrEmpty(directory))
-            return;
-
-        Directory.CreateDirectory(directory);
-
-        lock (Gate)
-        {
-            CloseFile();
-
-            // One file per day: it survives a crash, and it needs no rotation policy to stay readable.
-            _filePath = Path.Combine(directory, $"layeron-{DateTime.Now:yyyyMMdd}.log");
-            var stream = new FileStream(_filePath, FileMode.Append, FileAccess.Write, FileShare.Read);
-            _file = new StreamWriter(stream, new UTF8Encoding(false)) { AutoFlush = true };
-
-            _file.WriteLine($"===== session start {DateTime.Now:yyyy-MM-dd HH:mm:ss} =====");
-        }
+        var dir = string.IsNullOrEmpty(directory) ? null : directory;
+        Swap(CreateLogger(dir, console));
+        FilePath = dir == null ? null : Path.Combine(dir, $"layeron-{DateTime.Now:yyyyMMdd}.log");
     }
 
-    /// <summary>Flushes and closes the log file. Called when the application exits.</summary>
-    public static void Shutdown()
+    /// <summary>Flushes and closes the text sinks. The in-memory buffer keeps working.</summary>
+    public static void Shutdown() => Swap(CreateLogger(directory: null, console: false));
+
+    /// <summary>
+    /// Swaps in a logger and disposes the old one, which flushes its sinks. The ring survives: the
+    /// memory sink itself is static and is only disposed if it asks to be (it does not).
+    /// </summary>
+    private static void Swap(ILogger next)
     {
-        lock (Gate)
-        {
-            CloseFile();
-        }
+        var previous = _logger;
+        _logger = next;
+        (previous as Logger)?.Dispose();
     }
 
     /// <summary>Drops the buffered history. The file keeps it; the window starts clean.</summary>
@@ -215,227 +198,162 @@ public static class Log
         Cleared?.Invoke();
     }
 
+    /// <summary>
+    /// A view of the pipeline bound to one category (carried as Serilog's <c>SourceContext</c>).
+    /// This is what the plugin log adapter is built on. Must be called after <see cref="Start"/>:
+    /// reconfiguring builds a fresh logger, and the earlier view keeps pointing at the old sinks.
+    /// </summary>
+    public static ILogger ForCategory(string category) =>
+        _logger.ForContext(Constants.SourceContextPropertyName, category);
+
     // -----------------------------------------------------------------------
     //  Write
     // -----------------------------------------------------------------------
 
-    public static void Trace(string category, string template, params object?[] args)
-        => Write(LogLevel.Trace, category, template, args, null);
-
     public static void Debug(string category, string template, params object?[] args)
-        => Write(LogLevel.Debug, category, template, args, null);
+        => Write(LogLevel.Debug, category, null, template, args);
 
     public static void Info(string category, string template, params object?[] args)
-        => Write(LogLevel.Info, category, template, args, null);
+        => Write(LogLevel.Info, category, null, template, args);
 
     public static void Warn(string category, string template, params object?[] args)
-        => Write(LogLevel.Warn, category, template, args, null);
+        => Write(LogLevel.Warn, category, null, template, args);
 
     public static void Error(string category, string template, params object?[] args)
-        => Write(LogLevel.Error, category, template, args, null);
+        => Write(LogLevel.Error, category, null, template, args);
 
     /// <summary>Error with an attached exception; the exception is stored whole, not flattened into the text.</summary>
     public static void Error(string category, Exception exception, string template, params object?[] args)
-        => Write(LogLevel.Error, category, template, args, exception);
+        => Write(LogLevel.Error, category, exception, template, args);
 
     /// <summary>
     /// Level-generic form, for the uncommon case where an exception belongs at a level other than
     /// error - a warning about a failed probe, or a debug note about an expected failure.
     /// </summary>
-    public static void Write(LogLevel level, string category, Exception exception, string template, params object?[] args)
-        => Write(level, category, template, args, exception);
-
-    private static void Write(LogLevel level, string category, string template, object?[] args, Exception? exception)
-    {
-        var (message, properties) = Render(template, args);
-
-        LogRecord record;
-        lock (Gate)
-        {
-            record = new LogRecord
-            {
-                Sequence = ++_sequence,
-                Time = DateTime.Now,
-                Level = level,
-                Category = category,
-                Template = template,
-                Message = message,
-                Properties = properties,
-                Exception = exception
-            };
-
-            // Every record is buffered so the window can filter on its own terms; only the textual
-            // sinks respect FileLevel. The ring is what bounds memory, not this check.
-            if (Buffer.Count >= DefaultCapacity)
-                Buffer.Dequeue();
-            Buffer.Enqueue(record);
-
-            if (level >= FileLevel)
-            {
-                var line = record.ToString();
-                _file?.WriteLine(line);
-                if (_console)
-                    Console.WriteLine(line);
-            }
-        }
-
-        RecordAdded?.Invoke(record);
-    }
-
-    /// <summary>Three-letter tag used by every textual destination and by the window.</summary>
-    public static string LevelText(LogLevel level) => level switch
-    {
-        LogLevel.Trace => "TRC",
-        LogLevel.Debug => "DBG",
-        LogLevel.Info => "INF",
-        LogLevel.Warn => "WRN",
-        LogLevel.Error => "ERR",
-        _ => "???"
-    };
+    public static void Write(LogLevel level, string category, Exception? exception, string template, params object?[] args)
+        => _logger
+            .ForContext(Constants.SourceContextPropertyName, category)
+            .Write(ToSerilog(level), exception, template, args);
 
     // -----------------------------------------------------------------------
-    //  Message templates
+    //  Serilog plumbing
     // -----------------------------------------------------------------------
 
-    /// <summary>
-    /// Fills <c>{Name}</c> and <c>{Name:format}</c> holes from <paramref name="args"/>.
-    /// <para>
-    /// A hole with no argument is left visible rather than dropped, so an arity mistake shows up in the
-    /// output instead of silently losing a value. Surplus arguments are appended and kept as
-    /// <c>arg0..argN</c>, so an over-supplied call is still complete.
-    /// </para>
-    /// <para>
-    /// A template that is nothing but a single hole (<c>"{Message}"</c>, the shape a pre-formatted
-    /// string takes when it needs to be passed through the hole machinery) yields no properties: there
-    /// is no name that adds anything to a message that already is its own value.
-    /// </para>
-    /// </summary>
-    private static (string Message, (string Name, string Value)[] Properties) Render(string template, object?[] args)
+    private static ILogger CreateLogger(string? directory, bool console)
     {
-        if (template.IndexOf('{') < 0)
-        {
-            if (args.Length == 0)
-                return (template, NoProperties);
+        var config = new LoggerConfiguration()
+            .MinimumLevel.Verbose()
+            .WriteTo.Sink(Sink);
 
-            var text = new StringBuilder(template);
-            var extras = new List<(string, string)>();
-            AppendSurplus(text, extras, 0, args);
-            return (text.ToString(), [.. extras]);
+        if (directory != null)
+        {
+            Directory.CreateDirectory(directory);
+
+            // One file per day: it survives a crash and needs no rotation policy to stay readable.
+            config = config.WriteTo.File(
+                path: Path.Combine(directory, "layeron-.log"),
+                rollingInterval: RollingInterval.Day,
+                restrictedToMinimumLevel: LogEventLevel.Verbose,
+                outputTemplate: OutputTemplate);
         }
 
-        // The whole template is one hole: a passthrough, not a structured event.
-        if (template.Length > 2 && template[0] == '{' && template[^1] == '}' &&
-            template.IndexOf('}', 0, template.Length - 1) < 0 && args.Length == 1)
-        {
-            var inner = template[1..^1];
-            var colon = inner.IndexOf(':');
-            var name = colon >= 0 ? inner[..colon] : inner;
-            var format = colon >= 0 ? inner[(colon + 1)..] : null;
+        if (console)
+            config = config.WriteTo.Console(
+                restrictedToMinimumLevel: LogEventLevel.Verbose,
+                outputTemplate: OutputTemplate);
 
-            if (name.IndexOf('{') < 0)
-                return (Format(args[0], format), NoProperties);
-        }
-
-        var message = new StringBuilder(template.Length + 32);
-        List<(string Name, string Value)>? properties = null;
-        var next = 0;
-
-        for (var i = 0; i < template.Length; i++)
-        {
-            var c = template[i];
-
-            if (c == '{' && i + 1 < template.Length && template[i + 1] == '{')
-            {
-                message.Append('{');
-                i++;
-                continue;
-            }
-
-            if (c == '}' && i + 1 < template.Length && template[i + 1] == '}')
-            {
-                message.Append('}');
-                i++;
-                continue;
-            }
-
-            if (c != '{')
-            {
-                message.Append(c);
-                continue;
-            }
-
-            var close = template.IndexOf('}', i + 1);
-            if (close < 0)
-            {
-                // Unterminated hole: keep the rest verbatim rather than throwing from a log call.
-                message.Append(template, i, template.Length - i);
-                break;
-            }
-
-            var hole = template[(i + 1)..close];
-            i = close;
-
-            var name = hole;
-            var format = default(string);
-            var colon = hole.IndexOf(':');
-            if (colon >= 0)
-            {
-                name = hole[..colon];
-                format = hole[(colon + 1)..];
-            }
-
-            if (next >= args.Length)
-            {
-                message.Append('{').Append(hole).Append('}');
-                continue;
-            }
-
-            var value = Format(args[next++], format);
-            message.Append(value);
-            (properties ??= []).Add((name, value));
-        }
-
-        if (next < args.Length)
-        {
-            var extras = properties ?? [];
-            AppendSurplus(message, extras, next, args);
-            properties = extras;
-        }
-
-        return (message.ToString(), properties is null ? NoProperties : [.. properties]);
+        return config.CreateLogger();
     }
 
-    private static void AppendSurplus(StringBuilder text, List<(string, string)> properties, int from, object?[] args)
+    private static LogEventLevel ToSerilog(LogLevel level) => level switch
     {
-        text.Append(" [");
-        for (var i = from; i < args.Length; i++)
-        {
-            if (i > from)
-                text.Append(", ");
-            var value = Format(args[i], null);
-            text.Append(value);
-            properties.Add(($"arg{i - from}", value));
-        }
-        text.Append(']');
-    }
-
-    /// <summary>
-    /// Formats one value. Formatting happens once, here, so a record that is filtered out, buffered or
-    /// written to the file never touches its values again. Invariant culture keeps a pasted log
-    /// identical on every machine.
-    /// </summary>
-    private static string Format(object? value, string? format) => value switch
-    {
-        null => "(null)",
-        string text => text,
-        IFormattable formattable => formattable.ToString(format, System.Globalization.CultureInfo.InvariantCulture),
-        _ => value.ToString() ?? "(null)"
+        LogLevel.Trace => LogEventLevel.Verbose,
+        LogLevel.Debug => LogEventLevel.Debug,
+        LogLevel.Info => LogEventLevel.Information,
+        LogLevel.Warn => LogEventLevel.Warning,
+        _ => LogEventLevel.Error
     };
 
-    private static void CloseFile()
+    private static LogLevel FromSerilog(LogEventLevel level) => level switch
     {
-        _file?.Flush();
-        _file?.Dispose();
-        _file = null;
+        LogEventLevel.Verbose => LogLevel.Trace,
+        LogEventLevel.Debug => LogLevel.Debug,
+        LogEventLevel.Information => LogLevel.Info,
+        LogEventLevel.Warning => LogLevel.Warn,
+        _ => LogLevel.Error
+    };
+
+    /// <summary>
+    /// One value from a template hole, already formatted, exactly once. Invariant culture keeps a
+    /// pasted log identical on every machine.
+    /// </summary>
+    private static string RenderScalar(LogEventPropertyValue value) => value switch
+    {
+        ScalarValue scalar => scalar.Value switch
+        {
+            null => "(null)",
+            string text => text,
+            IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture) ?? "",
+            _ => scalar.Value.ToString() ?? ""
+        },
+
+        // Sequences and structures: the library's own rendering, good enough for a detail pane.
+        _ => value.ToString()
+    };
+
+    /// <summary>
+    /// The in-memory destination the log window reads - the one component of this pipeline that is
+    /// not Serilog's, because a text sink cannot hand the window structured records to filter,
+    /// select and copy.
+    /// </summary>
+    private sealed class MemorySink : ILogEventSink
+    {
+        public void Emit(LogEvent logEvent)
+        {
+            var category =
+                logEvent.Properties.TryGetValue(Constants.SourceContextPropertyName, out var context) &&
+                context is ScalarValue { Value: string source }
+                    ? source
+                    : "";
+
+            // The category rides in SourceContext and already has its own column; everything else on
+            // the event came from a template hole and belongs in the detail pane, in arrival order.
+            var properties = new List<(string Name, string Value)>();
+            foreach (var (name, value) in logEvent.Properties)
+            {
+                if (string.Equals(name, Constants.SourceContextPropertyName, StringComparison.Ordinal))
+                    continue;
+
+                properties.Add((name, RenderScalar(value)));
+            }
+
+            var time = logEvent.Timestamp.LocalDateTime;
+            var level = FromSerilog(logEvent.Level);
+            var template = logEvent.MessageTemplate.Text;
+            var message = logEvent.RenderMessage(CultureInfo.InvariantCulture);
+            var exception = logEvent.Exception;
+
+            LogRecord record;
+            lock (Gate)
+            {
+                if (Buffer.Count >= Capacity)
+                    Buffer.Dequeue();
+
+                record = new LogRecord
+                {
+                    Sequence = ++_sequence,
+                    Time = time,
+                    Level = level,
+                    Category = category,
+                    Template = template,
+                    Message = message,
+                    Properties = [.. properties],
+                    Exception = exception
+                };
+                Buffer.Enqueue(record);
+            }
+
+            RecordAdded?.Invoke(record);
+        }
     }
 }

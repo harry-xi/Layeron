@@ -158,16 +158,33 @@ public interface IPreviewChannel
     void Clear(string ownerId);
 }
 
-/// <summary>Plugin-facing log sink; the host routes it to the app log with the plugin id attached.</summary>
+/// <summary>
+/// Plugin-facing log sink; the host routes it to the app log under the <c>Plugin</c> category, so
+/// every plugin line lands in the same window and file as host lines.
+/// <para>
+/// Messages are templates with named holes - <c>Log.Info("loaded {Count} files", n)</c> - not
+/// pre-rendered prose: the values travel with the message, so the log window can show them as
+/// fields instead of a developer re-reading a sentence. A plain string with no holes is just as
+/// valid and renders as-is.
+/// </para>
+/// </summary>
 public interface IPluginLog
 {
-    void Debug(string message);
+    void Debug(string template, params object?[] args);
 
-    void Info(string message);
+    void Info(string template, params object?[] args);
 
-    void Warn(string message);
+    void Warn(string template, params object?[] args);
 
-    void Error(string message, Exception? exception = null);
+    /// <summary>Error with an optional exception; both travel as separate fields, never flattened.</summary>
+    void Error(string template, Exception? exception = null, params object?[] args);
+
+    /// <summary>
+    /// Derives a log that carries one extra named value with every message - a script name, a source
+    /// id. This is context, not text: it stays queryable instead of being glued onto the front of
+    /// every message.
+    /// </summary>
+    IPluginLog ForContext(string property, object? value);
 }
 
 /// <summary>Host services handed to every plugin.</summary>

@@ -8,103 +8,45 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace Layeron.App.Test;
 
 /// <summary>
-/// Tests for the logging core. They exercise the parts that are easy to get subtly wrong and impossible
-/// to notice by eye: template arity, name/value extraction, the ring's eviction order, and the fact
-/// that concurrent writers do not lose or duplicate records.
+/// Tests for the one part of the pipeline that is ours: the memory sink feeding the log window.
+/// Rendering, templating and file output are Serilog's job and are deliberately not re-tested here -
+/// these tests pin what the window actually depends on: category extraction, template-order
+/// properties, exception passthrough, buffer ordering, and no loss under concurrent writers.
 /// </summary>
 [TestClass]
 public sealed class LogTests
 {
     [TestInitialize]
-    public void ResetLog()
-    {
-        Log.Clear();
-        Log.FileLevel = LogLevel.Debug;
-    }
+    public void ResetLog() => Log.Clear();
 
     [TestMethod]
-    public void Template_FillsHolesAndKeepsNames()
+    public void Sink_CapturesMessagePropertiesAndCategory()
     {
-        Log.Info("Test", "Volume {SizeX}x{SizeY}x{SizeZ} loaded", 128, 64, 32);
+        Log.Info("Test", "Volume {SizeX}x{SizeY} loaded", 128, 64);
 
         var record = AssertSingle();
-
-        Assert.AreEqual("Volume 128x64x32 loaded", record.Message);
-        Assert.AreEqual("Volume {SizeX}x{SizeY}x{SizeZ} loaded", record.Template);
+        Assert.AreEqual("Volume 128x64 loaded", record.Message);
+        Assert.AreEqual("Volume {SizeX}x{SizeY} loaded", record.Template);
+        Assert.AreEqual("Test", record.Category);
         CollectionAssert.AreEqual(
-            new[] { "SizeX", "SizeY", "SizeZ" },
+            new[] { "SizeX", "SizeY" },
             record.Properties.Select(p => p.Name).ToArray());
         CollectionAssert.AreEqual(
-            new[] { "128", "64", "32" },
+            new[] { "128", "64" },
             record.Properties.Select(p => p.Value).ToArray());
-    }
-
-    [TestMethod]
-    public void Template_HoleWithFormat_AppliesIt()
-    {
-        // A fixed-point format on purpose: the invariant-culture percent format ("42 %") differs from
-        // what a human would assume, and asserting on it would test the culture rather than the code.
-        Log.Info("Test", "Ratio {Ratio:F2}", 0.42);
-
-        Assert.AreEqual("Ratio 0.42", AssertSingle().Message);
-    }
-
-    [TestMethod]
-    public void Template_EscapedBraces_AreLiteral()
-    {
-        Log.Info("Test", "json {{ \"a\": 1 }} for {Name}", "x");
-
-        var record = AssertSingle();
-        Assert.AreEqual("json { \"a\": 1 } for x", record.Message);
-        Assert.AreEqual("Name", record.Properties[0].Name);
-    }
-
-    [TestMethod]
-    public void Template_MissingArgument_LeavesHoleVisible()
-    {
-        // The point is that an arity mistake shows up in the output instead of silently dropping a
-        // value; a truncated sentence would look like a bug in the component, not in the call.
-        Log.Info("Test", "Loaded {Path} with {Count} slices", "vol.b3d");
-
-        var record = AssertSingle();
-        Assert.AreEqual("Loaded vol.b3d with {Count} slices", record.Message);
-        Assert.HasCount(1, record.Properties);
-    }
-
-    [TestMethod]
-    public void Template_SurplusArguments_AreAppendedAndKept()
-    {
-        Log.Info("Test", "Count {N}", 1, "extra");
-
-        var record = AssertSingle();
-        Assert.AreEqual("Count 1 [extra]", record.Message);
-        CollectionAssert.AreEqual(
-            new[] { "N", "arg0" },
-            record.Properties.Select(p => p.Name).ToArray());
-    }
-
-    [TestMethod]
-    public void Template_SingleHoleOnly_CarriesNoProperties()
-    {
-        // This is the shape a pre-formatted plugin message takes. Treating it as a structured event
-        // would print "| Message=<the whole message again>" on every line.
-        Log.Info("Plugin", "{Message}", "Plugin reported something");
-
-        var record = AssertSingle();
-        Assert.AreEqual("Plugin reported something", record.Message);
-        Assert.IsEmpty(record.Properties);
-        Assert.IsFalse(record.HasDetail);
     }
 
     [TestMethod]
     public void ToString_DoesNotRepeatValuesAlreadyInTheMessage()
     {
         // Both values are visible in the sentence, so repeating them as Bytes=... Path=... would only
-        // make the line harder to read.
+        // make the copied line harder to read.
         Log.Debug("Dock", "Layout saved ({Bytes} bytes) to {Path}", 42, "layout.json");
 
+        // Serilog's default rendering quotes string values. What matters here is that values already
+        // in the sentence are not repeated as properties on the line, not how the library renders one.
         var text = AssertSingle().ToString();
-        StringAssert.Contains(text, "Layout saved (42 bytes) to layout.json");
+        StringAssert.Contains(text, "Layout saved (42 bytes) to \"layout.json\"");
         Assert.IsFalse(text.Contains("Bytes=", StringComparison.Ordinal));
         Assert.IsFalse(text.Contains("Path=", StringComparison.Ordinal));
     }
@@ -141,19 +83,10 @@ public sealed class LogTests
 
         var record = AssertSingle();
         Assert.AreSame(ex, record.Exception);
-        Assert.AreEqual("Operation failed for x", record.Message);
+
+        // Library default: a string argument renders quoted; the exception stays a separate field.
+        Assert.AreEqual("Operation failed for \"x\"", record.Message);
         StringAssert.Contains(record.ToString(), "boom");
-    }
-
-    [TestMethod]
-    public void FileLevel_DoesNotAffectWhatTheWindowCanShow()
-    {
-        // The file gate is about file noise, not about memory. A developer who raises it to Warn for a
-        // quiet file must still be able to browse the session's Debug detail in the log window.
-        Log.FileLevel = LogLevel.Warn;
-        Log.Debug("Test", "quiet in the file");
-
-        Assert.AreEqual("quiet in the file", AssertSingle().Message);
     }
 
     [TestMethod]

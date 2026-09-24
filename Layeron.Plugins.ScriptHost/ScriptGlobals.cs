@@ -29,9 +29,9 @@ public sealed class ScriptGlobals
     /// <summary>Host services (volume, masks, preview, logging).</summary>
     public IPluginServices Host => Plugin.Services;
 
-    /// <summary>Writes a line to the host log, prefixed with the script name.</summary>
+    /// <summary>Writes a line to the host log, tagged with the script name as a structured value.</summary>
     public void Log(string message) =>
-        Plugin.Services.Log.Info($"[{System.IO.Path.GetFileName(ScriptPath)}] {message}");
+        Plugin.Services.Log.Info("[{Script}] {Message}", System.IO.Path.GetFileName(ScriptPath), message);
 
     /// <summary>Adds a menu entry under the scripts menu.</summary>
     public void Menu(string header, Action execute, Func<bool>? canExecute = null) =>
