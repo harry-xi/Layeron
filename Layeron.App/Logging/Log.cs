@@ -211,29 +211,29 @@ public static class Log
     // -----------------------------------------------------------------------
 
     public static void Debug(string category, string template, params object?[] args)
-        => Write(LogLevel.Debug, category, null, template, args);
+        => Write(LogEventLevel.Debug, category, null, template, args);
 
     public static void Info(string category, string template, params object?[] args)
-        => Write(LogLevel.Info, category, null, template, args);
+        => Write(LogEventLevel.Information, category, null, template, args);
 
     public static void Warn(string category, string template, params object?[] args)
-        => Write(LogLevel.Warn, category, null, template, args);
+        => Write(LogEventLevel.Warning, category, null, template, args);
 
     public static void Error(string category, string template, params object?[] args)
-        => Write(LogLevel.Error, category, null, template, args);
+        => Write(LogEventLevel.Error, category, null, template, args);
 
     /// <summary>Error with an attached exception; the exception is stored whole, not flattened into the text.</summary>
     public static void Error(string category, Exception exception, string template, params object?[] args)
-        => Write(LogLevel.Error, category, exception, template, args);
+        => Write(LogEventLevel.Error, category, exception, template, args);
 
     /// <summary>
     /// Level-generic form, for the uncommon case where an exception belongs at a level other than
     /// error - a warning about a failed probe, or a debug note about an expected failure.
     /// </summary>
-    public static void Write(LogLevel level, string category, Exception? exception, string template, params object?[] args)
+    public static void Write(LogEventLevel level, string category, Exception? exception, string template, params object?[] args)
         => _logger
             .ForContext(Constants.SourceContextPropertyName, category)
-            .Write(ToSerilog(level), exception, template, args);
+            .Write(level, exception, template, args);
 
     // -----------------------------------------------------------------------
     //  Serilog plumbing
@@ -264,15 +264,6 @@ public static class Log
 
         return config.CreateLogger();
     }
-
-    private static LogEventLevel ToSerilog(LogLevel level) => level switch
-    {
-        LogLevel.Trace => LogEventLevel.Verbose,
-        LogLevel.Debug => LogEventLevel.Debug,
-        LogLevel.Info => LogEventLevel.Information,
-        LogLevel.Warn => LogEventLevel.Warning,
-        _ => LogEventLevel.Error
-    };
 
     private static LogLevel FromSerilog(LogEventLevel level) => level switch
     {
