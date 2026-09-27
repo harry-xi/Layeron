@@ -66,7 +66,11 @@ public sealed class PluginController : IDisposable
     public ExtensionPoint<SettingsPageContribution>? SettingsPoint =>
         _manager.PointRegistry.GetPoint<SettingsPageContribution>(SettingsPoints.Pages);
 
-    /// <summary>Root plugin directory, shown in diagnostics.</summary>
+    /// <summary>
+    /// The volume loaders the import menu offers: the host's built-in readers plus every one a plugin
+    /// contributed. Read through the manager's point registry, so it always reflects what is loaded.
+    /// </summary>
+    public IReadOnlyList<VolumeLoader> Loaders => VolumeLoaderRunner.All(_manager.PointRegistry);    /// <summary>Root plugin directory, shown in diagnostics.</summary>
     public string PluginDirectory => _manager.Options.PluginDirectory;
 
     /// <summary>Development plugin directory (scanned first, so local builds shadow installed ones).</summary>

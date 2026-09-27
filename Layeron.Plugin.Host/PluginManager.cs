@@ -90,6 +90,7 @@ public sealed class PluginManager : IDisposable
         // Host-owned points: survive any single plugin's unload; only contributions are scoped.
         // Pre-defined here so AddFilter/AddSettingsPage (Contribute sugar) never hit "not defined".
         _points.DefinePoint<IVolumeFilter>(FilterPoints.Volume, "Volume filters");
+        _points.DefinePoint<VolumeLoader>(LoaderPoints.Volume, "Volume loaders");
         _points.DefinePoint<SettingsPageContribution>(SettingsPoints.Pages, "设置页面");
     }
 

@@ -1,10 +1,13 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Platform.Storage;
 using Layeron.Big3DArray;
 using Layeron.App.Logging;
+using Layeron.App.Plugins;
+using Layeron.Plugin.Abstractions;
 using ReactiveUI;
 using RxVoid = ReactiveUI.Primitives.RxVoid;
 using SixLabors.ImageSharp;
@@ -328,4 +331,94 @@ public class SharedDataSourceViewModel : ViewModelBase
                 Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
                 ? desktop.MainWindow : null);
     }
+
+    /// <summary>
+    /// The volume loaders the import menu offers: the built-in readers plus every one a plugin
+    /// contributed. Wired once, after the plugin host exists, because the session - and therefore this
+    /// view model - is created before any plugin is loaded.
+    /// </summary>
+    public IReadOnlyList<VolumeLoader> Loaders
+    {
+        get => _loaders;
+        set
+        {
+            _loaders = value;
+            this.RaisePropertyChanged();
+        }
+    }
+
+    private IReadOnlyList<VolumeLoader> _loaders = [];
+
+    /// <summary>
+    /// Loads through one of the registered loaders. The picker's shape comes from the loader itself
+    /// (files or a folder, which patterns), and the reading itself runs through the shared pipeline,
+    /// so a contributed format is reached exactly like a built-in one.
+    /// </summary>
+    public async Task ImportAsync(VolumeLoader loader)
+    {
+        var topLevel = GetTopLevel();
+        if (topLevel == null)
+            return;
+
+        IReadOnlyList<string> paths;
+        string? directory = null;
+
+        if (loader.SelectsFolder)
+        {
+            var folders = await topLevel.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+            {
+                Title = loader.DisplayName,
+                AllowMultiple = false
+            });
+
+            if (folders.Count == 0)
+                return;
+
+            directory = folders[0].Path.LocalPath;
+            paths = [directory];
+        }
+        else
+        {
+            var filter = loader.FilePatterns.Count > 0
+                ? [new FilePickerFileType(loader.DisplayName) { Patterns = [.. loader.FilePatterns] }]
+                : DefaultFileTypes;
+
+            var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = loader.DisplayName,
+                AllowMultiple = loader.AllowsMultipleFiles,
+                FileTypeFilter = filter
+            });
+
+            if (files.Count == 0)
+                return;
+
+            paths = [.. files.Select(f => f.Path.LocalPath)];
+        }
+
+        StatusText = $"正在通过 {loader.DisplayName} 读取…";
+
+        try
+        {
+            // Building the volume runs off the UI thread; adopting it is a plain assignment, which
+            // is what refreshes the slice views, the window/level range and the status bar.
+            var volume = await Task.Run(() => VolumeLoaderRunner.Load(loader, paths, directory));
+            if (volume is null)
+            {
+                StatusText = "该数据源没有读取到内容";
+                return;
+            }
+
+            Array = volume;
+            FilePath = directory ?? paths.FirstOrDefault();
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Error: {ex.Message}";
+            Log.Error("Data", ex, "Loader {Loader} failed", loader.Id);
+        }
+    }
+
+    private static IReadOnlyList<FilePickerFileType> DefaultFileTypes =>
+        [new FilePickerFileType("All Files") { Patterns = ["*.*"] }];
 }

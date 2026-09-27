@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Avalonia.Controls;
 using Layeron.App.Logging;
 using Layeron.App.Plugins;
@@ -50,6 +51,7 @@ public partial class MainWindow : Window
         _plugins.MenuChanged += RebuildPluginMenu;
         _plugins.ToolsChanged += RebuildPluginMenu;
         RebuildPluginMenu();
+        RebuildImportMenu();
 
         await vm.Dock.TryRestoreSavedLayoutAsync();
     }
@@ -97,7 +99,26 @@ public partial class MainWindow : Window
             PluginMenu.Items.Add(BuildMenuItem(node));
     }
 
-    private static MenuItem BuildMenuItem(PluginMenuNode node)
+    /// <summary>
+    /// Fills 文件 → 从数据源加载 with every registered loader. Each entry runs the same host pipeline,
+    /// which is why a contributed format needs no UI code: the picker's shape comes from the loader's
+    /// own description, so this menu never has to know what a format is.
+    /// </summary>
+    private void RebuildImportMenu()
+    {
+        if (_plugins == null || DataContext is not MainWindowViewModel vm)
+            return;
+        ImportMenu.Items.Clear();
+        foreach (var loader in _plugins.Loaders)
+        {
+            ImportMenu.Items.Add(new MenuItem
+            {
+                Header = loader.DisplayName,
+                Command = new RelayCommand(() => _ = vm.SharedData.ImportAsync(loader))
+            });
+        }
+        ImportMenu.IsEnabled = ImportMenu.Items.Count > 0;
+    }    private static MenuItem BuildMenuItem(PluginMenuNode node)
     {
         var item = new MenuItem { Header = node.Header, Command = node.Command };
 

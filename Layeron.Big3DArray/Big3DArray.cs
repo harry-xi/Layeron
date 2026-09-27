@@ -1,4 +1,5 @@
-﻿using System.IO.Compression;
+using System.IO.Compression;
+using System.Runtime.CompilerServices;
 
 namespace Layeron.Big3DArray
 {
@@ -155,6 +156,11 @@ namespace Layeron.Big3DArray
         }
 
         readonly T[][] blocks;
+        /// <summary>
+        /// The storage blocks, reachable from derived types in this assembly: the mutable subclass's
+        /// bulk writers commit whole slices and blocks through it instead of the per-voxel setter.
+        /// </summary>
+        private protected T[][] Blocks => blocks;
 
         protected ReadonlyBig3DArray(int x, int y, int z) : base(x, y, z)
         {
@@ -406,6 +412,50 @@ namespace Layeron.Big3DArray
         }
 
         /// <summary>
+        /// Write one XY-slice at <paramref name="z"/> from a <c>[Y, X]</c> buffer - the write side of
+        /// <see cref="ReadonlyBig3DArray{T}.GetXYSlice"/>, taking the same shape <see cref="Init"/> does.
+        /// <para>
+        /// This is what a loader or decoder uses instead of the indexer, because it naturally produces
+        /// one plane at a time and a slice row is contiguous in both the buffer and a storage block.
+        /// The buffer must be at least [Y, X]; anything larger is ignored.
+        /// </para>
+        /// </summary>
+        public void SetXYSlice(int z, T[,] values)
+        {
+            ArgumentNullException.ThrowIfNull(values);
+            if ((uint)z >= (uint)Z)
+                throw new IndexOutOfRangeException();
+            if (values.GetLength(0) < Y || values.GetLength(1) < X)
+            {
+                throw new ArgumentException(
+                    $"Slice buffer must be at least [{Y}, {X}]; got [{values.GetLength(0)}, {values.GetLength(1)}].",
+                    nameof(values));
+            }
+            // Rows move through BlockCopy: a slice is rank-2 and a storage block is rank-1, and the
+            // array APIs refuse to copy across ranks even though a row is contiguous in both.
+            var elementSize = Unsafe.SizeOf<T>();
+            var stride = values.GetLength(1) * elementSize;
+            var blockZ = z / VolumeIO.BlockSize;
+            var localZ = z - blockZ * VolumeIO.BlockSize;
+            for (var y = 0; y < Y; y++)
+            {
+                var rowBase = localZ * VolumeIO.BlockSize * VolumeIO.BlockSize
+                              + y % VolumeIO.BlockSize * VolumeIO.BlockSize;
+                var source = y * stride;
+                var written = 0;
+                for (var blockX = 0; blockX < BlocksX; blockX++)
+                {
+                    var columns = Math.Min(VolumeIO.BlockSize, X - written);
+                    Buffer.BlockCopy(
+                        values,
+                        source + written * elementSize,
+                        Blocks[blockX + BlocksX * (y / VolumeIO.BlockSize + BlocksY * blockZ)],
+                        (rowBase + written) * elementSize,
+                        columns * elementSize);
+                    written += columns;
+                }
+            }
+        }        /// <summary>
         /// Fill the whole 3D array using a generator function that receives coordinates (x, y, z)
         /// and returns the value to write at that position.
         /// </summary>
