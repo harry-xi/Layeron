@@ -110,7 +110,7 @@ public class WindowLevelViewModel : Tool
         {
             // The chart is diagnostic: a volume the histogram cannot describe leaves it empty
             // rather than failing the tool that owns the window range.
-            Log.Write(LogLevel.Warn, "WindowLevel", ex, "Histogram failed; leaving the chart empty");
+            Log.Error("WindowLevel", ex, "Histogram failed; leaving the chart empty");
             return;
         }
 

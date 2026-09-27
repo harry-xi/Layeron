@@ -3,7 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Layeron.App.ViewModels"
-             xmlns:log="using:Layeron.App.Logging"
+             xmlns:serilog="using:Serilog.Events"
              xmlns:views="using:Layeron.App.Views"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="220"
              x:Class="Layeron.App.Views.LogViewerView"
@@ -16,6 +16,9 @@
     <UserControl.Resources>
         <views:LogLevelBrushConverter x:Key="LevelBrush"/>
         <views:LogLevelBackgroundConverter x:Key="LevelBackground"/>
+        <views:LogTextConverter x:Key="LogText"/>
+        <views:LogFlagConverter x:Key="LogFlag"/>
+        <views:LogLevelNameConverter x:Key="LogLevelName"/>
 
         <!-- Density lives in one place: this panel is short and wide, so a single number has to change
              when the layout tightens, not a dozen duplicated attributes. -->
@@ -111,8 +114,8 @@
                                       MinWidth="64"
                                       ToolTip.Tip="最低显示级别">
                                 <ComboBox.ItemTemplate>
-                                    <DataTemplate x:DataType="log:LogLevel">
-                                        <TextBlock Text="{Binding}"
+                                    <DataTemplate x:DataType="serilog:LogEventLevel">
+                                        <TextBlock Text="{Binding Converter={StaticResource LogLevelName}}"
                                                    FontSize="11.5"
                                                    FontWeight="SemiBold"
                                                    Foreground="{Binding Converter={StaticResource LevelBrush}}"/>
@@ -179,17 +182,17 @@
                     <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="6">
                         <TextBlock Grid.Column="0"
                                    Classes="mono"
-                                   Text="{Binding SelectedRecord.TimeText}"
+                                   Text="{Binding SelectedEvent, Converter={StaticResource LogText}, ConverterParameter=Time}"
                                    VerticalAlignment="Center"/>
                         <TextBlock Grid.Column="1"
                                    Classes="mono"
-                                   Text="{Binding SelectedRecord.Level}"
+                                   Text="{Binding SelectedEvent, Converter={StaticResource LogText}, ConverterParameter=Level}"
                                    FontWeight="Bold"
                                    VerticalAlignment="Center"
-                                   Foreground="{Binding SelectedRecord.Level, Converter={StaticResource LevelBrush}}"/>
+                                   Foreground="{Binding SelectedEvent, Converter={StaticResource LevelBrush}}"/>
                         <TextBlock Grid.Column="2"
                                    Classes="mono"
-                                   Text="{Binding SelectedRecord.Category}"
+                                   Text="{Binding SelectedEvent, Converter={StaticResource LogText}, ConverterParameter=Category}"
                                    FontWeight="SemiBold"
                                    VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis"/>
@@ -202,16 +205,16 @@
 
                     <ScrollViewer Margin="0,4,0,0" VerticalScrollBarVisibility="Auto">
                         <StackPanel Spacing="3">
-                            <TextBlock Text="{Binding SelectedRecord.Message}"
+                            <TextBlock Text="{Binding SelectedEvent, Converter={StaticResource LogText}, ConverterParameter=Message}"
                                        FontSize="11.5"
                                        TextWrapping="Wrap"/>
-                            <TextBlock Text="{Binding SelectedRecord.Template}"
-                                       IsVisible="{Binding SelectedRecord.HasTemplate}"
+                            <TextBlock Text="{Binding SelectedEvent, Converter={StaticResource LogText}, ConverterParameter=Template}"
+                                       IsVisible="{Binding SelectedEvent, Converter={StaticResource LogFlag}, ConverterParameter=HasTemplate}"
                                        FontSize="11"
                                        TextWrapping="Wrap"
                                        Opacity="0.6"/>
-                            <TextBlock Text="{Binding SelectedRecord.DetailText}"
-                                       IsVisible="{Binding SelectedRecord.HasDetail}"
+                            <TextBlock Text="{Binding SelectedEvent, Converter={StaticResource LogText}, ConverterParameter=Detail}"
+                                       IsVisible="{Binding SelectedEvent, Converter={StaticResource LogFlag}, ConverterParameter=HasDetail}"
                                        Classes="mono"
                                        TextWrapping="Wrap"/>
                         </StackPanel>
@@ -221,9 +224,9 @@
 
             <!-- ── Records ──────────────────────────────────────────────────────── -->
             <Panel>
-                <ListBox x:Name="RecordList"
-                         ItemsSource="{Binding Records}"
-                         SelectedItem="{Binding SelectedRecord, Mode=TwoWay}"
+                <ListBox x:Name="EventList"
+                         ItemsSource="{Binding Events}"
+                         SelectedItem="{Binding SelectedEvent, Mode=TwoWay}"
                          Background="Transparent"
                          BorderThickness="0"
                          Padding="0">
@@ -241,33 +244,34 @@
                         </ControlTheme>
                     </ListBox.ItemContainerTheme>
                     <ListBox.ItemTemplate>
-                        <DataTemplate x:DataType="log:LogRecord">
+                        <DataTemplate x:DataType="serilog:LogEvent">
                             <Border Padding="6,0"
                                     Background="{Binding Converter={StaticResource LevelBackground}}">
                                 <!-- Fixed leading columns keep the eye able to scan down timestamp and
                                      level; the message takes everything left, which is the whole reason
-                                     this panel is wide. -->
+                                     this panel is wide. Each cell renders its own text from the event: the
+                                     row is the only thing that decides what a record looks like. -->
                                 <Grid ColumnDefinitions="80,36,140,*">
                                     <TextBlock Grid.Column="0"
                                                Classes="mono"
-                                               Text="{Binding TimeText}"
+                                               Text="{Binding Converter={StaticResource LogText}, ConverterParameter=Time}"
                                                VerticalAlignment="Center"
                                                Opacity="0.65"/>
                                     <TextBlock Grid.Column="1"
                                                Classes="mono"
-                                               Text="{Binding Level}"
+                                               Text="{Binding Converter={StaticResource LogText}, ConverterParameter=Level}"
                                                FontWeight="SemiBold"
                                                VerticalAlignment="Center"
                                                Foreground="{Binding Converter={StaticResource LevelBrush}}"/>
                                     <TextBlock Grid.Column="2"
-                                               Text="{Binding Category}"
+                                               Text="{Binding Converter={StaticResource LogText}, ConverterParameter=Category}"
                                                Classes="mono"
                                                FontWeight="SemiBold"
                                                VerticalAlignment="Center"
                                                TextTrimming="CharacterEllipsis"
                                                Opacity="0.8"/>
                                     <TextBlock Grid.Column="3"
-                                               Text="{Binding Message}"
+                                               Text="{Binding Converter={StaticResource LogText}, ConverterParameter=Message}"
                                                Classes="mono"
                                                VerticalAlignment="Center"
                                                TextTrimming="CharacterEllipsis"/>
@@ -278,7 +282,7 @@
                 </ListBox>
 
                 <TextBlock Text="暂无日志"
-                           IsVisible="{Binding HasNoRecords}"
+                           IsVisible="{Binding HasNoEvents}"
                            FontSize="11.5"
                            HorizontalAlignment="Center"
                            VerticalAlignment="Center"

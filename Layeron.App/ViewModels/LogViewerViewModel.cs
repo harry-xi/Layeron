@@ -11,33 +11,32 @@ using Dock.Model.ReactiveUI.Controls;
 using Layeron.App.Layout;
 using Layeron.App.Logging;
 using ReactiveUI;
+using Serilog.Events;
 using RxVoid = ReactiveUI.Primitives.RxVoid;
-
 namespace Layeron.App.ViewModels;
-
 /// <summary>
 /// The log window: a filtered view over <see cref="Log"/>'s in-memory ring.
 /// <para>
 /// It is a consumer of the logger rather than a second logging path, so it cannot show anything the
-/// file lacks, and history from before it was opened is already there. Arriving records are queued and
-/// applied on a timer instead of one by one: loading a volume logs hundreds of records in a burst, and
-/// an ObservableCollection update per record would cost more than the work being logged.
+/// file lacks, and history from before it was opened is already there. It holds the events themselves
+/// and renders them as it shows them - see <see cref="LogEventView"/> - so nothing the pipeline did
+/// had to be spent formatting a row that may never be looked at.
+/// </para>
+/// <para>
+/// Arriving events are queued and applied on a timer instead of one by one: loading a volume logs
+/// hundreds of events in a burst, and an ObservableCollection update per event would cost more than
+/// the work being logged.
 /// </para>
 /// </summary>
 public sealed class LogViewerViewModel : Tool, IDisposable
 {
     private const int MaxRows = 5000;
-
-    private static readonly LogLevel[] AllLevels = Enum.GetValues<LogLevel>();
-
-    private readonly Queue<LogRecord> _pending = new();
+    private readonly Queue<LogEvent> _pending = new();
     private readonly DispatcherTimer? _timer;
-
-    private LogLevel _minimumLevel = LogLevel.Debug;
+    private LogEventLevel _minimumLevel = LogEventLevel.Debug;
     private string _filter = "";
     private bool _follow = true;
-    private LogRecord? _selected;
-
+    private LogEvent? _selected;
     /// <summary>
     /// Attaches the window to the logger. One constructor serves both the live window and the XAML
     /// designer preview: the window holds no state of its own, so there is nothing to configure.
@@ -47,36 +46,30 @@ public sealed class LogViewerViewModel : Tool, IDisposable
         Title = "Log";
         Id = DockableIds.Log;
         CanClose = true;
-
         ClearCommand = ReactiveCommand.Create(Log.Clear);
         CopyCommand = ReactiveCommand.CreateFromTask(CopyAsync);
         OpenFolderCommand = ReactiveCommand.Create(OpenFolder);
-
         // The lambda returns RxVoid explicitly: ReactiveCommand.Create infers its result type from the
-        // delegate, so an assignment expression would produce a command whose result is the record.
+        // delegate, so an assignment expression would produce a command whose result is the event.
         CloseDetailCommand = ReactiveCommand.Create(() =>
         {
-            SelectedRecord = null;
+            SelectedEvent = null;
             return RxVoid.Default;
         });
-
-        Log.RecordAdded += Queue;
+        Log.RecordAdded += Enqueue;
         Log.Cleared += Reset;
-
         // A short coalescing window: live enough to watch, long enough that a burst is one update.
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
         _timer.Tick += (_, _) => Flush();
         _timer.Start();
-
         Flush();
     }
+    /// <summary>Rows shown, oldest first: the events themselves, rendered by the row template.</summary>
+    public ObservableCollection<LogEvent> Events { get; } = [];
+    public IReadOnlyList<LogEventLevel> LevelOptions { get; } = LogEventView.AllLevels;
 
-    /// <summary>Rows shown, oldest first.</summary>
-    public ObservableCollection<LogRecord> Records { get; } = [];
-
-    public IReadOnlyList<LogLevel> LevelOptions { get; } = AllLevels;
-
-    public LogLevel MinimumLevel
+    /// <summary>The weakest level worth showing. Compared, not counted, so a new rung needs no change here.</summary>
+    public LogEventLevel MinimumLevel
     {
         get => _minimumLevel;
         set
@@ -89,8 +82,7 @@ public sealed class LogViewerViewModel : Tool, IDisposable
             Rebuild();
         }
     }
-
-    /// <summary>Substring match against category, message and properties; empty shows everything.</summary>
+    /// <summary>Substring match against category, message and values; empty shows everything.</summary>
     public string Filter
     {
         get => _filter;
@@ -99,20 +91,17 @@ public sealed class LogViewerViewModel : Tool, IDisposable
             var text = value ?? "";
             if (string.Equals(_filter, text, StringComparison.Ordinal))
                 return;
-
             _filter = text;
             this.RaisePropertyChanged();
             Rebuild();
         }
     }
-
     public bool Follow
     {
         get => _follow;
         set => this.RaiseAndSetIfChanged(ref _follow, value);
     }
-
-    public LogRecord? SelectedRecord
+    public LogEvent? SelectedEvent
     {
         get => _selected;
         set
@@ -121,93 +110,76 @@ public sealed class LogViewerViewModel : Tool, IDisposable
             this.RaisePropertyChanged(nameof(HasSelection));
         }
     }
-
     public bool HasSelection => _selected != null;
-
     /// <summary>True while the filter is hiding everything; drives the placeholder text.</summary>
-    public bool HasNoRecords => Records.Count == 0;
-
+    public bool HasNoEvents => Events.Count == 0;
     public string StatusText { get; private set; } = "";
-
     public string LevelCounts { get; private set; } = "";
-
     /// <summary>
     /// Where the log file lives, shown as the folder button's tooltip. It used to be a line of its own
     /// under the list, spending vertical space - the scarcest direction in a short bottom panel - on a
     /// path that is only read on demand.
     /// </summary>
     public string LogPathTip => Log.FilePath ?? "(未启用文件日志)";
-
     public ReactiveCommand<RxVoid, RxVoid> ClearCommand { get; private set; } = null!;
-
     public ReactiveCommand<RxVoid, RxVoid> CopyCommand { get; private set; } = null!;
-
     public ReactiveCommand<RxVoid, RxVoid> OpenFolderCommand { get; private set; } = null!;
-
     /// <summary>
     /// Hides the detail pane by clearing the selection. The pane is bound to the selection, so binding
     /// the close button here keeps one source of truth: there is no separate "is the pane open" flag
     /// that could disagree with the list's own selection.
     /// </summary>
     public ReactiveCommand<RxVoid, RxVoid> CloseDetailCommand { get; private set; } = null!;
-
     // -----------------------------------------------------------------------
     //  Intake
     // -----------------------------------------------------------------------
-
-    private void Queue(LogRecord record)
+    private void Enqueue(LogEvent logEvent)
     {
         lock (_pending)
         {
-            _pending.Enqueue(record);
+            _pending.Enqueue(logEvent);
         }
     }
-
-    /// <summary>Moves queued records into the list. Must run on the UI thread.</summary>
+    /// <summary>Moves queued events into the list. Must run on the UI thread.</summary>
     private void Flush()
     {
-        LogRecord[] batch;
+        LogEvent[] batch;
         lock (_pending)
         {
             if (_pending.Count == 0)
                 return;
-
             batch = [.. _pending];
             _pending.Clear();
         }
-
-        foreach (var record in batch)
+        foreach (var logEvent in batch)
         {
-            if (!Matches(record))
+            if (!Matches(logEvent))
                 continue;
-
-            Records.Add(record);
-            if (Records.Count > MaxRows)
-                Records.RemoveAt(0);
+            Events.Add(logEvent);
+            if (Events.Count > MaxRows)
+                Events.RemoveAt(0);
         }
-
         RefreshSummary();
     }
-
     /// <summary>
     /// Re-reads the logger's ring under the current filter. Going back to the buffer rather than
     /// discarding rows is what lets a filter be tightened and relaxed without losing history.
     /// </summary>
     private void Rebuild()
     {
-        var selected = _selected?.Sequence;
-
-        Records.Clear();
-        foreach (var record in Log.Snapshot())
+        // The selection is remembered as an event, not as a row index or an id: the ring hands back
+        // the very instances it holds, so matching one is a reference comparison - and an event the
+        // ring has since evicted simply loses the selection, which is the honest answer.
+        var selected = _selected;
+        Events.Clear();
+        foreach (var logEvent in Log.Snapshot())
         {
-            if (Matches(record))
-                Records.Add(record);
+            if (Matches(logEvent))
+                Events.Add(logEvent);
         }
-
-        SelectedRecord = selected is { } sequence ? Records.FirstOrDefault(r => r.Sequence == sequence) : null;
+        SelectedEvent = selected is not null && Events.Contains(selected) ? selected : null;
         RefreshSummary();
     }
-
     private void Reset()
     {
         if (!Dispatcher.UIThread.CheckAccess())
@@ -215,38 +187,37 @@ public sealed class LogViewerViewModel : Tool, IDisposable
             Dispatcher.UIThread.Post(Reset);
             return;
         }
-
-        Records.Clear();
-        SelectedRecord = null;
+        Events.Clear();
+        SelectedEvent = null;
         RefreshSummary();
     }
-
-    private bool Matches(LogRecord record) => record.Level >= _minimumLevel
+    private bool Matches(LogEvent logEvent) => logEvent.Level >= _minimumLevel
         && (_filter.Length == 0
-            || record.Category.Contains(_filter, StringComparison.OrdinalIgnoreCase)
-            || record.Message.Contains(_filter, StringComparison.OrdinalIgnoreCase)
-            || record.DetailText.Contains(_filter, StringComparison.OrdinalIgnoreCase));
-
+            || logEvent.Category().Contains(_filter, StringComparison.OrdinalIgnoreCase)
+            || logEvent.Message().Contains(_filter, StringComparison.OrdinalIgnoreCase)
+            || logEvent.DetailText().Contains(_filter, StringComparison.OrdinalIgnoreCase));
     private void RefreshSummary()
     {
-        var errors = Records.Count(r => r.Level == LogLevel.Error);
-        var warnings = Records.Count(r => r.Level == LogLevel.Warn);
-        var infos = Records.Count(r => r.Level == LogLevel.Info);
-        var debugs = Records.Count - errors - warnings - infos;
+        // Named counts for the levels a reader looks for, then everything finer as one figure:
+        // Verbose and Debug are both detail nobody reads unless something is already wrong, and
+        // giving each its own column would cost more width than the distinction is worth.
+        var fatals = Events.Count(e => e.Level == LogEventLevel.Fatal);
+        var errors = Events.Count(e => e.Level == LogEventLevel.Error);
+        var warnings = Events.Count(e => e.Level == LogEventLevel.Warning);
+        var infos = Events.Count(e => e.Level == LogEventLevel.Information);
+        var fine = Events.Count - fatals - errors - warnings - infos;
 
-        LevelCounts = $"ERR {errors} · WRN {warnings} · INF {infos} · DBG {debugs}";
-        StatusText = $"显示 {Records.Count} / 缓冲 {Log.Count} 条";
-
+        // Fatal is last because it is the rarest: the eye reaches it only when it is looking for one.
+        LevelCounts = $"ERR {errors} · WRN {warnings} · INF {infos} · DBG {fine} · FTL {fatals}";
+        StatusText = $"显示 {Events.Count} / 缓冲 {Log.Count} 条";
         this.RaisePropertyChanged(nameof(LevelCounts));
         this.RaisePropertyChanged(nameof(StatusText));
         this.RaisePropertyChanged(nameof(LogPathTip));
-        this.RaisePropertyChanged(nameof(HasNoRecords));
+        this.RaisePropertyChanged(nameof(HasNoEvents));
     }
-
     // -----------------------------------------------------------------------
     //  Commands
     // -----------------------------------------------------------------------
-
     private async Task CopyAsync()
     {
         var clipboard = Avalonia.Controls.TopLevel.GetTopLevel(
@@ -254,25 +225,20 @@ public sealed class LogViewerViewModel : Tool, IDisposable
                 Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
                 ? desktop.MainWindow
                 : null)?.Clipboard;
-
         if (clipboard == null)
             return;
-
-        await clipboard.SetTextAsync(string.Join(Environment.NewLine, Records.Select(r => r.ToString())));
+        await clipboard.SetTextAsync(string.Join(Environment.NewLine, Events.Select(e => e.Line())));
     }
-
     private void OpenFolder()
     {
         if (Log.FilePath is not { } path)
             return;
-
         Process.Start(new ProcessStartInfo(Path.GetDirectoryName(path)!) { UseShellExecute = true });
     }
-
     public void Dispose()
     {
         _timer?.Stop();
-        Log.RecordAdded -= Queue;
+        Log.RecordAdded -= Enqueue;
         Log.Cleared -= Reset;
     }
 }

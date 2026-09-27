@@ -9,7 +9,7 @@ namespace Layeron.App.Views;
 
 public partial class LogViewerView : UserControl
 {
-    private INotifyCollectionChanged? _records;
+    private INotifyCollectionChanged? _events;
     private LogViewerViewModel? _viewModel;
 
     public LogViewerView()
@@ -25,23 +25,23 @@ public partial class LogViewerView : UserControl
     }
 
     /// <summary>
-    /// Follows the newest record while <see cref="LogViewerViewModel.Follow"/> is on. Scrolling is the
+    /// Follows the newest event while <see cref="LogViewerViewModel.Follow"/> is on. Scrolling is the
     /// view's job, so the view model stays free of control references; the work is posted rather than
     /// done inline because the new row has not been laid out yet when the collection changes.
     /// </summary>
     private void Attach(LogViewerViewModel? viewModel)
     {
-        if (_records != null)
-            _records.CollectionChanged -= OnRecordsChanged;
+        if (_events != null)
+            _events.CollectionChanged -= OnEventsChanged;
 
         if (_viewModel != null)
             _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
 
         _viewModel = viewModel;
-        _records = viewModel?.Records;
+        _events = viewModel?.Events;
 
-        if (_records != null)
-            _records.CollectionChanged += OnRecordsChanged;
+        if (_events != null)
+            _events.CollectionChanged += OnEventsChanged;
 
         if (_viewModel != null)
             _viewModel.PropertyChanged += OnViewModelPropertyChanged;
@@ -53,7 +53,7 @@ public partial class LogViewerView : UserControl
             ScrollToEnd();
     }
 
-    private void OnRecordsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    private void OnEventsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (e.Action == NotifyCollectionChangedAction.Add && _viewModel?.Follow == true)
             ScrollToEnd();
@@ -62,7 +62,7 @@ public partial class LogViewerView : UserControl
     private void ScrollToEnd()
         => Dispatcher.UIThread.Post(() =>
         {
-            if (_viewModel?.Records.Count > 0)
-                this.FindControl<ListBox>("RecordList")?.ScrollIntoView(_viewModel.Records[^1]);
+            if (_viewModel?.Events.Count > 0)
+                this.FindControl<ListBox>("EventList")?.ScrollIntoView(_viewModel.Events[^1]);
         }, DispatcherPriority.Background);
 }
