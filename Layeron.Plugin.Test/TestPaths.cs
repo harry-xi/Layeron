@@ -24,6 +24,10 @@ internal static class TestPaths
         Path.Combine(RepositoryRoot, "Layeron.Plugins.ScriptHost", "bin", Configuration, "net10.0",
             "Layeron.Plugins.ScriptHost.dll");
 
+    public static string Model3DPluginAssembly { get; } =
+        Path.Combine(RepositoryRoot, "Layeron.Plugins.Model3D", "bin", Configuration, "net10.0",
+            "Layeron.Plugins.Model3D.dll");
+
     /// <summary>Creates a throwaway plugin directory for sources that scan folders.</summary>
     public static string CreateTemporaryPluginDirectory()
     {

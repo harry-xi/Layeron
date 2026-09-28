@@ -562,6 +562,7 @@ public class DockFactory : Factory
         LogViewerViewModel => DockableIds.Log,
         // Without this, a plugin panel still open at shutdown is dropped from the saved layout.
         PluginToolViewModel plugin => plugin.TypeId,
+        PluginDocumentViewModel pluginDocument => pluginDocument.TypeId,
         _ => null
     };
 

@@ -118,6 +118,30 @@ public class DockViewModel : ViewModelBase
         Factory.AddTool(root, tool);
         return true;
     }
+
+    /// <summary>
+    /// Opens a document by type id in the centre document dock, focusing the existing tab when one of
+    /// the same type is already open. Mirror of <see cref="OpenToolById"/>; the only difference is that
+    /// the created dockable is added as a document rather than as a tool panel.
+    /// </summary>
+    public bool OpenDocumentById(string typeId, string? title = null)
+    {
+        if (Layout is not { } root)
+            return false;
+
+        if (Factory.FindDockable(root, d => d.Id == typeId) is { } existing)
+        {
+            Factory.SetActiveDockable(existing);
+            Factory.SetFocusedDockable(existing.Owner as IDock ?? root, existing);
+            return true;
+        }
+
+        if (Factory.CreateDockable(typeId, title) is not { } document)
+            return false;
+
+        Factory.AddDocument(root, document);
+        return true;
+    }
     
     private void OpenMaskManager()
         => OpenSessionTool(DockableIds.MaskManager, _sessionManager.Current?.MaskManager);

@@ -61,6 +61,9 @@ public interface IPluginRegistry
     /// <summary>Registers a dockable tool panel. Returns a handle that detaches it immediately.</summary>
     IDisposable AddTool(ToolContribution tool);
 
+    /// <summary>Registers a centre-area document tab. Returns a handle that detaches it immediately.</summary>
+    IDisposable AddDocument(DocumentContribution document);
+
     /// <summary>Registers a menu entry (optionally nested through a slash-separated path).</summary>
     IDisposable AddMenu(MenuContribution menu);
 
@@ -123,6 +126,40 @@ public sealed class ToolContribution
 
     /// <summary>Preferred dock alignment hint. Default right.</summary>
     public DockHint PreferredDock { get; init; } = DockHint.Right;
+}
+
+/// <summary>
+/// A document contributed by a plugin: a tab in the centre document dock, as opposed to a docked tool
+/// panel at the window edge. This is where a plugin puts a primary, long-lived view - the slice views
+/// live here, so a 3D model or a report belongs here too.
+/// <para>
+/// The distinction from <see cref="ToolContribution"/> is only where the host places the content, not
+/// what the content is: both hand back an opaque object the host shows without naming a plugin type.
+/// There is deliberately no dock hint - a document's place is the document dock by definition.
+/// </para>
+/// </summary>
+public sealed class DocumentContribution
+{
+    /// <summary>Plugin-local id, unique within the contributing plugin.</summary>
+    public required string Id { get; init; }
+
+    /// <summary>Default tab title.</summary>
+    public required string Title { get; init; }
+
+    /// <summary>
+    /// Creates the document's content. The returned object is a host UI widget - for the Avalonia host
+    /// that is an <c>Avalonia.Controls.Control</c>. Kept as <see cref="object"/> so this assembly stays
+    /// free of any UI framework dependency.
+    /// <para>
+    /// If the returned object implements <see cref="IDisposable"/>, the host disposes it when the tab is
+    /// closed or the plugin unloads: that is where a document must release host services and any GPU
+    /// resources it holds, otherwise the plugin's load context cannot be collected.
+    /// </para>
+    /// </summary>
+    public Func<object>? ContentFactory { get; init; }
+
+    /// <summary>Whether the user may close the document without unloading the plugin. Default true.</summary>
+    public bool CanClose { get; init; } = true;
 }
 
 /// <summary>Preferred dock alignment for a tool panel.</summary>

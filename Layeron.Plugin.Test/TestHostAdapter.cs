@@ -27,6 +27,9 @@ internal sealed class TestHostAdapter : IPluginHostAdapter
     /// <summary>Attached tools as (pluginId, toolId) pairs; must be empty after an unload.</summary>
     public ConcurrentDictionary<string, ToolContribution> Tools { get; } = new();
 
+    /// <summary>Attached documents as (pluginId, documentId) pairs; must be empty after an unload.</summary>
+    public ConcurrentDictionary<string, DocumentContribution> Documents { get; } = new();
+
     /// <summary>Attached menus keyed by plugin id and header.</summary>
     public ConcurrentDictionary<string, MenuContribution> Menus { get; } = new();
 
@@ -35,6 +38,13 @@ internal sealed class TestHostAdapter : IPluginHostAdapter
         var key = $"{pluginId}::{tool.Id}";
         Tools[key] = tool;
         return new Handle(() => Tools.TryRemove(key, out _));
+    }
+
+    public IDisposable AttachDocument(string pluginId, DocumentContribution document)
+    {
+        var key = $"{pluginId}::{document.Id}";
+        Documents[key] = document;
+        return new Handle(() => Documents.TryRemove(key, out _));
     }
 
     public IDisposable AttachMenu(string pluginId, MenuContribution menu)

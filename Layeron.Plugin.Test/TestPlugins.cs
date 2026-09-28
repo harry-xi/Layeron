@@ -50,6 +50,13 @@ internal sealed class ConsumerPlugin : IPlugin
             Title = "Consumer Tool",
             ContentFactory = () => new object()
         });
+
+        context.Registry.AddDocument(new DocumentContribution
+        {
+            Id = "consumer-document",
+            Title = "Consumer Document",
+            ContentFactory = () => new object()
+        });
     }
 }
 

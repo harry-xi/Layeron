@@ -31,6 +31,12 @@ public class ViewLocator : IDataTemplate
                 ?? new TextBlock { Text = plugin.Content.ToString() ?? "" };
         }
 
+        if (param is PluginDocumentViewModel document)
+        {
+            return document.Content as Control
+                ?? new TextBlock { Text = document.Content.ToString() ?? "" };
+        }
+
         var name = param.GetType().FullName!.Replace("ViewModel", "View", StringComparison.Ordinal);
         var type = Type.GetType(name);
 

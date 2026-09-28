@@ -16,6 +16,9 @@
         <DataTemplate DataType="plugins:PluginToolViewModel">
             <views:PluginToolView/>
         </DataTemplate>
+        <DataTemplate DataType="plugins:PluginDocumentViewModel">
+            <views:PluginDocumentView/>
+        </DataTemplate>
         <!-- 设置窗口内置页与声明式页：显式映射，避免走类型名约定。 -->
         <DataTemplate DataType="vm:GeneralSettingsViewModel">
             <views:GeneralSettingsView/>

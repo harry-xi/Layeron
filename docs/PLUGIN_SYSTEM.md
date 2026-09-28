@@ -50,7 +50,8 @@ Layeron.Plugin.Test      插件系统测试（无 UI）
 
 ```
 IPlugin.Activate(ctx)
-  ├─ ctx.Registry.AddTool(...)        → 直连 Adapter（单消费者：Dock），返回 IDisposable
+  ├─ ctx.Registry.AddTool(...)        → 直连 Adapter（单消费者：Dock 工具面板），返回 IDisposable
+  ├─ ctx.Registry.AddDocument(...)    → 直连 Adapter（单消费者：Dock 文档区），返回 IDisposable
   ├─ ctx.Registry.AddMenu(...)        → 直连 Adapter（单消费者：菜单），返回 IDisposable
   ├─ ctx.Registry.DefinePoint<T>(id)  → 点随该插件卸载而消失
   ├─ ctx.Registry.Contribute(id, val) → 贡献随该插件卸载而移除，即使插槽属于别人
@@ -60,7 +61,9 @@ IPlugin.Activate(ctx)
   └─ ctx.Services.{Volumes,Masks,Preview,Log}
 ```
 
-** Tool/Menu 为什么不是点**：单一消费者（宿主 Dock/菜单），一对一 `Attach → handle.Dispose()` 撤销，无需 `Items` 列表、`Added/Removed` 事件、跨插件读取。做成点只增加排序、事件重放、宿主拥有点生命周期等成本，无收益。
+** Tool/Document/Menu 为什么不是点**：单一消费者（宿主 Dock/菜单），一对一 `Attach → handle.Dispose()` 撤销，无需 `Items` 列表、`Added/Removed` 事件、跨插件读取。做成点只增加排序、事件重放、宿主拥有点生命周期等成本，无收益。
+
+** Tool 与 Document 的差异只在落点**：`ToolContribution` 进边缘工具坞（可用 `DockHint` 选边），`DocumentContribution` 进中央文档坞（与切片视图同区，因而没有 dock 提示）。两者契约相同：宿主只持 `object`、从不命名插件类型；`ContentFactory` 返回值若实现 `IDisposable`，宿主在关闭标签或卸载插件时释放它——这是插件解绑宿主事件、释放 GPU 资源的唯一时机。类型 id 前缀分别为 `layeron.tool.plugin.*` 与 `layeron.document.plugin.*`，宿主仅凭 id 就能把两者送进正确的坞，布局恢复也不需要额外元数据。
 
 **没有 `Shutdown`**：需要记住该清理什么，早晚会漏。只有可逆上下文。
 
@@ -202,6 +205,24 @@ context.Registry.AddPluginSource(new MySource());
 | 卸载 | 面板 `Dispose` 解绑宿主事件并清预览 |
 | UI | 允许并鼓励 Avalonia（XAML + ViewModel + 绑定）；手拼控件仅为当前示例写法 |
 
+### 9.1 第二参考实现：Mask 3D（文档型插件 + 私有原生引擎）
+
+`Layeron.Plugins.Model3D` 演示另一条路径：把**掩膜降采样成体素，再抽取表面三角网格**，用 HelixToolkit.Nex 在文档标签页里交互式展示（旋转/平移/缩放）。
+
+| 关注点 | 做法 |
+|---|---|
+| 贡献 | `AddDocument`（文档标签页）。3D 模型是要与切片视图平级的主视图，不是侧边小工具 |
+| 惰性 | 激活时不计算任何东西；引擎与场景都由 `ContentFactory` 在首次打开标签页时才创建 |
+| 私有依赖 | `HelixToolkit*` 不在 `PluginLoadContext` 共享前缀里 → 引擎装进插件自己的 ALC、随插件一起卸载；`CopyLocalLockFileAssemblies=true` 才保证 DLL 落进插件目录（类库默认不拷 NuGet 依赖） |
+| 视图 | `HelixViewport` 由 Avalonia 合成器驱动（离屏 Vulkan，Windows 经 D3D11 共享纹理 → `ICompositionGpuInterop` 导入），因此**不需要窗口句柄**；`HelixToolkit.Nex.Avalonia` 只依赖 net8.0，net10.0 宿主可直接引用 |
+| 视图构造 | 带 `x:Class` 的 XAML 必须提供**公开无参构造**，否则运行时加载器无法实例化该资源（`AVLN3001`）。约定与 `ThresholdToolView` 一致：无参构造**只构建视觉树**（供设计器/加载器用），带服务构造才接线宿主；因此宿主依赖（服务、引擎线程）均为可空并带空值守卫，设计器实例彻底惰性 |
+| 线程 | 场景必须在**后台线程**构造（建场景会阻塞，放 UI 线程可能死锁）。引擎的 World 单线程且绑定创建它的线程，故所有引擎/World 操作排在**一个专用工作线程**上（`Mask3DView.EngineThread` 单线程队列）；不能用 `Task.Run`——线程池下一次会换线程 |
+| 体素化 | 逐 Z 取 `Big3DBitMap.GetXYSlice(z)`（形状 `[Y,X]`，享受块级批量拷贝），按 factor 做 **OR 折叠**（薄结构不会被抹掉），得到 `bool[nx,ny,nz]` |
+| 网格 | 实体体素只在邻居为空/越界时输出该面（两个三角）；每面 4 个独立顶点带**面法线**（共享顶点会把法线平均掉、方块角变圆）；顶点顺序按右手定则验证为**外向 CCW**；模型居中于原点便于轨道相机围绕 |
+| 双面 | `cullable: false`：掩膜常是薄片，单面渲染会在背面消失；winding 仍是外向 CCW，与显式法线一致 |
+| 重建 | 重算前先释放旧的 geometry / material / node，否则每次重建泄漏一组 GPU 缓冲 |
+| 生命周期 | 关标签或卸载插件 → 宿主 dispose 内容 → 视图先 `HelixViewport.Dispose()`（它拥有 per-viewport RenderContext 与互操作资源、且从不 dispose 引擎），再在引擎线程上释放 engine，最后释放 `D3D11DeviceManager`（它必须活到引擎之后） |
+
 ---
 
 ## 10. 脚本宿主（未完成）
@@ -220,7 +241,7 @@ context.Registry.AddPluginSource(new MySource());
 | 插件生命周期 | 加载/卸载/重复 id/激活抛异常回滚/管理器 Dispose |
 | 作用域 | 定义者卸载 → 扩展点消失；贡献者卸载 → 贡献消失而插槽仍在；预览被清理；掩膜被保留 |
 | 嵌套加载 | 子插件归属、卸载加载器级联卸载、只卸载子插件、源重载不产生重复 |
-| 真实程序集 | 元数据身份、加载、卸载后 ALC 被回收、热重载得到新实例、非插件程序集静默跳过 |
+| 真实程序集 | 元数据身份、加载、卸载后 ALC 被回收、热重载得到新实例、非插件程序集静默跳过；文档型插件（Model3D）的 document 贡献与卸载，且**内容工厂从未被调用也能完成加载/卸载**（因此无 GPU 环境同样可测） |
 
 ---
 
@@ -259,6 +280,10 @@ public sealed class MyPlugin : IPlugin
                     context.Services.Log.Info($"voxels = {Count(v16)}");
             }
         });
+
+        // 直连贡献：工具面板进边缘坞，文档标签页进中央文档坞
+        // context.Registry.AddTool(new ToolContribution { Id = "x", Title = "面板", ContentFactory = () => new MyControl() });
+        // context.Registry.AddDocument(new DocumentContribution { Id = "y", Title = "文档", ContentFactory = () => new MyControl() });
 
         // 宿主强类型糖：过滤器与设置页走扩展方法，底层都是 Contribute
         // context.Registry.AddFilter(new MyFilter());
@@ -312,4 +337,5 @@ context.Registry.AddFilter(new Mean3x3Filter());
 3. **卸载不是立即的**：`ALC.Unload()` 之后要 GC 才回收；靠 `VerifyUnloaded` 发现而不是祈祷。
 4. **依赖冲突**：宿主版本优先（类型同一性 > 插件自由），插件不能替换宿主 UI 栈。
 5. **热重载不迁移状态**：当前实现是卸载→重新加载。
+6. **3D 展示需要可用的 GPU**：Mask 3D 走 Vulkan（Windows 经 D3D11 共享纹理），没有驱动/软件渲染的环境下标签页会显示启动失败信息而不是模型。降采样与网格抽取是纯 CPU 代码，可在无 GPU 环境下单独验证。
 

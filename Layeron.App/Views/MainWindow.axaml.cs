@@ -49,6 +49,7 @@ public partial class MainWindow : Window
         _plugins = vm.Plugins;
         _plugins.MenuChanged += RebuildPluginMenu;
         _plugins.ToolsChanged += RebuildPluginMenu;
+        _plugins.DocumentsChanged += RebuildPluginMenu;
         RebuildPluginMenu();
 
         await vm.Dock.TryRestoreSavedLayoutAsync();
@@ -66,6 +67,7 @@ public partial class MainWindow : Window
 
         _plugins.MenuChanged -= RebuildPluginMenu;
         _plugins.ToolsChanged -= RebuildPluginMenu;
+        _plugins.DocumentsChanged -= RebuildPluginMenu;
 
         // Unload plugins at shutdown so leaked load contexts are reported in the log instead of
         // silently surviving into process exit.
@@ -79,6 +81,19 @@ public partial class MainWindow : Window
             return;
 
         PluginMenu.Items.Clear();
+
+        var documents = new MenuItem { Header = "文档" };
+        foreach (var document in _plugins.Documents)
+        {
+            documents.Items.Add(new MenuItem
+            {
+                Header = document.Title,
+                Command = new RelayCommand(() => _plugins.OpenDocument(document, vm.Dock))
+            });
+        }
+
+        documents.IsEnabled = documents.Items.Count > 0;
+        PluginMenu.Items.Add(documents);
 
         var tools = new MenuItem { Header = "工具面板" };
         foreach (var tool in _plugins.Tools)

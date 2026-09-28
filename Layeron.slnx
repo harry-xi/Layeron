@@ -1,5 +1,8 @@
 <Solution>
   <Project Path="Layeron.App/Layeron.App.csproj" />
+  <Project Path="c:/Users/HarryXi/AppData/Local/Temp/luidprobe/luidprobe.csproj" />
+  <Project Path="c:/Users/HarryXi/AppData/Local/Temp/vkprobe/vkprobe.csproj" />
+  <Project Path="c:/Users/HarryXi/AppData/Local/Temp/vkprobe2/vkprobe2.csproj" />
   <Project Path="Layeron.App.Test/Layeron.App.Test.csproj" />
   <Project Path="Layeron.Big3DArray.Bench/Layeron.Big3DArray.Bench.csproj" />
   <Project Path="Layeron.Big3DArray.Test/Layeron.Big3DArray.Test.csproj" />
@@ -7,6 +10,7 @@
   <Project Path="Layeron.Plugin.Abstractions/Layeron.Plugin.Abstractions.csproj" />
   <Project Path="Layeron.Plugin.Host/Layeron.Plugin.Host.csproj" />
   <Project Path="Layeron.Plugin.Test/Layeron.Plugin.Test.csproj" />
+  <Project Path="Layeron.Plugins.Model3D/Layeron.Plugins.Model3D.csproj" />
   <Project Path="Layeron.Plugins.ScriptHost/Layeron.Plugins.ScriptHost.csproj" />
   <Project Path="Layeron.Plugins.Threshold/Layeron.Plugins.Threshold.csproj" />
 </Solution>

@@ -30,6 +30,7 @@ public sealed class PluginLifecycleTests
         manager.LoadInProcess(new ConsumerPlugin(), "test.consumer");
 
         Assert.AreEqual(1, adapter.Tools.Count, "consumer tool should be attached");
+        Assert.AreEqual(1, adapter.Documents.Count, "consumer document should be attached");
         var point = manager.PointRegistry.GetPoint<VolumeAction>(TestPoints.Actions);
         Assert.IsNotNull(point);
         Assert.AreEqual(1, point.Count, "consumer action should be on the point");
@@ -37,6 +38,7 @@ public sealed class PluginLifecycleTests
         Assert.IsTrue(manager.Unload("test.consumer"));
 
         Assert.AreEqual(0, adapter.Tools.Count, "tools must be detached on unload");
+        Assert.AreEqual(0, adapter.Documents.Count, "documents must be detached on unload");
         Assert.IsEmpty(adapter.Menus.Where(k => k.Key.StartsWith("test.consumer")), "menus must be detached");
         Assert.AreEqual(0, point.Count, "contributions to another plugin's point must be removed");
         Assert.IsTrue(manager.PointRegistry.GetPoint<VolumeAction>(TestPoints.Actions) is not null,

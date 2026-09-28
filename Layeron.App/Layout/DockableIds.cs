@@ -26,9 +26,20 @@ public static class DockableIds
     /// </summary>
     public static string ForPluginTool(string pluginId, string toolId) => $"layeron.tool.plugin.{pluginId}.{toolId}";
 
+    /// <summary>
+    /// Type id for a document contributed by a plugin. Deliberately a different prefix from tools: the
+    /// host routes the two into different docks (edge tool panel vs centre document area) purely from
+    /// the id, so no other metadata is needed to restore a plugin document into the right place.
+    /// </summary>
+    public static string ForPluginDocument(string pluginId, string documentId) => $"layeron.document.plugin.{pluginId}.{documentId}";
+
     /// <summary>True when the type id denotes a plugin-contributed tool.</summary>
     public static bool IsPluginTool(string typeId) =>
         typeId.StartsWith("layeron.tool.plugin.", StringComparison.Ordinal);
+
+    /// <summary>True when the type id denotes a plugin-contributed document.</summary>
+    public static bool IsPluginDocument(string typeId) =>
+        typeId.StartsWith("layeron.document.plugin.", StringComparison.Ordinal);
 
     /// <summary>Recovers the plugin id from a plugin tool type id, or null when it is not one.</summary>
     public static string? PluginIdOf(string typeId)

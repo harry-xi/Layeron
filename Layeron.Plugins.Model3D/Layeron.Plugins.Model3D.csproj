@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Layeron.Plugins.Model3D</AssemblyName>
+    <!-- Avalonia XAML: enable compiled XAML for the plugin's own view. -->
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!--
+      A plugin is a library, and libraries do not copy their NuGet dependencies to the output folder by
+      default. The 3D engine is a private dependency that must ship next to the plugin so the plugin's own
+      load context can resolve it, so this has to be switched on explicitly.
+    -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="LayeronPluginId" Value="layeron.model3d" />
+    <AssemblyMetadata Include="LayeronPluginName" Value="Mask 3D Model" />
+    <AssemblyMetadata Include="LayeronPluginVersion" Value="1.0.0" />
+    <AssemblyMetadata Include="LayeronPluginDescription" Value="Downsamples a mask layer and shows it as an interactive 3D surface in a document tab." />
+    <AssemblyMetadata Include="LayeronPluginApiVersion" Value="1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Contracts are compile-time only: the host's copies must be used at runtime, otherwise the
+      plugin would see a second IPlugin type.
+    -->
+    <ProjectReference Include="..\Layeron.Big3DArray\Layeron.Big3DArray.csproj" Private="false" />
+    <ProjectReference Include="..\Layeron.Plugin.Abstractions\Layeron.Plugin.Abstractions.csproj" Private="false" />
+
+    <!-- UI plugins declare views in XAML against the host's Avalonia; runtime assets are excluded. -->
+    <PackageReference Include="Avalonia" Version="12.1.3" GeneratePathProperty="true" ExcludeAssets="runtime" />
+
+    <!--
+      The 3D engine is a private dependency: "HelixToolkit" is deliberately absent from the plugin load
+      context's shared prefix list, so these assemblies load into the plugin's own context (and ship in
+      its folder) instead of leaking into the host. The engine renders offscreen with Vulkan and shares
+      its output with Avalonia's compositor, which is why no window handle is needed here.
+    -->
+    <PackageReference Include="HelixToolkit.Nex.Avalonia" Version="1.2.0" />
+  </ItemGroup>
+
+</Project>

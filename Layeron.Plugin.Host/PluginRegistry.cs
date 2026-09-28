@@ -32,6 +32,15 @@ internal sealed class PluginRegistry : IPluginRegistry
         return _context.Register(attached);
     }
 
+    public IDisposable AddDocument(DocumentContribution document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ThrowIfDisposed();
+
+        var attached = _manager.Adapter.AttachDocument(_context.PluginId, document);
+        return _context.Register(attached);
+    }
+
     public IDisposable AddMenu(MenuContribution menu)
     {
         ArgumentNullException.ThrowIfNull(menu);

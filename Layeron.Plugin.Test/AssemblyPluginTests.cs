@@ -54,6 +54,49 @@ public sealed class AssemblyPluginTests
     }
 
     /// <summary>
+    /// The 3D plugin is the only sample that contributes a document instead of a tool panel, and the only
+    /// one whose content factory would start a GPU engine. So this is also the proof that a plugin can be
+    /// loaded and unloaded without its content ever being created: the contribution hands the host a
+    /// factory, and nothing here invokes it.
+    /// </summary>
+    [TestMethod]
+    public void Model3DPlugin_LoadsAndContributesDocument()
+    {
+        var adapter = new TestHostAdapter(TestVolumes.Small());
+        var manager = new PluginManager(adapter);
+
+        var (id, name) = LoadInspectAndUnloadModel3D(manager, adapter);
+
+        Assert.AreEqual("layeron.model3d", id, "the id must come from the assembly metadata");
+        Assert.AreEqual("Mask 3D Model", name);
+        Assert.AreEqual(0, adapter.Documents.Count, "documents must be detached on unload");
+        Assert.AreEqual(0, manager.Plugins.Count);
+
+        var leaked = manager.VerifyUnloaded();
+        Assert.AreEqual(0, leaked.Count, $"leaked load contexts: {string.Join(", ", leaked)}");
+        manager.Dispose();
+    }
+
+    /// <summary>
+    /// Same frame rule as <see cref="LoadInspectAndUnload"/>: the plugin instance must be out of scope
+    /// before the leak check, so only value types may cross back into the caller's frame.
+    /// </summary>
+    private static (string Id, string Name) LoadInspectAndUnloadModel3D(
+        PluginManager manager, TestHostAdapter adapter)
+    {
+        manager.LoadAssembly(TestPaths.Model3DPluginAssembly);
+
+        var plugin = manager.Plugins.Single();
+        Assert.AreEqual(0, adapter.Tools.Count, "the 3D plugin contributes no tool panel");
+        Assert.IsTrue(adapter.Documents.ContainsKey("layeron.model3d::mask3d"),
+            "the plugin's document must be attached to the host");
+
+        var result = (plugin.Descriptor.Id, plugin.Descriptor.Name ?? "");
+        manager.Unload("layeron.model3d");
+        return result;
+    }
+
+    /// <summary>
     /// Loads and unloads the plugin in its own frame. The frame must be gone before the leak check,
     /// because any live <c>LoadedPlugin</c> - even a temporary one - references the plugin instance and
     /// would pin the load context, making the check fail for the wrong reason.

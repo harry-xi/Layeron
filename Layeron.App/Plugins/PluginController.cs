@@ -41,6 +41,7 @@ public sealed class PluginController : IDisposable
             RefreshLoadedList();
             RebuildMenuTree();
             RefreshToolList();
+            RefreshDocumentList();
         };
     }
 
@@ -50,6 +51,9 @@ public sealed class PluginController : IDisposable
     /// <summary>Tools contributed by loaded plugins.</summary>
     public ObservableCollection<ContributedTool> Tools { get; } = [];
 
+    /// <summary>Documents contributed by loaded plugins.</summary>
+    public ObservableCollection<ContributedDocument> Documents { get; } = [];
+
     /// <summary>Nested menu tree built from contributed paths.</summary>
     public IReadOnlyList<PluginMenuNode> MenuNodes { get; private set; } = [];
 
@@ -58,6 +62,9 @@ public sealed class PluginController : IDisposable
 
     /// <summary>Raised when <see cref="Tools"/> changed.</summary>
     public event Action? ToolsChanged;
+
+    /// <summary>Raised when <see cref="Documents"/> changed.</summary>
+    public event Action? DocumentsChanged;
 
     /// <summary>Raised when <see cref="Loaded"/> changed.</summary>
     public event Action? PluginsChanged;
@@ -111,6 +118,13 @@ public sealed class PluginController : IDisposable
             _services.Log.Warn($"Could not open tool '{tool.Title}' ({tool.TypeId}).");
     }
 
+    /// <summary>Opens a contributed document tab in the centre dock, focusing it if already open.</summary>
+    public void OpenDocument(ContributedDocument document, DockViewModel dock)
+    {
+        if (!dock.OpenDocumentById(document.TypeId, document.Title))
+            _services.Log.Warn($"Could not open document '{document.Title}' ({document.TypeId}).");
+    }
+
     private void RefreshLoadedList()
     {
         Loaded.Clear();
@@ -125,6 +139,14 @@ public sealed class PluginController : IDisposable
         foreach (var tool in _adapter.Tools)
             Tools.Add(tool);
         ToolsChanged?.Invoke();
+    }
+
+    private void RefreshDocumentList()
+    {
+        Documents.Clear();
+        foreach (var document in _adapter.Documents)
+            Documents.Add(document);
+        DocumentsChanged?.Invoke();
     }
 
     private void RebuildMenuTree()
