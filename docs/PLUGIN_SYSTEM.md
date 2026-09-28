@@ -222,6 +222,7 @@ context.Registry.AddPluginSource(new MySource());
 | 双面 | `cullable: false`：掩膜常是薄片，单面渲染会在背面消失；winding 仍是外向 CCW，与显式法线一致 |
 | 重建 | 重算前先释放旧的 geometry / material / node，否则每次重建泄漏一组 GPU 缓冲 |
 | 生命周期 | 关标签或卸载插件 → 宿主 dispose 内容 → 视图先 `HelixViewport.Dispose()`（它拥有 per-viewport RenderContext 与互操作资源、且从不 dispose 引擎），再在引擎线程上释放 engine，最后释放 `D3D11DeviceManager`（它必须活到引擎之后） |
+| 验证状态 | 已在多台设备验证可用；一台 5 年前设备上引擎构造会触发**原生 AV**（设备特定，非架构问题），诊断记录与可选加固见 [MASK3D_PLUGIN.md](MASK3D_PLUGIN.md) |
 
 ---
 
@@ -337,5 +338,5 @@ context.Registry.AddFilter(new Mean3x3Filter());
 3. **卸载不是立即的**：`ALC.Unload()` 之后要 GC 才回收；靠 `VerifyUnloaded` 发现而不是祈祷。
 4. **依赖冲突**：宿主版本优先（类型同一性 > 插件自由），插件不能替换宿主 UI 栈。
 5. **热重载不迁移状态**：当前实现是卸载→重新加载。
-6. **3D 展示需要可用的 GPU**：Mask 3D 走 Vulkan（Windows 经 D3D11 共享纹理），没有驱动/软件渲染的环境下标签页会显示启动失败信息而不是模型。降采样与网格抽取是纯 CPU 代码，可在无 GPU 环境下单独验证。
+6. **3D 展示需要可用的 GPU**：Mask 3D 走 Vulkan（Windows 经 D3D11 共享纹理）。功能已在多台设备验证可用，但在**老旧设备 / 异常驱动栈**上，引擎构造可能触发**原生访问违例并终止进程**——`try/catch` 接不住，标签页连"启动失败"提示都不会给出。已确认是设备特定问题，详见 [MASK3D_PLUGIN.md](MASK3D_PLUGIN.md) §4。降采样与网格抽取是纯 CPU 代码，可在无 GPU 环境下单独验证。
 
