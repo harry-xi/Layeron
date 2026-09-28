@@ -30,6 +30,14 @@ public interface IVolumeService
     /// <summary>Monotonically increasing revision; changes whenever the main volume is replaced.</summary>
     long Version { get; }
 
+    /// <summary>
+    /// Replaces the main volume: the same atomic swap a built-in load performs, so a plugin's own data
+    /// source needs no privileged API. The previous instance is never mutated, <see cref="Version"/>
+    /// advances so stale background results can be discarded, and mask layers are validated against the
+    /// new dimensions by the session's existing rules.
+    /// </summary>
+    void Replace(ReadonlyBig3DArray volume);
+
     /// <summary>Raised after the main volume changes; carries the new <see cref="Version"/>.</summary>
     event Action<long>? Replaced;
 

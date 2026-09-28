@@ -1,4 +1,4 @@
-﻿using Layeron.App.Plugins;
+using Layeron.App.Plugins;
 using Layeron.App.Session;
 
 namespace Layeron.App.ViewModels;
@@ -20,6 +20,10 @@ public class MainWindowViewModel : ViewModelBase
         Dock = new DockViewModel(sessions, services.Preview);
         Plugins = new PluginController(services, Dock);
         Settings = new SettingsWindowViewModel(Plugins);
+
+        // The session's data view model drives the import menu, and a session exists before plugins do,
+        // so the loaders are handed over here rather than in its constructor.
+        Session.SharedData.Loaders = Plugins.Loaders;
 
         Plugins.EnsureDirectories();
         Plugins.LoadAll();

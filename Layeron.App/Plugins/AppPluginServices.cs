@@ -114,6 +114,13 @@ internal sealed class AppVolumeService : IVolumeService, IDisposable
         }
     }
 
+    public void Replace(ReadonlyBig3DArray volume)
+    {
+        var shared = _sharedData ?? _sessions.Current?.SharedData
+            ?? throw new InvalidOperationException("No active session to load into.");
+        shared.Array = volume;
+    }
+
     public void Dispose()
     {
         _sessionSubscription?.Dispose();

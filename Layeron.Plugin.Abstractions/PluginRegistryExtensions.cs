@@ -38,6 +38,31 @@ public static class PluginRegistryExtensions
     }
 
     /// <summary>
+    /// Contributes a custom data source to the host-owned loader point.
+    /// Loader ids must be globally unique; duplicates fail the activation.
+    /// </summary>
+    public static IDisposable AddLoader(this IPluginRegistry registry, VolumeLoader loader)
+    {
+        ArgumentNullException.ThrowIfNull(registry);
+        ArgumentNullException.ThrowIfNull(loader);
+        ArgumentException.ThrowIfNullOrWhiteSpace(loader.Id);
+
+        var point = registry.GetPoint<VolumeLoader>(LoaderPoints.Volume);
+        if (point != null)
+        {
+            foreach (var existing in point.Items)
+            {
+                if (string.Equals(existing.Id, loader.Id, StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        $"A volume loader with id '{loader.Id}' is already registered. " +
+                        $"Loader ids must be globally unique; prefix yours with your plugin id.");
+            }
+        }
+
+        return registry.Contribute(LoaderPoints.Volume, loader);
+    }
+
+    /// <summary>
     /// Contributes a settings page to the host-owned settings point.
     /// Validates the <see cref="SettingsPageContribution"/> before contributing.
     /// </summary>
