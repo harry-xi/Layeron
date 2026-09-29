@@ -145,4 +145,71 @@ public sealed class Mask3DMarchingCubesTests
         Assert.IsTrue(voxels.TriangleCount > 0, "voxel faces");
         Assert.IsTrue(isosurface.TriangleCount > 0, "marching cubes");
     }
+
+    [TestMethod]
+    public void BothExtractionMethods_WindTheirTrianglesOutward()
+    {
+        // A triangle's winding decides which way its geometric normal points, and that normal is what
+        // the rasteriser lights with. Wound inward, the surface still closes and still has the right
+        // silhouette - so nothing about the shape gives it away - but flat shading then lights the
+        // model from the inside out, which reads as "the light is coming from below".
+        //
+        // The solid is centred on the origin, so a triangle's own centroid stands in for "outward".
+        // That is exact for the two star-shaped solids tested here.
+        foreach (var (name, grid) in new (string, bool[,,])[] { ("block", Solid(20, 20, 20)), ("ball", Ball(21)) })
+        {
+            foreach (var method in new[]
+                     {
+                         Mask3DGeometry.ExtractionMethod.VoxelFaces,
+                         Mask3DGeometry.ExtractionMethod.MarchingCubes
+                     })
+            {
+                var mesh = Mask3DGeometry.BuildSurface(grid, method, CancellationToken.None);
+
+                var inward = 0;
+                var total = 0;
+
+                for (var i = 0; i + 2 < mesh.Indices.Count; i += 3)
+                {
+                    var a = Point(mesh, mesh.Indices[i]);
+                    var b = Point(mesh, mesh.Indices[i + 1]);
+                    var c = Point(mesh, mesh.Indices[i + 2]);
+
+                    var n = System.Numerics.Vector3.Cross(b - a, c - a);
+                    if (n.LengthSquared() < 1e-12f)
+                        continue;
+
+                    total++;
+                    if (System.Numerics.Vector3.Dot(n, (a + b + c) / 3f) < 0f)
+                        inward++;
+                }
+
+                Assert.AreEqual(0, inward,
+                    $"{name} via {method}: {inward}/{total} triangles face inward, so the model is lit from the inside");
+            }
+        }
+    }
+
+    private static System.Numerics.Vector3 Point(Mask3DGeometry.SurfaceMesh mesh, uint index)
+    {
+        var v = mesh.Vertices[(int)index];
+        return new System.Numerics.Vector3(v.X, v.Y, v.Z);
+    }
+
+    /// <summary>A solid ball, whose every surface normal differs, so it catches errors a block hides.</summary>
+    private static bool[,,] Ball(int n)
+    {
+        var grid = new bool[n, n, n];
+        var c = (n - 1) / 2f;
+        var r = n / 2f - 0.5f;
+        for (var z = 0; z < n; z++)
+        for (var y = 0; y < n; y++)
+        for (var x = 0; x < n; x++)
+        {
+            var d = new System.Numerics.Vector3(x - c, y - c, z - c);
+            if (d.Length() <= r)
+                grid[x, y, z] = true;
+        }
+        return grid;
+    }
 }

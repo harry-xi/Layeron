@@ -321,6 +321,94 @@ public sealed class Mask3DRasterizerTests
     }
 
     [TestMethod]
+    public void Lighting_DoesNotDependOnWhereTheCameraIs()
+    {
+        // The light direction is a world-space direction, so a given world-space face must be shaded
+        // identically no matter where the camera orbits to. Carrying the normal into view space to
+        // light it instead mixes two coordinate frames: the mix is only accidentally right near the
+        // default orientation, and away from it the highlight slides across the model - which reads
+        // as the light having been painted onto the surface rather than shining on it.
+        var light = Vector3.Normalize(new Vector3(-0.45f, -1f, -0.6f));
+        var mesh = Block(LightingBlockSize);
+
+        // The renderer's shading terms, restated from its Shade(): ambient 0.28 plus 0.85 per unit
+        // of lambert, so a fully lit face reaches 1.13 and clips. Spelling them out here means this
+        // test pins the *behaviour* rather than the renderer's internals.
+        const float ambient = 0.28f;
+        const float diffuse = 0.85f;
+
+        foreach (var normal in new[]
+                 {
+                     new Vector3(0f, 1f, 0f), // top
+                     new Vector3(0f, 0f, 1f), // front
+                     new Vector3(1f, 0f, 0f), // right
+                 })
+        {
+            var expected = ambient + diffuse * MathF.Max(0f, -Vector3.Dot(normal, light));
+
+            foreach (var (yaw, pitch) in new[] { (0.0, 0.35), (0.0, 0.0), (0.0, -0.35), (1.57, 0.35), (3.14, 0.35) })
+            {
+                const int size = 160;
+                var renderer = new Mask3DRenderer();
+                renderer.Resize(size, size);
+                renderer.SetMesh(mesh, new Rgb(1f, 1f, 1f));
+                renderer.SetLightDirection(light);
+
+                var cosPitch = MathF.Cos((float)pitch);
+                var eye = new Vector3(
+                    (float)(Math.Sin(yaw) * cosPitch),
+                    MathF.Sin((float)pitch),
+                    (float)(Math.Cos(yaw) * cosPitch)) * 1000f;
+
+                var view = ViewProjection.LookAt(eye, Vector3.Zero, size, size, mesh.Radius * 2.3f);
+
+                // Only score a face the camera can actually see. At pitch 0 the top face is edge-on
+                // and the pixel under its centre belongs to the front face instead, which says
+                // nothing about the top face's shading.
+                var facing = Vector3.Dot(normal, Vector3.Normalize(eye));
+                if (facing < 0.2f)
+                    continue;
+
+                renderer.Render(view);
+
+                // Sample the CENTRE of the face itself. A block of edge n spans [-n/2, n/2] on every
+                // axis, so the face whose normal is `normal` is the plane at distance n/2 along that
+                // normal - sampling any nearer lands inside the solid, where the pixel belongs to
+                // whichever face is in front, and measures nothing about the face asked for.
+                var onFace = normal * BlockHalfExtent(LightingBlockSize);
+                var screen = view.Project(onFace);
+                if (screen.X < 1 || screen.X >= size - 1 || screen.Y < 1 || screen.Y >= size - 1)
+                    continue;
+
+                // The lit range peaks at 1.13 and clips, so anything at the ceiling is consistent
+                // with the expected value; otherwise compare the byte directly.
+                var raw = Pixel(renderer, size, (int)screen.X, (int)screen.Y).R;
+                var level = expected >= 1f ? 255f : expected * 255f;
+
+                Assert.IsTrue(Math.Abs(raw - level) < 6f,
+                    $"face {normal} at yaw={yaw} pitch={pitch}: expected {expected:F3} (byte {level:F0}) but read {raw}");
+            }
+        }
+    }
+
+    /// <summary>A solid block, whose six axis-aligned faces make the lighting easy to score.</summary>
+    private const int LightingBlockSize = 20;
+
+    /// <summary>Half the block's edge length: where each of its faces actually is.</summary>
+    private static float BlockHalfExtent(int n) => n * 0.5f;
+
+    private static Mask3DGeometry.SurfaceMesh Block(int n)
+    {
+        var grid = new bool[n, n, n];
+        for (var z = 0; z < n; z++)
+        for (var y = 0; y < n; y++)
+        for (var x = 0; x < n; x++)
+            grid[x, y, z] = true;
+
+        return Mask3DGeometry.BuildSurface(grid, CancellationToken.None);
+    }
+
+    [TestMethod]
     public void Projection_PutsTheLookTargetAtTheCentreOfTheViewport()
     {
         var view = StraightOnCamera(80, 60);

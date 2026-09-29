@@ -111,13 +111,17 @@ internal sealed class Mask3DRenderer
             var b = view.Project(worldB);
             var c = view.Project(worldC);
 
-            // Flat shading from the geometric normal carried into view space.
+            // Flat shading from the geometric normal. The normal deliberately stays in WORLD space,
+            // because that is the space the light direction lives in. Carrying the normal into view
+            // space instead would dot a view-space normal with a world-space light - mixing two
+            // frames - and the mix is only accidentally right when the camera sits near the default
+            // orientation. As the camera orbits, the highlight slides across the model and a light
+            // that is plainly overhead ends up reading as if it were shining from below.
             var normal = Vector3.Cross(worldB - worldA, worldC - worldA);
             if (normal.LengthSquared() > 0f)
                 normal = Vector3.Normalize(normal);
 
-            var viewNormal = Vector3.TransformNormal(normal, view.WorldToView);
-            var lambert = MathF.Max(0f, -Vector3.Dot(viewNormal, _lightDirection));
+            var lambert = MathF.Max(0f, -Vector3.Dot(normal, _lightDirection));
             var color = Shade(lambert);
 
             DrawClipped(a, b, c, color);

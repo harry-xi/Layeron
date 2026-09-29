@@ -45,8 +45,16 @@ internal readonly struct ViewProjection
         _height = height;
     }
 
-    /// <summary>The view matrix, exposed so the rasteriser can bring a normal into view space.</summary>
-    public Matrix4x4 WorldToView => _view;
+    /// <summary>
+    /// The view matrix.
+    /// <para>
+    /// Deliberately not exposed. The one thing a caller used to want out of it was a normal for
+    /// lighting, but lighting happens in world space: mixing a view-space normal with a world-space
+    /// light direction silently made the shading depend on where the camera happened to be. Handing
+    /// out the matrix only invites that mistake again, and nothing else needs it - depth is taken
+    /// internally in <see cref="Project"/>.
+    /// </para>
+    /// </summary>
 
     /// <summary>
     /// Builds an orthographic projection looking from <paramref name="position"/> at

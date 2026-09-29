@@ -153,9 +153,14 @@ internal static class MarchingCubes
     /// <summary>
     /// Emits the triangles of one cell, if the surface passes through it at all.
     /// <para>
-    /// A corner counts as inside when its value is at or above the level, which is the convention the
-    /// table's winding is defined against. An all-inside or all-outside cell emits nothing, so it is
-    /// rejected before any table lookup - the common case for a mask, and worth the early out.
+    /// A corner counts as inside when its value is <em>below</em> the level, because the field is a
+    /// signed distance: negative inside the solid, positive outside. The table's winding is defined
+    /// against a set bit meaning "inside", so the bit test has to follow the field's own sign.
+    /// Testing <c>&gt;= IsoLevel</c> instead reads the table for the complementary configuration, and
+    /// because the complementary case of a cell is generally a <em>different</em> triangulation rather
+    /// than the same edges wound the other way, the surface still closes and still looks right in
+    /// silhouette - which is why nothing about the shape gave the bug away. But every triangle then
+    /// faces inward, and flat shading then lights the model from the inside out.
     /// </para>
     /// </summary>
     private static void EmitCell(Mask3DSignedDistanceField field, Band band, int x, int y, int z)
@@ -176,7 +181,9 @@ internal static class MarchingCubes
         var configIndex = 0;
         for (var i = 0; i < 8; i++)
         {
-            if (c[i] >= IsoLevel)
+            // The field is negative inside, so "inside the solid" is below the level, not at or
+            // above it. Getting this backwards silently inverts the winding of every triangle.
+            if (c[i] < IsoLevel)
                 configIndex |= 1 << i;
         }
 
