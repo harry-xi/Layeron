@@ -2,13 +2,13 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:hx="clr-namespace:HelixToolkit.Nex.Avalonia;assembly=HelixToolkit.Nex.Avalonia"
+             xmlns:m3d="clr-namespace:Layeron.Plugins.Model3D;assembly=Layeron.Plugins.Model3D"
              mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="520"
              x:Class="Layeron.Plugins.Model3D.Mask3DView">
 
   <!--
-    A toolbar over the engine's viewport. The viewport composites the offscreen Vulkan frame through
-    Avalonia's GPU interop, so ordinary controls (this toolbar, any overlay) draw on top of it.
+    A toolbar over the 3D viewport. The viewport rasterises on the CPU and presents through a
+    WriteableBitmap, so it draws as an ordinary Avalonia visual and needs no GPU interop.
   -->
   <Grid RowDefinitions="Auto,*">
 
@@ -20,13 +20,16 @@
         <TextBlock Text="降采样" VerticalAlignment="Center" />
         <ComboBox x:Name="FactorBox" Width="80" />
 
+        <TextBlock Text="重建方式" VerticalAlignment="Center" />
+        <ComboBox x:Name="MethodBox" Width="150" />
+
         <Button x:Name="GenerateButton" Content="生成模型" />
         <ProgressBar x:Name="Progress" Width="90" IsIndeterminate="True" IsVisible="False" />
         <TextBlock x:Name="StatusText" VerticalAlignment="Center" TextWrapping="NoWrap" />
       </StackPanel>
     </Border>
 
-    <hx:HelixViewport Grid.Row="1" x:Name="Viewport" />
+    <m3d:Mask3DViewport Grid.Row="1" x:Name="Viewport" />
 
   </Grid>
 </UserControl>

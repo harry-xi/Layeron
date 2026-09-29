@@ -1,8 +1,5 @@
 <Solution>
   <Project Path="Layeron.App/Layeron.App.csproj" />
-  <Project Path="c:/Users/HarryXi/AppData/Local/Temp/luidprobe/luidprobe.csproj" />
-  <Project Path="c:/Users/HarryXi/AppData/Local/Temp/vkprobe/vkprobe.csproj" />
-  <Project Path="c:/Users/HarryXi/AppData/Local/Temp/vkprobe2/vkprobe2.csproj" />
   <Project Path="Layeron.App.Test/Layeron.App.Test.csproj" />
   <Project Path="Layeron.Big3DArray.Bench/Layeron.Big3DArray.Bench.csproj" />
   <Project Path="Layeron.Big3DArray.Test/Layeron.Big3DArray.Test.csproj" />

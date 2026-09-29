@@ -23,11 +23,11 @@
     -->
     <ProjectReference Include="..\Layeron.Plugins.ScriptHost\Layeron.Plugins.ScriptHost.csproj" ReferenceOutputAssembly="false" />
     <!--
-      The 3D plugin is built but not referenced, for the same reason as the script host: it must be
-      exercised from disk, exactly as a user's plugin would be. Keeping it unreferenced also keeps its
-      private native-backed engine out of this project's own output.
+      The 3D plugin is referenced so its extraction and rasterisation maths can be tested directly, in
+      addition to being loaded and unloaded as an isolated plugin by AssemblyPluginTests. Its visual
+      tree is not exercised here, so the tests stay headless.
     -->
-    <ProjectReference Include="..\Layeron.Plugins.Model3D\Layeron.Plugins.Model3D.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Layeron.Plugins.Model3D\Layeron.Plugins.Model3D.csproj" />
     <!--
       The threshold plugin is referenced so its algorithm can be tested directly, unit-test style,
       in addition to being loaded and unloaded as an isolated plugin by AssemblyPluginTests.

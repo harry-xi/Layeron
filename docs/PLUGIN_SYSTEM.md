@@ -205,24 +205,26 @@ context.Registry.AddPluginSource(new MySource());
 | 卸载 | 面板 `Dispose` 解绑宿主事件并清预览 |
 | UI | 允许并鼓励 Avalonia（XAML + ViewModel + 绑定）；手拼控件仅为当前示例写法 |
 
-### 9.1 第二参考实现：Mask 3D（文档型插件 + 私有原生引擎）
+### 9.1 第二参考实现：Mask 3D（文档型插件 + 自研 CPU 渲染）
 
-`Layeron.Plugins.Model3D` 演示另一条路径：把**掩膜降采样成体素，再抽取表面三角网格**，用 HelixToolkit.Nex 在文档标签页里交互式展示（旋转/平移/缩放）。
+`Layeron.Plugins.Model3D` 演示另一条路径：把**掩膜降采样成体素，再抽取表面三角网格**，用自研的 CPU 光栅化器在文档标签页里交互式展示（旋转/平移/缩放）。
 
 | 关注点 | 做法 |
 |---|---|
 | 贡献 | `AddDocument`（文档标签页）。3D 模型是要与切片视图平级的主视图，不是侧边小工具 |
-| 惰性 | 激活时不计算任何东西；引擎与场景都由 `ContentFactory` 在首次打开标签页时才创建 |
-| 私有依赖 | `HelixToolkit*` 不在 `PluginLoadContext` 共享前缀里 → 引擎装进插件自己的 ALC、随插件一起卸载；`CopyLocalLockFileAssemblies=true` 才保证 DLL 落进插件目录（类库默认不拷 NuGet 依赖） |
-| 视图 | `HelixViewport` 由 Avalonia 合成器驱动（离屏 Vulkan，Windows 经 D3D11 共享纹理 → `ICompositionGpuInterop` 导入），因此**不需要窗口句柄**；`HelixToolkit.Nex.Avalonia` 只依赖 net8.0，net10.0 宿主可直接引用 |
-| 视图构造 | 带 `x:Class` 的 XAML 必须提供**公开无参构造**，否则运行时加载器无法实例化该资源（`AVLN3001`）。约定与 `ThresholdToolView` 一致：无参构造**只构建视觉树**（供设计器/加载器用），带服务构造才接线宿主；因此宿主依赖（服务、引擎线程）均为可空并带空值守卫，设计器实例彻底惰性 |
-| 线程 | 场景必须在**后台线程**构造（建场景会阻塞，放 UI 线程可能死锁）。引擎的 World 单线程且绑定创建它的线程，故所有引擎/World 操作排在**一个专用工作线程**上（`Mask3DView.EngineThread` 单线程队列）；不能用 `Task.Run`——线程池下一次会换线程 |
+| 惰性 | 激活时不计算任何东西；网格与首帧由 `ContentFactory` 在首次打开标签页时才生成 |
+| 无私有依赖 | 渲染为纯托管 CPU 运算，不含 GPU 上下文或原生互操作，插件**无需任何 `PackageReference` 私有依赖**，`CopyLocalLockFileAssemblies` 也不再需要——部署仅 3 个文件 |
+| 视图 | 自定义 `Mask3DViewport : Control`，以 `WriteableBitmap` 呈现像素，经 Avalonia 常规合成输出 |
+| 视图构造 | 带 `x:Class` 的 XAML 必须提供**公开无参构造**，否则运行时加载器无法实例化该资源（`AVLN3001`）。约定与 `ThresholdToolView` 一致：无参构造**只构建视觉树**（供设计器/加载器用），带服务构造才接线宿主；因此宿主依赖（服务）均为可空并带空值守卫，设计器实例彻底惰性 |
+| 线程 | 降采样/表面抽取与光栅化都是纯 CPU 工作，放在 `Task.Run` 上跑，只有成品位图回 UI 线程；**没有"必须绑定单一线程"的引擎状态**，因此不需要专用工作线程 |
+| 取消 | 新的生成请求会取消上一个（`CancellationToken`），保证连续改降采样倍数时只呈现最后那个 |
 | 体素化 | 逐 Z 取 `Big3DBitMap.GetXYSlice(z)`（形状 `[Y,X]`，享受块级批量拷贝），按 factor 做 **OR 折叠**（薄结构不会被抹掉），得到 `bool[nx,ny,nz]` |
 | 网格 | 实体体素只在邻居为空/越界时输出该面（两个三角）；每面 4 个独立顶点带**面法线**（共享顶点会把法线平均掉、方块角变圆）；顶点顺序按右手定则验证为**外向 CCW**；模型居中于原点便于轨道相机围绕 |
-| 双面 | `cullable: false`：掩膜常是薄片，单面渲染会在背面消失；winding 仍是外向 CCW，与显式法线一致 |
-| 重建 | 重算前先释放旧的 geometry / material / node，否则每次重建泄漏一组 GPU 缓冲 |
-| 生命周期 | 关标签或卸载插件 → 宿主 dispose 内容 → 视图先 `HelixViewport.Dispose()`（它拥有 per-viewport RenderContext 与互操作资源、且从不 dispose 引擎），再在引擎线程上释放 engine，最后释放 `D3D11DeviceManager`（它必须活到引擎之后） |
-| 验证状态 | 已在多台设备验证可用；一台 5 年前设备上引擎构造会触发**原生 AV**（设备特定，非架构问题），诊断记录与可选加固见 [MASK3D_PLUGIN.md](MASK3D_PLUGIN.md) |
+| 双面 | **不剔除背面**：掩膜常是薄片，单面渲染会在背面消失；winding 仍是外向 CCW，与显式法线一致 |
+| 光栅化 | z-buffer（存 `1/w`，免逐像素除法）+ **先近平面 Sutherland-Hodgman 裁剪、再视口裁剪**、最后扫描线填充；**平面着色**（每三角形算一次光照），因每个面本身是平面且自带法线 |
+| 按需重绘 | 静态模型不需要常驻渲染循环：仅在换网格、改尺寸、拖拽、滚轮时重绘，空闲时 CPU 为零；请求经 `Dispatcher.UIThread.Post` 合并，一批交互只栅格化一次 |
+| 生命周期 | 关标签或卸载插件 → 宿主 dispose 内容 → 视图取消在途的生成请求并丢弃结果（`CancellationToken`），无 GPU 资源需释放 |
+| 验证状态 | ✅ 全量测试通过（152 项，含 15 项光栅器/投影单测，覆盖"模型是否真的出现"、深度测试、近平面裁剪、退化相机）；见 [MASK3D_PLUGIN.md](MASK3D_PLUGIN.md) |
 
 ---
 
