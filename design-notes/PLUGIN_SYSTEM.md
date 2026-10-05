@@ -379,7 +379,7 @@ public sealed class MyPlugin : IPlugin
     public void Activate(IPluginContext context)
     {
         context.Registry.AddMenu(new MenuContribution {
-            Path = "我的功能", Header = "统计体素数",
+            Path = ["我的功能"], Header = "统计体素数",
             Execute = () => {
                 var snap = context.Services.Volumes.Snapshot();
                 if (snap.Volume is ReadonlyBig3DArray<byte> v8)

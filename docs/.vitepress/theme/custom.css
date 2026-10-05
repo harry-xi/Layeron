@@ -1,0 +1,19 @@
+:root {
+  --vp-c-brand-1: #2f6feb;
+  --vp-c-brand-2: #3b82f6;
+  --vp-c-brand-3: #60a5fa;
+  --vp-c-brand-soft: rgba(47, 111, 235, 0.14);
+}
+
+.dark {
+  --vp-c-brand-1: #7aa7ff;
+  --vp-c-brand-2: #5b8def;
+  --vp-c-brand-3: #3b82f6;
+  --vp-c-brand-soft: rgba(90, 140, 255, 0.16);
+}
+
+/* Full-width tables read better for the API reference pages. */
+.vp-doc table {
+  display: table;
+  width: 100%;
+}

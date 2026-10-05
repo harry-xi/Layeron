@@ -1,0 +1,6 @@
+# pnpm settings for the documentation site.
+# Since pnpm 12 these settings live in pnpm-workspace.yaml; omitting `packages`
+# keeps this a single-package project.
+allowBuilds:
+  esbuild: true
+

@@ -52,7 +52,7 @@ public sealed class Mask3DRenderPerformanceTests
 
         // Wall-clock is deliberately not asserted on. Test projects run in parallel, so this number
         // moves by 6x depending on what else is running - a threshold on it is flaky, not informative.
-        // The budget is documented in docs/MASK3D_PLUGIN.md instead (measured ~3 ms at 800x600 for
+        // The budget is documented in design-notes/MASK3D_PLUGIN.md instead (measured ~3 ms at 800x600 for
         // this scene on an otherwise idle machine).
         Console.WriteLine($"{mesh.TriangleCount} triangles at 800x600: {perFrame:F1} ms");
 

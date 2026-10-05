@@ -26,7 +26,7 @@ namespace Layeron.App;
 /// layout by CLR type name and reconstructs it by reflection. That cannot express this app's panes: a
 /// slice viewer's axis is read-only state, its session subscription only exists in a constructor, a
 /// plugin panel's type lives in another load context, and one missing type fails the whole document.
-/// See docs/LAYOUT_PERSISTENCE.md for the measurements behind that decision.
+/// See design-notes/LAYOUT_PERSISTENCE.md for the measurements behind that decision.
 /// </para>
 /// </summary>
 public class DockFactory : Factory

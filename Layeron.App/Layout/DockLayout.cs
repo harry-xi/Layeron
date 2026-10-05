@@ -11,7 +11,7 @@ namespace Layeron.App.Layout;
 /// This is intentionally not Dock's own <c>DockSerializer</c>: that stores a layout by CLR type name and
 /// rebuilds it by reflection, which cannot restore read-only state (a slice viewer's axis), constructor-
 /// only state (a session subscription) or a type that lives in an unloaded plugin's load context.
-/// See docs/LAYOUT_PERSISTENCE.md.
+/// See design-notes/LAYOUT_PERSISTENCE.md.
 /// </para>
 /// </summary>
 public sealed class DockLayout

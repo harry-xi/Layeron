@@ -9,7 +9,7 @@ namespace Layeron.Plugin.Abstractions;
 /// </summary>
 public static class FilterPoints
 {
-    /// <summary>Volume filters (<see cref="IVolumeFilter"/>). See §14 of PLUGIN_SYSTEM.md.</summary>
+    /// <summary>Volume filters (<see cref="IVolumeFilter"/>). See §14 of design-notes/PLUGIN_SYSTEM.md.</summary>
     public const string Volume = "layeron.filters.volume";
 }
 

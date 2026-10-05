@@ -20,7 +20,7 @@ namespace Layeron.Scripting.Abstractions;
 /// and the cast Roslyn performs on the globals argument would fail. This assembly is the scripting
 /// layer's shared contract, deferred to the default context by the plugin loader, so both sides bind
 /// to one <see cref="ScriptGlobals"/> - the same "host standard type" rule extension points follow
-/// (docs/PLUGIN_SYSTEM.md §7, §10).
+/// (design-notes/PLUGIN_SYSTEM.md §7, §10).
 /// </para>
 /// </summary>
 public sealed class ScriptGlobals

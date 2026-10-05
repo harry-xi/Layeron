@@ -29,3 +29,8 @@ sixlabors.lic
 
 ## Six labors lic
 **/sixlabors.lic
+
+## Documentation site (VitePress / pnpm)
+node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/

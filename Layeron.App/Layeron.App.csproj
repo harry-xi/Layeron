@@ -44,7 +44,7 @@
         <ProjectReference Include="..\Layeron.Plugin.Host\Layeron.Plugin.Host.csproj" />
         <!--
           The scripting layer: the app implements IScriptHostService and must have the assembly in its
-          default context, which is also where Roslyn loads compiled scripts. See PLUGIN_SYSTEM.md §10.
+          default context, which is also where Roslyn loads compiled scripts. See design-notes/PLUGIN_SYSTEM.md §10.
         -->
         <ProjectReference Include="..\Layeron.Scripting.Abstractions\Layeron.Scripting.Abstractions.csproj" />
         <!--

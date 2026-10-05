@@ -15,7 +15,7 @@
 
     This assembly must be loaded exactly once - by the default context - because Roslyn compiles a script
     into an assembly it loads there, while the script host plugin runs in its own collectible context.
-    See PluginLoadContext.SharedPrefixes and docs/PLUGIN_SYSTEM.md §10.
+    See PluginLoadContext.SharedPrefixes and design-notes/PLUGIN_SYSTEM.md §10.
   -->
   <ItemGroup>
     <ProjectReference Include="..\Layeron.Big3DArray\Layeron.Big3DArray.csproj" />
