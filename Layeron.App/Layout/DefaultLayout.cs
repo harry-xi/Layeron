@@ -42,23 +42,6 @@ public static class DefaultLayout
                     Proportion = double.NaN,
                     VisibleDockables =
                     [
-
-                        new DockLayoutNode
-                        {
-                            Kind = LayoutNodeKind.ToolDock,
-                            Id = "LeftToolDock",
-                            Title = "LeftToolDock",
-                            Proportion = LeftToolDockProportion,
-                            Alignment = LayoutAlignment.Left,
-                            ActiveIndex = 0,
-                            VisibleDockables =
-                            [
-                                Dockable(DockableIds.WindowLevel, "WindowLevel", "Window Level")
-                            ]
-                        },
-
-                        Splitter(),
-
                         // A vertical stack here is what puts the log under the documents, spanning their
                         // width, instead of beside them.
                         new DockLayoutNode
@@ -117,7 +100,8 @@ public static class DefaultLayout
                             ActiveIndex = 0,
                             VisibleDockables =
                             [
-                                Dockable(DockableIds.MaskManager, "MaskManager", "Mask Manager")
+                                Dockable(DockableIds.MaskManager, "MaskManager", "Mask Manager"),
+                                Dockable(DockableIds.WindowLevel, "WindowLevel", "Window Level")
                             ]
                         }
                     ]

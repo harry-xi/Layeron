@@ -2,25 +2,6 @@
 
 The main window is a docking layout: three slice views occupy the centre document area, tool panels sit on the left, right and bottom edges, the menu bar is at the top and the status bar at the bottom.
 
-## Default layout
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│ 文件   窗口   Tools   插件                                     │
-├──────────┬───────────────────────────────┬───────────────────┤
-│          │  Documents                    │                   │
-│  Window  │  ┌─────┬─────┬─────┐          │   Mask Manager     │
-│  Level   │  │Axial│Coron│Sagit│          │                   │
-│          │  └─────┴─────┴─────┘          │                   │
-│          ├───────────────────────────────┤                   │
-│          │  Log                          │                   │
-├──────────┴───────────────────────────────┴───────────────────┤
-│ status text                                      workspace     │
-└──────────────────────────────────────────────────────────────┘
-```
-
-This is the default layout. `窗口 → 重置布局` (Window → Reset layout) returns to it at any time.
-
 ## Menus
 
 | Menu | Contents |
