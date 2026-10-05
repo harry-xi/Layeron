@@ -8,9 +8,9 @@ using RxVoid = ReactiveUI.Primitives.RxVoid;
 namespace Layeron.App.Plugins;
 
 /// <summary>
-/// One contributed menu entry as the window sees it. Contributions arrive as a flat list of
-/// slash-separated paths; the view model turns that into the nested item list the Menu control binds
-/// to, so a plugin never has to know anything about the menu's structure.
+/// One contributed menu entry as the window sees it. Contributions arrive as a flat list, each naming
+/// the folder segments it lives under; the view model turns that into the nested item list the Menu
+/// control binds to, so a plugin never has to know anything about the menu's structure.
 /// </summary>
 public sealed class PluginMenuNode
 {
@@ -50,11 +50,13 @@ public sealed class PluginMenuNode
 
         foreach (var menu in menus.OrderBy(m => m.Order).ThenBy(m => m.Header, StringComparer.OrdinalIgnoreCase))
         {
-            var folders = menu.Path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
             var level = roots;
-            foreach (var folder in folders)
+            foreach (var folder in menu.Path)
             {
+                // Ignore blank segments so a stray empty element cannot create an unnamed folder.
+                if (string.IsNullOrWhiteSpace(folder))
+                    continue;
+
                 var node = level.FirstOrDefault(n => string.Equals(n.Header, folder, StringComparison.OrdinalIgnoreCase));
                 if (node == null)
                 {
@@ -95,7 +97,7 @@ public sealed class PluginMenuNode
 }
 
 /// <summary>A contributed menu entry in the form the menu builder consumes.</summary>
-public sealed record MenuDescription(string Path, string Header, Action Execute, Func<bool>? CanExecute, int Order);
+public sealed record MenuDescription(IReadOnlyList<string> Path, string Header, Action Execute, Func<bool>? CanExecute, int Order);
 
 /// <summary>Command adapter so the Menu control can invoke a plugin callback and honour its predicate.</summary>
 internal sealed class PluginMenuCommand(MenuDescription description) : ICommand

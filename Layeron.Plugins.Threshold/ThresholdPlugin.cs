@@ -42,7 +42,7 @@ public sealed class ThresholdPlugin : IPlugin
 
         context.Registry.AddMenu(new MenuContribution
         {
-            Path = "阈值分割",
+            Path = ["阈值分割"],
             Header = "阈值分割说明",
             CanExecute = () => services.Volumes.Current != null,
             Execute = () => services.Log.Info(

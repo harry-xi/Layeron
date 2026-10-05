@@ -22,7 +22,7 @@ public sealed class ScriptHostPlugin : IPlugin
     /// <summary>Plugin id; must match the assembly metadata.</summary>
     public const string Id = "layeron.scripthost";
 
-    private const string MenuPath = "脚本";
+    private static readonly string[] MenuPath = ["脚本"];
 
     public void Activate(IPluginContext context)
     {

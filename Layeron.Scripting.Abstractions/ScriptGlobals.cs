@@ -200,7 +200,7 @@ public sealed class ScriptGlobals
     public void Menu(string header, Action execute, Func<bool>? canExecute = null) =>
         Run.Invoke(() => Plugin.Registry.AddMenu(new MenuContribution
         {
-            Path = "脚本",
+            Path = ["脚本"],
             Header = header,
             Execute = execute,
             CanExecute = canExecute

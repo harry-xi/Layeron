@@ -64,7 +64,7 @@ public interface IPluginRegistry
     /// <summary>Registers a centre-area document tab. The handle detaches it and can show it on demand.</summary>
     IDockableContribution AddDocument(DocumentContribution document);
 
-    /// <summary>Registers a menu entry (optionally nested through a slash-separated path).</summary>
+    /// <summary>Registers a menu entry, optionally nested under the folders named by <see cref="MenuContribution.Path"/>.</summary>
     IDisposable AddMenu(MenuContribution menu);
 
     /// <summary>
@@ -194,11 +194,12 @@ public enum DockHint
 public sealed class MenuContribution
 {
     /// <summary>
-    /// Slash-separated folder path relative to the host's plugin menu, e.g. <c>Threshold/Tools</c>; empty
-    /// for a top-level entry. <see cref="Header"/> is appended as the leaf, so this is where the entry
-    /// lives rather than what it is called.
+    /// Folder path relative to the host's plugin menu, one segment per folder, e.g.
+    /// <c>["Threshold", "Tools"]</c>. Empty (the default) puts the entry at the top level.
+    /// <see cref="Header"/> is the entry itself and is appended under these folders, so this is
+    /// where the entry lives rather than what it is called.
     /// </summary>
-    public required string Path { get; init; }
+    public IReadOnlyList<string> Path { get; init; } = [];
 
     /// <summary>Header shown on the leaf item.</summary>
     public required string Header { get; init; }

@@ -125,7 +125,7 @@ public sealed class PluginLifecycleTests
         {
             context.Registry.AddMenu(new MenuContribution
             {
-                Path = "Test/Throwing",
+                Path = ["Test", "Throwing"],
                 Header = "Registered then failed",
                 Execute = () => { }
             });

@@ -17,7 +17,7 @@ internal sealed class DocsSamplePlugin : IPlugin
     {
         context.Registry.AddMenu(new MenuContribution
         {
-            Path = "我的功能",
+            Path = ["我的功能"],
             Header = "统计体素数",
             Execute = () =>
             {

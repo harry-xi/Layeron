@@ -25,7 +25,7 @@ internal sealed class PublisherPlugin : IPlugin
         context.Registry.DefinePoint<VolumeAction>(TestPoints.Actions, "Test actions");
         context.Registry.AddMenu(new MenuContribution
         {
-            Path = "Test/Publisher",
+            Path = ["Test", "Publisher"],
             Header = "From publisher",
             Execute = () => Seen.Add("publisher")
         });
@@ -86,7 +86,7 @@ internal sealed class ChildPlugin : IPlugin
     {
         context.Registry.AddMenu(new MenuContribution
         {
-            Path = "Test/Child",
+            Path = ["Test", "Child"],
             Header = "From child",
             Execute = () => { }
         });
