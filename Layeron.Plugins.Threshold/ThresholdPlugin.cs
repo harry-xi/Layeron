@@ -39,14 +39,6 @@ public sealed class ThresholdPlugin : IPlugin
             PreferredDock = DockHint.Right,
             ContentFactory = () => new ThresholdToolView(services, context.PluginId, point)
         });
-
-        context.Registry.AddMenu(new MenuContribution
-        {
-            Path = ["阈值分割"],
-            Header = "阈值分割说明",
-            CanExecute = () => services.Volumes.Current != null,
-            Execute = () => services.Log.Info(
-                "Open 插件 → 工具面板 → 阈值分割, then use its 应用 button to create a mask layer.")
-        });
+        
     }
 }

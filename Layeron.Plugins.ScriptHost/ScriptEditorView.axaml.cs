@@ -3,6 +3,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using Avalonia.Logging;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
 using AvaloniaEdit;
@@ -28,7 +29,7 @@ public sealed partial class ScriptEditorView : UserControl, IScriptEditor
     private string? _path;
     private TextEditor? _editor;
     private TextBlock? _status;
-    private Button? _cancelButton;
+    private MenuItem? _cancelButton;
     private ProgressBar? _progress;
     private CancellationTokenSource? _runCts;
 
@@ -147,7 +148,7 @@ public sealed partial class ScriptEditorView : UserControl, IScriptEditor
     {
         _editor = this.FindControl<TextEditor>("Editor");
         _status = this.FindControl<TextBlock>("StatusText");
-        _cancelButton = this.FindControl<Button>("CancelButton");
+        _cancelButton = this.FindControl<MenuItem>("CancelButton");
         _progress = this.FindControl<ProgressBar>("RunProgress");
 
         Wire("SaveButton", () => _ = SaveAsync());
@@ -163,8 +164,8 @@ public sealed partial class ScriptEditorView : UserControl, IScriptEditor
             _cancelButton.IsVisible = running;
         if (_progress is not null)
             _progress.IsVisible = running;
-        if (this.FindControl<Button>("RunButton") is { } runButton)
-            runButton.IsEnabled = !running;
+        if (this.FindControl<MenuItem>("CancelButton") is { } cancelButton)
+            cancelButton.IsVisible = running;
     }
 
     private void SetProgress(double fraction)
@@ -197,8 +198,10 @@ public sealed partial class ScriptEditorView : UserControl, IScriptEditor
 
     private void Wire(string buttonName, Action action)
     {
-        if (this.FindControl<Button>(buttonName) is { } button)
+        if (this.FindControl<MenuItem>(buttonName) is { } button)
+        {
             button.Click += (_, _) => action();
+        }
     }
 
     /// <summary>

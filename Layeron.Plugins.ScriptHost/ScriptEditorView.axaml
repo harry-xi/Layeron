@@ -11,18 +11,20 @@
     open a window. AvaloniaEdit comes from the host's Avalonia stack.
   -->
   <DockPanel>
-    <Border DockPanel.Dock="Top" Padding="6,4" BorderThickness="0,0,0,1" BorderBrush="#22808080">
-      <StackPanel Orientation="Horizontal" Spacing="6">
-        <Button x:Name="SaveButton" Content="保存"/>
-        <Button x:Name="SaveAsButton" Content="另存为…"/>
-        <Button x:Name="OpenButton" Content="打开…"/>
-        <Button x:Name="RunButton" Content="运行"/>
-        <Button x:Name="CancelButton" Content="取消" IsVisible="False"/>
-        <ProgressBar x:Name="RunProgress" Width="140" Minimum="0" Maximum="1" IsVisible="False"/>
-      </StackPanel>
-    </Border>
-
-    <Border DockPanel.Dock="Bottom" Padding="8,3">
+    <DockPanel DockPanel.Dock="Top" Background="LightGray">
+      <Menu DockPanel.Dock="Left" >
+        <MenuItem Header="文件">
+          <MenuItem x:Name="SaveButton" Header="保存"/>
+          <MenuItem x:Name="SaveAsButton" Header="另存为…"/>
+          <MenuItem x:Name="OpenButton" Header="打开…"/>
+        </MenuItem>
+        <MenuItem x:Name="RunButton" Header="运行"/>
+        <MenuItem x:Name="CancelButton" Header="取消" IsVisible="False"/>
+      </Menu>
+      <ProgressBar x:Name="RunProgress" Width="140" Minimum="0" Maximum="1" IsVisible="False"/>
+    </DockPanel>
+    
+    <Border DockPanel.Dock="Bottom" Padding="8,3" Background="LightGray">
       <TextBlock x:Name="StatusText" FontSize="11" Opacity="0.7" TextTrimming="CharacterEllipsis"/>
     </Border>
 

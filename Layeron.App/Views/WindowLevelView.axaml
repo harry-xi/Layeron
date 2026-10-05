@@ -16,15 +16,7 @@
             CornerRadius="8"
             Padding="12"
             Margin="8">
-        <StackPanel Spacing="12">
-            <TextBlock Text="窗宽窗位"
-                       FontSize="14"
-                       FontWeight="Bold"/>
-            <TextBlock Text="调整所有视图显示的灰度范围"
-                       FontSize="12"
-                       Opacity="0.7"
-                       Margin="0,-6,0,0"/>
-
+        <StackPanel Spacing="10">
             <local:GrayHistogramView Bins="{Binding Histogram}"
                                      Low="{Binding Low}"
                                      High="{Binding High}"
