@@ -38,7 +38,6 @@ public class DockViewModel : ViewModelBase
         CreateAxialCommand = ReactiveCommand.Create(() => AddSlice(SliceAxis.Axial));
         CreateCoronalCommand = ReactiveCommand.Create(() => AddSlice(SliceAxis.Coronal));
         CreateSagittalCommand = ReactiveCommand.Create(() => AddSlice(SliceAxis.Sagittal));
-        CreateCodeEditorCommand = ReactiveCommand.Create(AddCodeEditor);
 
         ResetLayoutCommand = ReactiveCommand.Create(ResetLayout);
 
@@ -70,7 +69,6 @@ public class DockViewModel : ViewModelBase
     public ReactiveCommand<RxVoid, RxVoid> CreateAxialCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> CreateCoronalCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> CreateSagittalCommand { get; }
-    public ReactiveCommand<RxVoid, RxVoid> CreateCodeEditorCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> ResetLayoutCommand { get; }
 
     public ReactiveCommand<RxVoid, RxVoid> OpenMaskManagerCommand { get; }
@@ -85,14 +83,6 @@ public class DockViewModel : ViewModelBase
             return;
         if (Factory.CreateDockable(DockableIds.ForSliceAxis(axis)) is { } slice)
             Factory.AddDocument(root, slice);
-    }
-
-    private void AddCodeEditor()
-    {
-        var newEditor = new CodeEditorViewModel("Code Editor");
-
-        if (Layout is { } root)
-            Factory.AddDocument(root, newEditor);
     }
 
     /// <summary>

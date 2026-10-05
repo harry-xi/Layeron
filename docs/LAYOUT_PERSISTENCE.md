@@ -34,6 +34,10 @@
 `Lines` 集合、每个 `TextLine`（`IsDeleted`/`LineNumber`/`Offset`/`EndOffset`/`TotalLength`/`DelimiterLength`/`NextLine` 递归）、
 `Version`、`IsInUpdate`…… 单个代码编辑器文档约 16 KB。
 
+> 实测时用的是 App 内置的 `CodeEditorViewModel`；该内置编辑器其后被移到脚本宿主插件里
+> （`ScriptEditorView` + `PluginDocumentViewModel`，见 PLUGIN_SYSTEM.md §10）。结论不变：
+> 内容对象本身不可序列化，这正是下面改用描述符树的原因。
+
 对 `SliceViewerViewModel` 序列化同样"成功"（5.2 KB），但输出里**只有标量**：
 `"Axis"` 出现 0 次——因为 `Axis` 是只读属性（`public SliceAxis Axis => _axis;`），
 实测确认**私有字段没有被回填**，所以反序列化后 `Axis == Axial`（构造默认值），
@@ -127,7 +131,7 @@ Dock 的序列化面向"模型即内容"，而本项目的面板是**视图模�
    （永不成立的死代码）已删除。
 4. **`DockableLocator` 不再是假映射**：原来 7 个 id 全部指向根节点，`GetDockable("CenterColumn")`
    会拿到整棵树。现在递归收集每个节点、按各自 id 映射。
-5. **可寻址性**：重建后的面板若没有 id（如 `CodeEditorViewModel` 压根没设 `Id`），
+5. **可寻址性**：重建后的面板若没有 id（当初内置的 `CodeEditorViewModel` 就没设 `Id`），
    现在会用描述符的 id 补上，否则 `DockableLocator`、菜单"是否已打开"判断、插件卸载时
    的查找都失效。
 6. **文档修正**：`DockLayout` 的注释原写 "read with System.Text.Json (via the Dock serializer)"，

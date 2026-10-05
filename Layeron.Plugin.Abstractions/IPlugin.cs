@@ -58,11 +58,11 @@ public interface IPluginContext : IDisposable
 /// </summary>
 public interface IPluginRegistry
 {
-    /// <summary>Registers a dockable tool panel. Returns a handle that detaches it immediately.</summary>
-    IDisposable AddTool(ToolContribution tool);
+    /// <summary>Registers a dockable tool panel. The handle detaches it and can show it on demand.</summary>
+    IDockableContribution AddTool(ToolContribution tool);
 
-    /// <summary>Registers a centre-area document tab. Returns a handle that detaches it immediately.</summary>
-    IDisposable AddDocument(DocumentContribution document);
+    /// <summary>Registers a centre-area document tab. The handle detaches it and can show it on demand.</summary>
+    IDockableContribution AddDocument(DocumentContribution document);
 
     /// <summary>Registers a menu entry (optionally nested through a slash-separated path).</summary>
     IDisposable AddMenu(MenuContribution menu);
@@ -98,6 +98,21 @@ public interface IPluginRegistry
 
     /// <summary>Tracks an arbitrary disposable so its disposal follows the plugin lifetime.</summary>
     IDisposable Track(IDisposable disposable);
+}
+
+/// <summary>
+/// Handle for a contributed tool panel or document tab. Disposing it removes the contribution (the
+/// plugin manager does that automatically on unload); <see cref="Open"/> shows it now.
+/// <para>
+/// Opening is on the handle rather than a separate host call because the host owns where a contribution
+/// is shown. A plugin that wants a menu entry to reveal its own panel - a script editor, say - captures
+/// the handle and calls <see cref="Open"/>, without ever learning the host's dockable type ids.
+/// </para>
+/// </summary>
+public interface IDockableContribution : IDisposable
+{
+    /// <summary>Brings the contributed panel/tab to the front, creating it on first use.</summary>
+    void Open();
 }
 
 /// <summary>A dockable tool panel contributed by a plugin.</summary>
@@ -178,7 +193,11 @@ public enum DockHint
 /// <summary>A menu entry contributed by a plugin.</summary>
 public sealed class MenuContribution
 {
-    /// <summary>Slash-separated path, e.g. <c>Plugins/Threshold</c>. The host builds the nesting.</summary>
+    /// <summary>
+    /// Slash-separated folder path relative to the host's plugin menu, e.g. <c>Threshold/Tools</c>; empty
+    /// for a top-level entry. <see cref="Header"/> is appended as the leaf, so this is where the entry
+    /// lives rather than what it is called.
+    /// </summary>
     public required string Path { get; init; }
 
     /// <summary>Header shown on the leaf item.</summary>

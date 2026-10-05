@@ -24,11 +24,18 @@ public sealed class PluginController : IDisposable
     private readonly AppPluginHostAdapter _adapter;
     private readonly PluginManager _manager;
 
-    public PluginController(AppPluginServices services, DockViewModel dock)
+    /// <summary>
+    /// Creates the plugin surface.
+    /// </summary>
+    /// <param name="options">
+    /// Where plugins are found. Tests pass temporary directories so a run never loads the user's installed
+    /// plugins - loading them would execute their code inside the test process.
+    /// </param>
+    public PluginController(AppPluginServices services, DockViewModel dock, PluginManagerOptions? options = null)
     {
         _services = services;
         _adapter = new AppPluginHostAdapter(dock, _services, _services.Log);
-        _manager = new PluginManager(_adapter, new PluginManagerOptions());
+        _manager = new PluginManager(_adapter, options ?? new PluginManagerOptions());
 
         // 设置窗口的插件扩展点由宿主拥有：先定义再加载，点随宿主存活,
         // 只有各插件的贡献随其卸载摘除。
@@ -94,7 +101,7 @@ public sealed class PluginController : IDisposable
     /// <summary>Loads a single plugin assembly (used by tests and by "load from file" tooling).</summary>
     public string? LoadAssembly(string path) => _manager.LoadAssembly(path);
 
-    /// <summary>Runs plugin sources again, e.g. after new files appear in a script folder.</summary>
+    /// <summary>Runs plugin sources again, e.g. after a script was installed into a plugin directory.</summary>
     public IReadOnlyList<string> RefreshSources() => _manager.ReloadAllSources();
 
     /// <summary>Unloads a plugin, including everything it loaded as a plugin loader.</summary>

@@ -23,22 +23,24 @@ internal sealed class PluginRegistry : IPluginRegistry
 
     public IPluginServices Services { get; }
 
-    public IDisposable AddTool(ToolContribution tool)
+    public IDockableContribution AddTool(ToolContribution tool)
     {
         ArgumentNullException.ThrowIfNull(tool);
         ThrowIfDisposed();
 
         var attached = _manager.Adapter.AttachTool(_context.PluginId, tool);
-        return _context.Register(attached);
+        _context.Register(attached);
+        return attached;
     }
 
-    public IDisposable AddDocument(DocumentContribution document)
+    public IDockableContribution AddDocument(DocumentContribution document)
     {
         ArgumentNullException.ThrowIfNull(document);
         ThrowIfDisposed();
 
         var attached = _manager.Adapter.AttachDocument(_context.PluginId, document);
-        return _context.Register(attached);
+        _context.Register(attached);
+        return attached;
     }
 
     public IDisposable AddMenu(MenuContribution menu)

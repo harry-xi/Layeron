@@ -417,6 +417,12 @@ public sealed class PluginManager : IDisposable
     /// <summary>
     /// Finds the plugin entry type: the class marked with <see cref="PluginAttribute"/>, or - for
     /// assemblies built without the attribute - the single concrete <see cref="IPlugin"/>.
+    /// <para>
+    /// Enumeration is deliberately forgiving. A plugin may legitimately contain types this host cannot
+    /// materialise - a UI plugin loaded into a headless host is the clearest case - and one unresolvable
+    /// view type must not cost the whole plugin. Types whose dependencies are missing are skipped; the
+    /// entry point is a plain type and is still found.
+    /// </para>
     /// </summary>
     private static Type? FindEntryType(Assembly assembly)
     {
@@ -427,23 +433,43 @@ public sealed class PluginManager : IDisposable
         }
         catch (ReflectionTypeLoadException ex)
         {
+            // Partial list: an entry is null when its own dependencies could not be resolved.
             types = ex.Types;
+        }
+        catch (Exception ex) when (IsMissingDependency(ex))
+        {
+            return null; // the assembly's type table cannot be read at all
         }
 
         Type? fallback = null;
         foreach (var type in types)
         {
-            if (type == null || type.IsAbstract || type.IsInterface || !typeof(IPlugin).IsAssignableFrom(type))
+            if (type is null || type.IsAbstract || type.IsInterface)
                 continue;
 
-            if (type.GetCustomAttribute<PluginAttribute>() != null)
-                return type;
+            try
+            {
+                if (!typeof(IPlugin).IsAssignableFrom(type))
+                    continue;
 
-            fallback ??= type;
+                if (type.GetCustomAttribute<PluginAttribute>() != null)
+                    return type;
+
+                fallback ??= type;
+            }
+            catch (Exception ex) when (IsMissingDependency(ex))
+            {
+                // A type whose base types cannot be resolved cannot implement IPlugin in this host.
+            }
         }
 
         return fallback;
     }
+
+    /// <summary>True for the loader failures a missing dependency surfaces as.</summary>
+    private static bool IsMissingDependency(Exception ex) =>
+        ex is FileNotFoundException or FileLoadException or TypeLoadException
+            or BadImageFormatException or NotSupportedException;
 
     // -----------------------------------------------------------------------
     //  Plugin sources (plugins acting as plugin loaders)

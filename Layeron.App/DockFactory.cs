@@ -270,19 +270,11 @@ public class DockFactory : Factory
         Register(DockableIds.SliceSagittal, d => CreateSliceViewer(d, SliceAxis.Sagittal));
         Register(DockableIds.MaskManager, _ => _sessions.Current!.MaskManager);
         Register(DockableIds.WindowLevel, _ => _sessions.Current!.WindowLevel);
-        Register(DockableIds.CodeEditor, CreateCodeEditor);
         Register(DockableIds.Log, _ => new LogViewerViewModel());
     }
 
     private IDockable CreateSliceViewer(DockableDescriptor _, SliceAxis axis)
         => new SliceViewerViewModel(axis, _sessions, _preview);
-
-    private IDockable CreateCodeEditor(DockableDescriptor desc)
-    {
-        var title = desc.Title ?? "Code Editor";
-        var vm = new CodeEditorViewModel(title);
-        return vm;
-    }
     
     // -----------------------------------------------------------------------
     //  Descriptor-tree → live-tree (build)

@@ -1,6 +1,9 @@
 # 代码行数分布统计
 
 > 统计日期：2026-09-28 · 排除 `bin`/`obj`/`.mimocode`/`node_modules` 及本文档自身 · 范围：`.cs` `.axaml` `.csproj` `.slnx` `.md` `.json` `.xaml`
+>
+> ⚠️ 这是 2026-09-28 的快照。此后新增了 `Layeron.Scripting.Abstractions` 与脚本宿主编辑器，
+> 并移除了 App 内置的 `CodeEditorView`/`CodeEditorViewModel`，下表数字已过时。
 
 **总计：15,101 行 / 145 个文件**
 

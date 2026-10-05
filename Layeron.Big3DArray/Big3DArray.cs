@@ -250,6 +250,72 @@ namespace Layeron.Big3DArray
         }
 
         /// <summary>
+        /// Copies a rectangular region into a dense array shaped <c>[sizeZ, sizeY, sizeX]</c>, so
+        /// <c>roi[lz, ly, lx]</c> holds voxel <c>(x0 + lx, y0 + ly, z0 + lz)</c>.
+        /// <para>
+        /// This is the "hand a region to something that wants a plain array" primitive - a script, a
+        /// numeric library, a file writer. It walks the blocks the region intersects and copies only the
+        /// rows that fall inside, instead of walking the region with the per-voxel indexer, so a region
+        /// spanning several blocks costs one block lookup and no bounds check per voxel.
+        /// </para>
+        /// </summary>
+        public T[,,] ReadRoi(int x0, int y0, int z0, int sizeX, int sizeY, int sizeZ)
+        {
+            if (sizeX <= 0 || sizeY <= 0 || sizeZ <= 0)
+                throw new ArgumentOutOfRangeException(nameof(sizeX), "Region size must be positive.");
+            if (x0 < 0 || y0 < 0 || z0 < 0 ||
+                x0 + sizeX > X || y0 + sizeY > Y || z0 + sizeZ > Z)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(x0),
+                    $"Region ({x0},{y0},{z0}) {sizeX}x{sizeY}x{sizeZ} does not fit in {X}x{Y}x{Z}.");
+            }
+
+            var roi = new T[sizeZ, sizeY, sizeX];
+            var lastX = x0 + sizeX;
+            var lastY = y0 + sizeY;
+            var lastZ = z0 + sizeZ;
+
+            for (var bz = z0 / VolumeIO.BlockSize; bz <= (lastZ - 1) / VolumeIO.BlockSize; bz++)
+            for (var by = y0 / VolumeIO.BlockSize; by <= (lastY - 1) / VolumeIO.BlockSize; by++)
+            for (var bx = x0 / VolumeIO.BlockSize; bx <= (lastX - 1) / VolumeIO.BlockSize; bx++)
+            {
+                var block = GetBlockSpan(bx, by, bz);
+                var originX = bx * VolumeIO.BlockSize;
+                var originY = by * VolumeIO.BlockSize;
+                var originZ = bz * VolumeIO.BlockSize;
+
+                var xs = Math.Max(x0, originX);
+                var ys = Math.Max(y0, originY);
+                var zs = Math.Max(z0, originZ);
+                var xe = Math.Min(lastX, originX + VolumeIO.BlockSize);
+                var ye = Math.Min(lastY, originY + VolumeIO.BlockSize);
+                var ze = Math.Min(lastZ, originZ + VolumeIO.BlockSize);
+
+                for (var z = zs; z < ze; z++)
+                {
+                    var localZ = z - originZ;
+                    for (var y = ys; y < ye; y++)
+                    {
+                        var localY = y - originY;
+                        var rowStart = localZ * VolumeIO.BlockSize * VolumeIO.BlockSize + localY * VolumeIO.BlockSize;
+                        var sourceIndex = rowStart + (xs - originX);
+
+                        // Destination columns are offset by where the region starts in this block: for a
+                        // region crossing a block edge the second block's columns land after the first's,
+                        // not on top of them.
+                        var destinationIndex = (xs - x0);
+                        var count = xe - xs;
+                        for (var i = 0; i < count; i++)
+                            roi[z - z0, y - y0, destinationIndex + i] = block[sourceIndex + i];
+                    }
+                }
+            }
+
+            return roi;
+        }
+
+        /// <summary>
         /// Extract the XY-slice at the given z. The returned array has shape [Y, X] and
         /// slice[y, x] holds this[x, y, z]. Implemented by iterating the blocks that intersect
         /// the plane and bulk-copying each block's rows rather than calling the indexer per voxel.

@@ -1,5 +1,6 @@
 using Layeron.Plugin.Abstractions;
 using Layeron.Plugin.Host;
+using Layeron.Scripting.Abstractions;
 
 namespace Layeron.Plugin.Test;
 
@@ -9,17 +10,14 @@ namespace Layeron.Plugin.Test;
 /// script host, and the scripts can even extend a compiled plugin's extension point. No host code path
 /// knows scripts exist.
 /// <para>
-/// Ignored for now. The loader mechanism itself is fully covered by <see cref="NestedPluginTests"/> and
-/// these scenarios pass up to the point where Roslyn runs the script; the remaining problem is that
-/// Roslyn loads the script's globals type into its own load context, which produces a second copy of the
-/// script host assembly and makes the globals cast fail. Fixing it means moving the script-facing API
-/// into an assembly that is loaded once for both sides, which is a design decision rather than a patch.
-/// Everything else here - discovery, child scoping, extension point contribution, failure isolation - is
-/// exercised by the other suites today.
+/// Roslyn compiles a script into an assembly it loads into the default context, while the script host
+/// itself runs in its own collectible context. The globals type the script binds to therefore has to be
+/// the one shared assembly both sides see - <see cref="ScriptGlobals"/> in
+/// <c>Layeron.Plugin.Abstractions</c> - otherwise the two contexts would each hold a copy and the cast
+/// Roslyn performs on the globals argument would fail.
 /// </para>
 /// </summary>
 [TestClass]
-[Ignore("Roslyn duplicates the globals type into its own load context; script API needs to move to a shared assembly.")]
 public sealed class ScriptHostTests
 {
     private const string ScriptHostId = "layeron.scripthost";
@@ -180,6 +178,128 @@ public sealed class ScriptHostTests
         }
     }
 
+    [TestMethod]
+    public void ScriptEditor_RegistersADocumentPerScript_AndItsOwnMenuOpensOne()
+    {
+        var directory = TestPaths.CreateTemporaryPluginDirectory();
+        try
+        {
+            WriteScript(directory, "hello", """
+                Menu("Hello from script", () => { });
+                """);
+
+            var adapter = new TestHostAdapter(TestVolumes.Small());
+            ((TestServices)adapter.Services).AdditionalService =
+                new FakeScriptHostService(Path.Combine(directory, "scripts"));
+
+            using var manager = CreateManager(adapter, directory);
+            Assert.AreEqual(ScriptHostId, manager.LoadAssembly(TestPaths.ScriptHostPluginAssembly));
+
+            // The editor is the plugin's own UI: it registers a document for every script it can see, so
+            // a saved layout can restore a script tab.
+            Assert.IsTrue(
+                adapter.Documents.Keys.Any(k => k.EndsWith("::script:hello", StringComparison.Ordinal)),
+                "the script host should register an editor document for each script it finds");
+
+            // And its own menu must be able to bring one up - that is the Open() capability on a
+            // contribution handle, without which a plugin could never show its own document.
+            var newScript = adapter.Menus.Values.Single(m => m.Header == "新建脚本");
+            newScript.Execute();
+
+            Assert.IsTrue(
+                adapter.Opened.Any(key => key.Contains("script:untitled", StringComparison.Ordinal)),
+                "a plugin's own menu entry must be able to open a document it contributed");
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void Script_ComputesOnTheCurrentVolume_AndItsResultsOutliveTheRun()
+    {
+        var directory = TestPaths.CreateTemporaryPluginDirectory();
+        try
+        {
+            // A computation script: read the data, report, and hand a mask back. This is the shape a script
+            // has when it is not an extension but a piece of numeric work on the loaded volume.
+            WriteScript(directory, "compute", """
+                if (Volume is ReadonlyBig3DArray<byte> v)
+                {
+                    Result("dims", v.X + "x" + v.Y + "x" + v.Z);
+
+                    var roi = ReadRoi(0, 0, 0, 2, 2, 2);
+                    Result("roi", roi is null ? "null" : "ok");
+
+                    AddMask("script mask", new Big3DBitMap(v.X, v.Y, v.Z));
+                }
+                """);
+
+            var adapter = new TestHostAdapter(TestVolumes.Small());
+            ((TestServices)adapter.Services).AdditionalService =
+                new FakeScriptHostService(Path.Combine(directory, "scripts"));
+
+            using var manager = CreateManager(adapter, directory);
+            Assert.AreEqual(ScriptHostId, manager.LoadAssembly(TestPaths.ScriptHostPluginAssembly),
+                "load failed; log: " + string.Join(" | ", adapter.Log.Messages));
+
+            // Reading the volume through the script API works, and Result() reaches the log with its value.
+            // A script logs through IPluginServices, which is a different sink from the host adapter's log.
+            var scriptLog = (CollectingLog)((TestServices)adapter.Services).Log;
+            Assert.IsTrue(scriptLog.Contains("40x40x40"),
+                "the script's Result must carry the value; log was: " + string.Join(" | ", scriptLog.Messages));
+            Assert.IsTrue(scriptLog.Contains("ok"),
+                "ReadRoi must hand the script an NDArray; log was: " + string.Join(" | ", scriptLog.Messages));
+
+            // A mask a script writes is session data, exactly like one a compiled plugin writes.
+            Assert.IsTrue(
+                ((TestMaskService)adapter.Services.Masks).Layers.Any(l => l.Name == "script mask"),
+                "AddMask must register a layer on the session");
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void WorkspaceScript_IsNotActivatedAsAPlugin_ButIsOpenableInTheEditor()
+    {
+        var pluginDirectory = TestPaths.CreateTemporaryPluginDirectory();
+        var workspace = TestPaths.CreateTemporaryPluginDirectory();
+        try
+        {
+            // A script in the user's workspace: a working document. Nothing was installed.
+            var workspaceScripts = Path.Combine(workspace, "scripts");
+            Directory.CreateDirectory(workspaceScripts);
+            File.WriteAllText(Path.Combine(workspaceScripts, "mine.csx"),
+                """Menu("from workspace", () => { });""");
+
+            var adapter = new TestHostAdapter(TestVolumes.Small());
+            ((TestServices)adapter.Services).AdditionalService = new FakeScriptHostService(workspaceScripts);
+
+            using var manager = CreateManager(adapter, pluginDirectory);
+            Assert.AreEqual(ScriptHostId, manager.LoadAssembly(TestPaths.ScriptHostPluginAssembly));
+
+            // Saving a script into the workspace must not install it: activating it would run code the user
+            // only wrote, and its menu would appear in the app's menu bar.
+            Assert.IsFalse(manager.Plugins.Any(p => p.Id == "script:mine"),
+                "a workspace script must not be activated as a plugin");
+            Assert.IsFalse(adapter.Menus.Values.Any(m => m.Header == "from workspace"),
+                "a workspace script must not contribute to the app menu");
+
+            // It is still one click away: the editor offers the workspace's scripts as documents.
+            Assert.IsTrue(adapter.Documents.Keys.Any(k => k.EndsWith("::script:mine", StringComparison.Ordinal)),
+                "the editor should list the workspace's scripts");
+        }
+        finally
+        {
+            Directory.Delete(pluginDirectory, recursive: true);
+            Directory.Delete(workspace, recursive: true);
+        }
+    }
+
     private static PluginManager CreateManager(TestHostAdapter adapter, string pluginDirectory) =>
         new(adapter, new PluginManagerOptions
         {
@@ -192,5 +312,22 @@ public sealed class ScriptHostTests
         var scriptDirectory = Path.Combine(pluginDirectory, "scripts");
         Directory.CreateDirectory(scriptDirectory);
         File.WriteAllText(Path.Combine(scriptDirectory, $"{name}.csx"), code);
+    }
+
+    /// <summary>Host capabilities the editor reaches for; only the scripts folder matters here.</summary>
+    private sealed class FakeScriptHostService(string scriptsDirectory) : IScriptHostService
+    {
+        public event Action? ScriptsDirectoryChanged;
+
+        public string ScriptsDirectory { get; } = scriptsDirectory;
+
+        public Task<string?> PickScriptToOpenAsync() => Task.FromResult<string?>(null);
+
+        public Task<string?> PickScriptToSaveAsync(string suggestedFileName) => Task.FromResult<string?>(null);
+
+        public void ReloadAllScripts() { }
+
+        /// <summary>Test hook: mimics the host switching workspace.</summary>
+        public void RaiseDirectoryChanged() => ScriptsDirectoryChanged?.Invoke();
     }
 }

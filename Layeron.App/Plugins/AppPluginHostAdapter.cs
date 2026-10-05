@@ -41,7 +41,7 @@ public sealed class AppPluginHostAdapter : IPluginHostAdapter
     /// <summary>Openable documents contributed by plugins, for the window's plugin document list.</summary>
     public ObservableCollection<ContributedDocument> Documents { get; } = [];
 
-    public IDisposable AttachTool(string pluginId, ToolContribution tool)
+    public IDockableContribution AttachTool(string pluginId, ToolContribution tool)
     {
         var typeId = DockableIds.ForPluginTool(pluginId, tool.Id);
         var factory = tool.ContentFactory;
@@ -55,19 +55,21 @@ public sealed class AppPluginHostAdapter : IPluginHostAdapter
         var entry = new ContributedTool(pluginId, tool.Title, typeId, tool.PreferredDock.ToString().ToLowerInvariant());
         Tools.Add(entry);
 
-        return new Handle(() =>
-        {
-            _dock.Factory.Unregister(typeId);
-            Tools.Remove(entry);
+        return new DockableHandle(
+            undo: () =>
+            {
+                _dock.Factory.Unregister(typeId);
+                Tools.Remove(entry);
 
-            // Close any open panel of this type: it belongs to a plugin that is going away, and
-            // leaving it docked would keep plugin content alive after unload.
-            if (_dock.Layout is { } root)
-                _dock.Factory.CloseDockables(root, d => d.Id == typeId);
-        });
+                // Close any open panel of this type: it belongs to a plugin that is going away, and
+                // leaving it docked would keep plugin content alive after unload.
+                if (_dock.Layout is { } root)
+                    _dock.Factory.CloseDockables(root, d => d.Id == typeId);
+            },
+            open: () => _dock.OpenToolById(typeId, tool.Title));
     }
 
-    public IDisposable AttachDocument(string pluginId, DocumentContribution document)
+    public IDockableContribution AttachDocument(string pluginId, DocumentContribution document)
     {
         var typeId = DockableIds.ForPluginDocument(pluginId, document.Id);
         var factory = document.ContentFactory;
@@ -81,16 +83,18 @@ public sealed class AppPluginHostAdapter : IPluginHostAdapter
         var entry = new ContributedDocument(pluginId, document.Title, typeId);
         Documents.Add(entry);
 
-        return new Handle(() =>
-        {
-            _dock.Factory.Unregister(typeId);
-            Documents.Remove(entry);
+        return new DockableHandle(
+            undo: () =>
+            {
+                _dock.Factory.Unregister(typeId);
+                Documents.Remove(entry);
 
-            // Close the open tab: it belongs to a plugin that is going away, and leaving it docked
-            // would keep plugin content (and its GPU resources) alive after unload.
-            if (_dock.Layout is { } root)
-                _dock.Factory.CloseDockables(root, d => d.Id == typeId);
-        });
+                // Close the open tab: it belongs to a plugin that is going away, and leaving it docked
+                // would keep plugin content (and its GPU resources) alive after unload.
+                if (_dock.Layout is { } root)
+                    _dock.Factory.CloseDockables(root, d => d.Id == typeId);
+            },
+            open: () => _dock.OpenDocumentById(typeId, document.Title));
     }
 
     public IDisposable AttachMenu(string pluginId, MenuContribution menu)
@@ -98,6 +102,26 @@ public sealed class AppPluginHostAdapter : IPluginHostAdapter
         var description = new MenuDescription(menu.Path, menu.Header, menu.Execute, menu.CanExecute, menu.Order);
         Menus.Add(description);
         return new Handle(() => Menus.Remove(description));
+    }
+
+    private sealed class DockableHandle(Action undo, Action open) : IDockableContribution
+    {
+        private bool _disposed;
+
+        // Opening focuses an already-open panel of this type or creates it on demand; the dock decides,
+        // so the plugin never has to know the host's dockable type ids.
+        public void Open()
+        {
+            if (!_disposed)
+                open();
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            undo();
+        }
     }
 
     private sealed class Handle(Action undo) : IDisposable

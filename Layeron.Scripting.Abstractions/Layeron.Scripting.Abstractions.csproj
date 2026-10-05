@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Layeron.Scripting.Abstractions</AssemblyName>
+  </PropertyGroup>
+
+  <!--
+    The scripting contract is its own layer: scripts are a delivery mechanism in their own right, not a
+    plugin subtype. It depends on the plugin contract because a script is *hosted* as a plugin (its API
+    wraps IPluginContext), but the dependency runs one way only: nothing in the plugin or host layer
+    references this assembly, so the scripting surface can evolve without touching the plugin ABI.
+
+    This assembly must be loaded exactly once - by the default context - because Roslyn compiles a script
+    into an assembly it loads there, while the script host plugin runs in its own collectible context.
+    See PluginLoadContext.SharedPrefixes and docs/PLUGIN_SYSTEM.md §10.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Layeron.Big3DArray\Layeron.Big3DArray.csproj" />
+    <ProjectReference Include="..\Layeron.Plugin.Abstractions\Layeron.Plugin.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Scripts hand voxel data to numeric code as an NDArray, so the type is part of the scripting contract
+      and this assembly must reference it. It also has to be loaded once by the default context, for the
+      same reason ScriptGlobals does: the script's assembly binds to it there while the host's copy lives
+      in its own context. See PluginLoadContext.SharedPrefixes.
+    -->
+    <PackageReference Include="NumSharp" Version="0.30.0" />
+  </ItemGroup>
+
+</Project>

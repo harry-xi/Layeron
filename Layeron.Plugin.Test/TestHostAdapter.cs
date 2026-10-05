@@ -33,18 +33,18 @@ internal sealed class TestHostAdapter : IPluginHostAdapter
     /// <summary>Attached menus keyed by plugin id and header.</summary>
     public ConcurrentDictionary<string, MenuContribution> Menus { get; } = new();
 
-    public IDisposable AttachTool(string pluginId, ToolContribution tool)
+    public IDockableContribution AttachTool(string pluginId, ToolContribution tool)
     {
         var key = $"{pluginId}::{tool.Id}";
         Tools[key] = tool;
-        return new Handle(() => Tools.TryRemove(key, out _));
+        return new DockableHandle(() => Tools.TryRemove(key, out _), () => Opened.Add(key));
     }
 
-    public IDisposable AttachDocument(string pluginId, DocumentContribution document)
+    public IDockableContribution AttachDocument(string pluginId, DocumentContribution document)
     {
         var key = $"{pluginId}::{document.Id}";
         Documents[key] = document;
-        return new Handle(() => Documents.TryRemove(key, out _));
+        return new DockableHandle(() => Documents.TryRemove(key, out _), () => Opened.Add(key));
     }
 
     public IDisposable AttachMenu(string pluginId, MenuContribution menu)
@@ -52,6 +52,27 @@ internal sealed class TestHostAdapter : IPluginHostAdapter
         var key = $"{pluginId}::{menu.Header}";
         Menus[key] = menu;
         return new Handle(() => Menus.TryRemove(key, out _));
+    }
+
+    /// <summary>Keys of contributions a plugin asked the host to open, so tests can assert on Open().</summary>
+    public ConcurrentBag<string> Opened { get; } = [];
+
+    private sealed class DockableHandle(Action undo, Action open) : IDockableContribution
+    {
+        private bool _disposed;
+
+        public void Open()
+        {
+            if (!_disposed)
+                open();
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            undo();
+        }
     }
 
     private sealed class Handle(Action undo) : IDisposable
@@ -84,6 +105,11 @@ internal sealed class TestServices : IPluginServices
     public IPreviewChannel Preview { get; }
 
     public IPluginLog Log { get; } = new CollectingLog();
+
+    /// <summary>Optional capability a test can expose, mirroring the app's scripting host service.</summary>
+    public object? AdditionalService { get; set; }
+
+    public T? GetService<T>() where T : class => AdditionalService as T;
 }
 
 internal sealed class TestVolumeService : IVolumeService

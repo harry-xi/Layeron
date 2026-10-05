@@ -1,9 +1,13 @@
 using System;
+using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
 using Avalonia.Controls;
+using Avalonia.Platform.Storage;
 using Layeron.App.Logging;
 using Layeron.App.Plugins;
 using Layeron.App.ViewModels;
+using Layeron.App.Workspaces;
 
 namespace Layeron.App.Views;
 
@@ -12,6 +16,7 @@ namespace Layeron.App.Views;
 public partial class MainWindow : Window
 {
     private PluginController? _plugins;
+    private IWorkspaceManager? _workspaces;
 
     /// <summary>打开独立设置窗口（不走 dock），由“设置”菜单项触发。</summary>
     public System.Windows.Input.ICommand OpenSettingsCommand { get; } = null!;
@@ -54,6 +59,10 @@ public partial class MainWindow : Window
         RebuildPluginMenu();
         RebuildImportMenu();
 
+        _workspaces = vm.Workspace;
+        _workspaces.Changed += RebuildWorkspaceMenu;
+        RebuildWorkspaceMenu();
+
         await vm.Dock.TryRestoreSavedLayoutAsync();
     }
 
@@ -63,6 +72,12 @@ public partial class MainWindow : Window
             return;
 
         vm.Dock.OnWindowClosing();
+
+        if (_workspaces != null)
+        {
+            _workspaces.Changed -= RebuildWorkspaceMenu;
+            _workspaces = null;
+        }
 
         if (_plugins == null)
             return;
@@ -112,6 +127,67 @@ public partial class MainWindow : Window
 
         foreach (var node in _plugins.MenuNodes)
             PluginMenu.Items.Add(BuildMenuItem(node));
+    }
+
+    /// <summary>
+    /// Fills 文件 → 工作区: the active folder, a way to switch to another one, and a shortcut to reveal it
+    /// in the file manager. Rebuilt on every switch, so the path shown is never stale.
+    /// </summary>
+    private void RebuildWorkspaceMenu()
+    {
+        if (_workspaces is null)
+            return;
+
+        var current = _workspaces.Current;
+        WorkspaceText.Text = $"工作区：{current.Name} — {current.Root}";
+
+        WorkspaceMenu.Items.Clear();
+        WorkspaceMenu.Items.Add(new MenuItem
+        {
+            Header = "打开工作区…",
+            Command = new RelayCommand(() => _ = OpenWorkspaceAsync())
+        });
+        WorkspaceMenu.Items.Add(new MenuItem
+        {
+            Header = "在资源管理器中打开",
+            Command = new RelayCommand(RevealWorkspace)
+        });
+        WorkspaceMenu.Items.Add(new Separator());
+        WorkspaceMenu.Items.Add(new MenuItem { Header = current.Root, IsEnabled = false });
+    }
+
+    /// <summary>Switches to a folder the user picks; the folder becomes a workspace if it is not one yet.</summary>
+    private async Task OpenWorkspaceAsync()
+    {
+        if (_workspaces is null)
+            return;
+
+        var folders = await StorageProviderAccess.Get().OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "选择工作区文件夹",
+            AllowMultiple = false
+        });
+
+        if (folders.Count == 0)
+            return;
+
+        if (folders[0].TryGetLocalPath() is { Length: > 0 } path)
+            _workspaces.Open(path);
+    }
+
+    private void RevealWorkspace()
+    {
+        if (_workspaces is null)
+            return;
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(_workspaces.Current.Root) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("App", "Could not open the workspace folder {Path}: {Message}", _workspaces.Current.Root, ex.Message);
+        }
     }
 
     /// <summary>

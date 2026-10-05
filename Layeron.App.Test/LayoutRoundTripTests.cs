@@ -126,19 +126,24 @@ public sealed class LayoutRoundTripTests
     }
 
     [TestMethod]
-    public void CodeEditor_TitleSurvivesSaveAndReload()
+    public void PluginDocument_TitleSurvivesSaveAndReload()
     {
         var factory = NewFactory();
+        var typeId = DockableIds.ForPluginDocument("layeron.scripthost", "editor");
+
+        // Exactly how AppPluginHostAdapter registers a plugin's document; the script editor is one.
+        factory.Register(typeId, descriptor =>
+            new PluginDocumentViewModel(descriptor.Title ?? "Plugin Document", typeId, new object()));
 
         // A layout with only this pane, so the rebuilt tree is unambiguous.
-        var saved = factory.CaptureLayout(factory.BuildOrFallback(OneDocument(DockableIds.CodeEditor, "自定义标题")));
+        var saved = factory.CaptureLayout(factory.BuildOrFallback(OneDocument(typeId, "自定义标题")));
         Assert.AreEqual("自定义标题", Descriptors(saved.Root).Single().Title);
 
-        // Reloading must put that title back on the rebuilt pane, not the "Code Editor" default.
+        // Reloading must put that title back on the rebuilt pane, not the default.
         var reloaded = factory.TryBuildLayout(saved);
-        var restored = Find(reloaded!, d => d.Id == DockableIds.CodeEditor);
+        var restored = Find(reloaded!, d => d.Id == typeId);
 
-        Assert.IsNotNull(restored, "The code editor should be rebuilt from its descriptor.");
+        Assert.IsNotNull(restored, "The plugin document should be rebuilt from its descriptor.");
         Assert.AreEqual("自定义标题", restored.Title);
     }
 

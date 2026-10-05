@@ -1,0 +1,34 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:avalonedit="clr-namespace:AvaloniaEdit;assembly=AvaloniaEdit"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="Layeron.Plugins.ScriptHost.ScriptEditorView">
+  <!--
+    The script editor document. The host contributes this as a plugin document tab. Every operation that
+    acts on one script lives here, on this window: the app menu has no subject, so it only offers ways to
+    open a window. AvaloniaEdit comes from the host's Avalonia stack.
+  -->
+  <DockPanel>
+    <Border DockPanel.Dock="Top" Padding="6,4" BorderThickness="0,0,0,1" BorderBrush="#22808080">
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <Button x:Name="SaveButton" Content="保存"/>
+        <Button x:Name="SaveAsButton" Content="另存为…"/>
+        <Button x:Name="OpenButton" Content="打开…"/>
+        <Button x:Name="RunButton" Content="运行"/>
+        <Button x:Name="CancelButton" Content="取消" IsVisible="False"/>
+        <ProgressBar x:Name="RunProgress" Width="140" Minimum="0" Maximum="1" IsVisible="False"/>
+      </StackPanel>
+    </Border>
+
+    <Border DockPanel.Dock="Bottom" Padding="8,3">
+      <TextBlock x:Name="StatusText" FontSize="11" Opacity="0.7" TextTrimming="CharacterEllipsis"/>
+    </Border>
+
+    <avalonedit:TextEditor x:Name="Editor"
+                           ShowLineNumbers="True"
+                           FontFamily="Cascadia Code, Consolas, Menlo, Monospace"
+                           FontSize="14"/>
+  </DockPanel>
+</UserControl>

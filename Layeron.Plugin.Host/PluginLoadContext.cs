@@ -36,6 +36,8 @@ internal sealed class PluginLoadContext : AssemblyLoadContext
         "Layeron.Big3DArray",
         "Layeron.Plugin.Abstractions",
         "Layeron.Plugin.Host",
+        "Layeron.Scripting.Abstractions",
+        "NumSharp",
         "Avalonia",
         "Dock.",
         "ReactiveUI",

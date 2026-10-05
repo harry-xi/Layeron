@@ -205,4 +205,15 @@ public interface IPluginServices
     IPreviewChannel Preview { get; }
 
     IPluginLog Log { get; }
+
+    /// <summary>
+    /// Optional capabilities the host may provide beyond the core set - a scripting UI service, for
+    /// instance. Returns null when the host does not offer <typeparamref name="T"/>.
+    /// <para>
+    /// This keeps the core contract free of optional feature types: a plugin that needs a host
+    /// capability asks for it by interface and degrades gracefully, instead of every such type being
+    /// pulled into the assembly every plugin compiles against.
+    /// </para>
+    /// </summary>
+    T? GetService<T>() where T : class;
 }

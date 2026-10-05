@@ -20,11 +20,11 @@ public interface IPluginHostAdapter
     /// <summary>Log sink for host-level messages (discovery, load, unload).</summary>
     IPluginLog Log { get; }
 
-    /// <summary>Attaches a contributed tool panel and returns its removal handle.</summary>
-    IDisposable AttachTool(string pluginId, ToolContribution tool);
+    /// <summary>Attaches a contributed tool panel and returns its removal-and-open handle.</summary>
+    IDockableContribution AttachTool(string pluginId, ToolContribution tool);
 
-    /// <summary>Attaches a contributed document tab and returns its removal handle.</summary>
-    IDisposable AttachDocument(string pluginId, DocumentContribution document);
+    /// <summary>Attaches a contributed document tab and returns its removal-and-open handle.</summary>
+    IDockableContribution AttachDocument(string pluginId, DocumentContribution document);
 
     /// <summary>Attaches a contributed menu entry and returns its removal handle.</summary>
     IDisposable AttachMenu(string pluginId, MenuContribution menu);

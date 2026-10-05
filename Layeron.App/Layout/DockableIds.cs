@@ -17,7 +17,6 @@ public static class DockableIds
     public const string MaskManager = "layeron.tool.maskManager";
     public const string WindowLevel = "layeron.tool.windowLevel";
     public const string Log = "layeron.tool.log";
-    public const string CodeEditor = "layeron.document.codeEditor";
 
     /// <summary>
     /// Type id for a tool contributed by a plugin. Stable across sessions and independent of the

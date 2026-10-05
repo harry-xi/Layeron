@@ -27,16 +27,19 @@
 ```
 Layeron.Big3DArray        卷 / 位图核心类型 + 块级读写 API（零依赖）
 Layeron.Plugin.Abstractions  插件契约（只依赖 Big3DArray，不含任何 UI 框架）
+Layeron.Scripting.Abstractions 脚本契约：ScriptGlobals + IScriptHostService（独立的第二套体系，见 §10）
 Layeron.Plugin.Host      加载器内核：PluginManager / PluginLoadContext / 作用域 / 扩展点注册表
 Layeron.Plugins.Threshold    示例插件：阈值分割工具（UI 插件）
-Layeron.Plugins.ScriptHost   示例插件：本身是插件加载器（见 §10，未完成）
-Layeron.App              Avalonia 宿主：实现 IPluginHostAdapter，把贡献接到 Dock 与菜单
+Layeron.Plugins.ScriptHost   示例插件：本身是插件加载器 + 脚本编辑器（见 §10）
+Layeron.App              Avalonia 宿主：实现 IPluginHostAdapter / IScriptHostService，把贡献接到 Dock 与菜单
 Layeron.Plugin.Test      插件系统测试（无 UI）
 ```
 
-依赖方向：`Abstractions → Big3DArray`；`Host → Abstractions`；`App → Host`；**插件 → Abstractions + Big3DArray（仅编译期）**。
+依赖方向：`Abstractions → Big3DArray`；`Scripting.Abstractions → Plugin.Abstractions + Big3DArray`；`Host → Abstractions`；`App → Host + Abstractions + Scripting.Abstractions`；**插件 → Abstractions + Big3DArray（仅编译期）**。
 
-关键点：插件项目对 `Layeron.Big3DArray` / `Layeron.Plugin.Abstractions` 使用 `Private="false"`，Avalonia 使用 `ExcludeAssets="runtime"`。运行时这些程序集一律来自宿主，否则插件会看到第二份 `IPlugin`，出现"类型对不上"的静默失败。
+**脚本与插件是两套体系**：脚本有自己独立的契约程序集 `Layeron.Scripting.Abstractions`，插件层与宿主内核都不引用它；脚本宿主插件是两者的桥——它把每个 `.csx` 包成插件，并提供一个脚本编辑器。`Layeron.Scripting.Abstractions` 必须由**默认上下文**加载一次（见 §10），所以 App 与测试都显式引用它。
+
+关键点：插件项目对 `Layeron.Big3DArray` / `Layeron.Plugin.Abstractions` / `Layeron.Scripting.Abstractions` 使用 `Private="false"`，Avalonia 使用 `ExcludeAssets="runtime"`。运行时这些程序集一律来自宿主，否则插件会看到第二份 `IPlugin`（或第二份 `ScriptGlobals`），出现"类型对不上"的静默失败。
 
 ---
 
@@ -50,16 +53,20 @@ Layeron.Plugin.Test      插件系统测试（无 UI）
 
 ```
 IPlugin.Activate(ctx)
-  ├─ ctx.Registry.AddTool(...)        → 直连 Adapter（单消费者：Dock 工具面板），返回 IDisposable
-  ├─ ctx.Registry.AddDocument(...)    → 直连 Adapter（单消费者：Dock 文档区），返回 IDisposable
+  ├─ ctx.Registry.AddTool(...)        → 直连 Adapter（单消费者：Dock 工具面板），返回 IDockableContribution
+  ├─ ctx.Registry.AddDocument(...)    → 直连 Adapter（单消费者：Dock 文档区），返回 IDockableContribution
   ├─ ctx.Registry.AddMenu(...)        → 直连 Adapter（单消费者：菜单），返回 IDisposable
   ├─ ctx.Registry.DefinePoint<T>(id)  → 点随该插件卸载而消失
   ├─ ctx.Registry.Contribute(id, val) → 贡献随该插件卸载而移除，即使插槽属于别人
   ├─ ctx.Registry.AddFilter(...)       → 扩展方法 → Contribute(FilterPoints.Volume) + 全局 Id 校验
   ├─ ctx.Registry.AddSettingsPage(...) → 扩展方法 → Validate + Contribute(SettingsPoints.Pages)
   ├─ ctx.Registry.AddPluginSource(...) → 本插件成为加载器（§8），返回 IDisposable
-  └─ ctx.Services.{Volumes,Masks,Preview,Log}
+  └─ ctx.Services.{Volumes,Masks,Preview,Log} + GetService<T>()
 ```
+
+**`IDockableContribution`（可撤销 + 可打开）**：`AddTool` / `AddDocument` 返回的句柄既能 `Dispose()` 撤销贡献，也能 `Open()` 把面板/标签页显示出来（已打开则聚焦）。宿主独占"贡献显示在哪里"这件事，插件借此可以让自己的菜单项打开自己的文档（脚本编辑器正是这么做的），而无需知道宿主的 dock 类型 id。
+
+**`IPluginServices.GetService<T>()`（可选能力）**：核心服务之外的能力由宿主按接口提供，缺失时返回 null。这避免把可选功能类型塞进每个插件都编译的契约里——脚本宿主就是通过它拿到 `IScriptHostService`（见 §10）。
 
 ** Tool/Document/Menu 为什么不是点**：单一消费者（宿主 Dock/菜单），一对一 `Attach → handle.Dispose()` 撤销，无需 `Items` 列表、`Added/Removed` 事件、跨插件读取。做成点只增加排序、事件重放、宿主拥有点生命周期等成本，无收益。
 
@@ -127,6 +134,7 @@ IVolumeService Volumes   // Current(ReadonlyBig3DArray) · Version · Replaced �
 IMaskService   Masks     // Layers · Add(name, Big3DBitMap, MaskColor) · Remove · NotifyContentChanged · Changed
 IPreviewChannel Preview  // Publish(PreviewOverlay) · Clear(ownerId) · Overlays · Changed
 IPluginLog     Log
+T? GetService<T>()       // 宿主按接口提供的可选能力（如 IScriptHostService），缺失返回 null
 ```
 
 要点：
@@ -228,9 +236,105 @@ context.Registry.AddPluginSource(new MySource());
 
 ---
 
-## 10. 脚本宿主（未完成）
+## 10. 脚本宿主与脚本编辑器
 
-`Layeron.Plugins.ScriptHost` 已实现为**普通插件 + 插件源**，当前阻塞点见Issue跟踪。`ScriptHostTests` 暂 `[Ignore]`。
+`Layeron.Plugins.ScriptHost` 是一个**普通插件 + 插件源 + 编辑器**：注册 `IPluginSource` 后，宿主把工作区 `scripts/*.csx` 作为它的子作用域逐个激活，卸载脚本宿主即级联卸载全部脚本。
+
+脚本有两种用法，API 同时覆盖：
+
+- **在当前数据上做计算**（主要用法）：读体素 / ROI，报告进度与结果，把掩膜或新主卷写回会话。
+- **扩展应用**：像编译插件一样贡献菜单 / 面板 / 扩展点（`Menu` / `Tool` / `Contribute`），因而能反过来扩展其他编译插件。
+
+### 10.1 独立的一层：`Layeron.Scripting.Abstractions`
+
+脚本不是插件的子类型，而是另一套交付体系，因此有自己独立的契约程序集：`ScriptGlobals`（脚本看到的 API）、`ScriptRunContext`（单次执行的取消 / 报告 / UI 调度）、`IScriptHostService`（宿主能力）、`ScriptPaths`（脚本目录与扩展名）。插件层与宿主内核**都不引用它**，只有脚本宿主插件、App 和测试引用。
+
+**为什么它必须由默认上下文加载一次**：Roslyn 把脚本编译进一个由**默认上下文**加载的程序集，而脚本宿主插件本身跑在自己的 collectible 上下文中。因此脚本面向的类型（`ScriptGlobals`，以及它签名里的 `NDArray`）若随插件走，两个上下文会各持一份，Roslyn 对 globals 参数的强制转换就会因类型不相等而失败。`PluginLoadContext.SharedPrefixes` 因此把它与 **NumSharp** 一并延迟到默认上下文——这与 §7「扩展点贡献类型必须是宿主标准类型」是同一条规则。
+
+脚本插件对该层用 `Private="false"`，NumSharp 用 `ExcludeAssets="runtime"`：宿主栈的程序集一律不随插件走（部署目录已验证只含插件自身 DLL + Roslyn）。
+
+### 10.2 脚本 API：读、报告、写回
+
+```csharp
+// —— 读当前数据（带版本，消除 TOCTOU）——
+ReadonlyBig3DArray? Volume          // 主卷；自行 pattern match byte/ushort，再用块级 API 或索引器
+long VolumeVersion                  // 版本号；换卷后自增
+VolumeSnapshot Snapshot()           // 一次取 Volume + Version
+(int X,int Y,int Z) Crosshair       // 十字准线，便于默认作用于用户正在看的层
+long[]? Histogram()                 // 整卷灰度直方图（宿主单次遍历）
+NDArray ReadRoi(x0,y0,z0, sx,sy,sz) // 区域 → NDArray，形状 [z, y, x]（NumSharp）
+NDArray ReadXYSlice(z)              // 单层 → NDArray，形状 [y, x]
+
+// —— 报告（结果进日志窗口的结构化字段）——
+void Log(string message)
+void Status(string message)         // 编辑器状态行
+void Progress(double fraction)      // 编辑器进度条，[0,1]，按块报
+void Result(string label, object? value)
+
+// —— 取消 ——
+CancellationToken Cancellation
+
+// —— 写回会话（掩膜是用户数据，主卷原子替换）——
+IMaskLayer AddMask(string name, Big3DBitMap bitmap, MaskColor? color = null)
+void ReplaceVolume(ReadonlyBig3DArray volume)
+IPreviewChannel Preview
+
+// —— 扩展应用 ——
+void Menu(...) / void Tool(...) / void Contribute(...)
+```
+
+要点：
+
+- **读只有一种数据模型**：`Volume` 直接就是核心类型，没有中间抽象层；批量遍历用 `GetBlockSpan` / `ForEachInVolumeRange`（§6）。ROI 走新增的 `ReadonlyBig3DArray<T>.ReadRoi`（块级拷贝，不逐体素查索引器），再由脚本层包成 `NDArray`。
+- **写回带过期防护**：`AddMask` 拒绝一份基于**已过期版本**掩膜——“主卷在本次运行期间已被替换”；`ReplaceVolume` 走宿主的原子替换路径（校验掩膜维度、版本自增）。
+- **会话对象是 UI 线程的**：`AddMask` / `ReplaceVolume` / `Menu` / `Tool` / `Contribute` 都经 `ScriptRunContext.Invoke` 调度回 UI 线程（与阈值插件 `Task.Run` + 同步上下文回写的既有做法一致）；无头宿主里 `Invoke` 直接内联执行。
+- **结果去哪**：`Result(label, value)` 写成一条结构化日志（`[{Script}] 结果 {Label} = {Value}`），因此结果在日志窗口里是可筛选、可逐条复制的字段；掩膜 / 主卷变更进会话，天然超过本次运行。
+
+### 10.3 运行语义
+
+| 关注点 | 语义 |
+|---|---|
+| 对象 | 运行编辑器**缓冲区**（可未保存），作用于**当前数据** |
+| 线程 | 脚本主体跑在**后台线程**（长计算不冻结窗口）；报告回调回 UI 线程 |
+| 取消 | 一次一个运行；`取消` 按钮 / 关闭标签 → `Cancellation` 被触发（协作式，脚本需自行查） |
+| 作用域 | 在 `CreateChild` 出的子作用域里执行：它注册的贡献在结束（或取消）时回收，**但**掩膜 / 主卷 / 日志这些会话效果保留——这才是一次性计算关心的部分 |
+| 失败 | 编译错误与运行异常都进日志（含完整异常），编辑器状态行同时给出错误摘要；App 不崩 |
+| 安装为插件 | **不是**第二个运行按钮：把脚本放进**插件目录**的 `scripts/`（见 §10.5），再用菜单的 `重新加载脚本` 刷新。工作区里的脚本不会被自动安装 |
+
+### 10.4 编辑器：脚本插件自己的 UI
+
+脚本编辑器（AvaloniaEdit）是**插件自己的文档**，不再内置在 App：
+
+| 关注点 | 做法 |
+|---|---|
+| 贡献 | `AddDocument` 每个脚本一个文档；`ContentFactory` 返回 `ScriptEditorView`（XAML + AvaloniaEdit，来自宿主的 Avalonia 栈） |
+| 打开 | 菜单/工具栏经 `IDockableContribution.Open()` 打开自己的文档；已打开则聚焦 |
+| 菜单 | `插件 → 脚本 →`：**只放产生窗口的入口**（新建脚本、打开脚本…、重新加载脚本）。菜单是应用级的，而“保存 / 运行”需要作用于**某一个**脚本，因此它们只存在于那个脚本窗口的工具栏上 |
+| 窗口 | 每个脚本文档自带工具栏（保存 / 另存为… / 打开… / 运行 / 取消 + 进度条）与一行状态。操作由窗口自身执行，控制器不跟踪“当前编辑器” |
+| 类型隔离 | 控制器只持有 `IScriptEditor` 接口，UI 类型仅在内容工厂里出现，因此**无 UI 宿主也能加载该插件** |
+
+### 10.5 两个脚本目录，两种身份
+
+**脚本放在哪里决定了它是什么**：
+
+| 目录 | 身份 | 行为 |
+|---|---|---|
+| `<插件目录>/scripts` | **安装为插件的脚本** | `ScriptPluginSource` 发现并激活它：`Menu` / `Tool` / `Contribute` 出现在应用里，随脚本宿主插件的生命周期卸载 |
+| `<工作区>/scripts` | **你的工作脚本** | 只被编辑器列出、编辑、在**当前数据**上运行（§10.3）；**不会**被激活为插件 |
+
+这条边界是刻意的：工作区是用户的文件，一段一次性计算脚本仅仅因为被保存就被激活（执行代码、注册菜单）是没有道理的。**安装**是一个明确动作——把文件放进插件目录的 `scripts/`，再用菜单的 `重新加载脚本` 刷新（`ReloadAllScripts`）。
+
+工作区本身（App 概念）：
+
+- **布局**：`<workspace>/scripts` 是当前唯一使用的子目录。子目录约定由应用固定而不是每个工作区自选，这样一台机器上写的工作区在另一台上打开方式一致，工作区也可以整体拷贝 / 备份 / 分享。
+- **默认位置**：`%LOCALAPPDATA%\Layeron\workspaces\Default`；**上次使用的工作区记在** `%APPDATA%\Layeron\workspace.json`（与 `layout.json` 同处）——“上次在哪个工作区”是机器状态而非工作产物，放在文件夹里会导致“打开工作区”必须先写它。
+- **切换**：`文件 → 工作区 → 打开工作区…`（选文件夹，不存在则就地创建）；状态栏常显当前工作区；另有“在资源管理器中打开”。
+- **切换时**：`IScriptHostService.ScriptsDirectory` 指向新工作区，`ScriptsDirectoryChanged` 让编辑器补登新目录的脚本文档。**插件发现不受影响**——它扫的是插件目录。
+- **无头宿主**：没有 `IScriptHostService` 的宿主（测试、批处理）仍能发现并激活插件目录里的脚本，只是没有编辑器。
+
+### 10.6 无 UI 宿主可加载
+
+宿主的入口类型发现（`PluginManager.FindEntryType`）容忍无法物化的类型：一个 UI 插件被无 UI 宿主（测试、批处理）加载时，缺少 Avalonia 的视图类型会被跳过，入口类照常找到。脚本宿主因此能在无 UI 测试里完整地完成加载 / 卸载 / 泄漏验证。
 
 ---
 
@@ -245,6 +349,7 @@ context.Registry.AddPluginSource(new MySource());
 | 作用域 | 定义者卸载 → 扩展点消失；贡献者卸载 → 贡献消失而插槽仍在；预览被清理；掩膜被保留 |
 | 嵌套加载 | 子插件归属、卸载加载器级联卸载、只卸载子插件、源重载不产生重复 |
 | 真实程序集 | 元数据身份、加载、卸载后 ALC 被回收、热重载得到新实例、非插件程序集静默跳过；文档型插件（Model3D）的 document 贡献与卸载，且**内容工厂从未被调用也能完成加载/卸载**（因此无 GPU 环境同样可测） |
+| 脚本宿主 | 脚本作为子插件加载/卸载/扩展点贡献；源重载拾取已编辑脚本、坏脚本失败隔离；编辑器为每个脚本注册文档、且插件自己的菜单经 `Open()` 打开自己贡献的文档；**工作区里的脚本不被激活为插件，只出现在编辑器文档列表**。全部在无 UI 宿主里完成（脚本宿主的 UI 类型不被加载） |
 
 ---
 
@@ -274,7 +379,7 @@ public sealed class MyPlugin : IPlugin
     public void Activate(IPluginContext context)
     {
         context.Registry.AddMenu(new MenuContribution {
-            Path = "插件/我的功能", Header = "统计体素数",
+            Path = "我的功能", Header = "统计体素数",
             Execute = () => {
                 var snap = context.Services.Volumes.Snapshot();
                 if (snap.Volume is ReadonlyBig3DArray<byte> v8)
@@ -335,10 +440,14 @@ context.Registry.AddFilter(new Mean3x3Filter());
 
 ## 14. 已知限制
 
-1. **脚本宿主未完成**（§10）。
-2. **进程内信任模型**：插件与宿主同进程，不做沙箱；v1 依靠"安装即信任 + 加载前元数据校验"。
-3. **卸载不是立即的**：`ALC.Unload()` 之后要 GC 才回收；靠 `VerifyUnloaded` 发现而不是祈祷。
-4. **依赖冲突**：宿主版本优先（类型同一性 > 插件自由），插件不能替换宿主 UI 栈。
-5. **热重载不迁移状态**：当前实现是卸载→重新加载。
-6. **3D 展示需要可用的 GPU**：Mask 3D 走 Vulkan（Windows 经 D3D11 共享纹理）。功能已在多台设备验证可用，但在**老旧设备 / 异常驱动栈**上，引擎构造可能触发**原生访问违例并终止进程**——`try/catch` 接不住，标签页连"启动失败"提示都不会给出。已确认是设备特定问题，详见 [MASK3D_PLUGIN.md](MASK3D_PLUGIN.md) §4。降采样与网格抽取是纯 CPU 代码，可在无 GPU 环境下单独验证。
+1. **脚本宿主仅支持 C# `.csx`**：F# / Python 脚本引擎尚未实现，但 §8 的插件源机制已可承载任意格式。
+2. **脚本编辑器需要 UI 宿主**：无 `IScriptHostService` 的宿主（无头测试 / 批处理）仍能加载并运行脚本，只是没有编辑器窗口。
+3. **工作区目前只承载脚本**：`layout.json` 仍是应用级而非工作区级；数据集 / 派生结果等后续再挂到工作区布局下。
+4. **脚本取消是协作式的**：`Cancellation` 只是令牌，脚本不查就停不下来——纯 CPU 死循环无法硬中断（与 FilterContext 同一约束）。
+5. **脚本结果呈现只到日志窗口**：`Result` 是结构化日志字段，结果在日志窗口可筛、可看、可**逐条复制**（行右键菜单，或详情面板的「复制」）；但尚无附件（图片）渲染，更丰富的输出（内嵌结果面板、REPL）尚未实现。
+6. **进程内信任模型**：插件与宿主同进程，不做沙箱；v1 依靠"安装即信任 + 加载前元数据校验"。
+7. **卸载不是立即的**：`ALC.Unload()` 之后要 GC 才回收；靠 `VerifyUnloaded` 发现而不是祈祷。
+6. **依赖冲突**：宿主版本优先（类型同一性 > 插件自由），插件不能替换宿主 UI 栈。
+7. **热重载不迁移状态**：当前实现是卸载→重新加载。
+8. **3D 展示需要可用的 GPU**：Mask 3D 走 Vulkan（Windows 经 D3D11 共享纹理）。功能已在多台设备验证可用，但在**老旧设备 / 异常驱动栈**上，引擎构造可能触发**原生访问违例并终止进程**——`try/catch` 接不住，标签页连"启动失败"提示都不会给出。已确认是设备特定问题，详见 [MASK3D_PLUGIN.md](MASK3D_PLUGIN.md) §4。降采样与网格抽取是纯 CPU 代码，可在无 GPU 环境下单独验证。
 

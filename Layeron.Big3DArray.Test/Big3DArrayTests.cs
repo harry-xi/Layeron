@@ -4,6 +4,55 @@
     public sealed class Big3DArrayTests
     {
         [TestMethod]
+        public void ReadRoi_CopiesTheRegion_AcrossBlockBoundaries()
+        {
+            // 100^3 crosses the 64-voxel block edge, so this region spans four blocks per axis.
+            var volume = new Big3DArray<ushort>(100, 100, 100);
+            volume.Fill((x, y, z) => (ushort)(x + y * 2 + z * 3));
+
+            var roi = volume.ReadRoi(60, 58, 62, 8, 6, 4);
+
+            Assert.AreEqual(4, roi.GetLength(0), "roi[z, y, x]: the first dimension is Z");
+            Assert.AreEqual(6, roi.GetLength(1));
+            Assert.AreEqual(8, roi.GetLength(2));
+
+            for (var z = 0; z < 4; z++)
+            {
+                for (var y = 0; y < 6; y++)
+                {
+                    for (var x = 0; x < 8; x++)
+                    {
+                        var expected = (ushort)((60 + x) + (58 + y) * 2 + (62 + z) * 3);
+                        Assert.AreEqual(expected, roi[z, y, x], $"roi[{z},{y},{x}]");
+                    }
+                }
+            }
+        }
+
+        [TestMethod]
+        public void ReadRoi_WholeVolume_MatchesTheIndexer()
+        {
+            var volume = new Big3DArray<byte>(5, 4, 3);
+            volume.Fill((x, y, z) => (byte)(x * 1 + y * 10 + z * 100));
+
+            var roi = volume.ReadRoi(0, 0, 0, 5, 4, 3);
+
+            for (var z = 0; z < 3; z++)
+                for (var y = 0; y < 4; y++)
+                    for (var x = 0; x < 5; x++)
+                        Assert.AreEqual(volume[x, y, z], roi[z, y, x]);
+        }
+
+        [TestMethod]
+        public void ReadRoi_OutsideTheVolume_Throws()
+        {
+            var volume = new Big3DArray<byte>(16, 16, 16);
+
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => volume.ReadRoi(8, 8, 8, 9, 1, 1));
+            Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => volume.ReadRoi(0, 0, 0, 0, 1, 1));
+        }
+
+        [TestMethod]
         public void SliceXY()
         {
             var testarray = new Big3DArray<byte>(128, 128, 128);

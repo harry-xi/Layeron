@@ -8,6 +8,7 @@ using Layeron.App.Session;
 using Layeron.App.ViewModels;
 using Layeron.Big3DArray;
 using Layeron.Plugin.Abstractions;
+using Layeron.Scripting.Abstractions;
 
 namespace Layeron.App.Plugins;
 
@@ -38,8 +39,20 @@ public sealed class AppPluginServices : IPluginServices, IDisposable
 
     public IPluginLog Log { get; }
 
+    /// <summary>
+    /// The scripting host capability handed to the script editor plugin. It is filled in after the
+    /// plugin controller exists, because it delegates back to the controller for reloads.
+    /// </summary>
+    public IScriptHostService? ScriptHost { get; set; }
+
+    public T? GetService<T>() where T : class => ScriptHost as T;
+
     public void Dispose()
     {
+        // The script host service is a listener on the workspace manager; releasing it here keeps the
+        // teardown in one place, next to the other services plugins were using.
+        (ScriptHost as IDisposable)?.Dispose();
+
         _volumes.Dispose();
         _masks.Dispose();
     }

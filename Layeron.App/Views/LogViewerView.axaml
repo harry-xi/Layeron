@@ -94,7 +94,7 @@
             <Border DockPanel.Dock="Top"
                     Padding="{StaticResource PanePadding}"
                     Background="{DynamicResource SukiControlBackground}">
-                <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="6">
+                <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="6">
 
                     <!-- Filter: level and text read as one field. The border, the corner radius and the
                          divider are what make two controls look like a single input. -->
@@ -157,11 +157,6 @@
                             Command="{Binding ClearCommand}"/>
                     <Button Grid.Column="4"
                             Classes="tight"
-                            Content="复制"
-                            ToolTip.Tip="复制当前显示的记录"
-                            Command="{Binding CopyCommand}"/>
-                    <Button Grid.Column="5"
-                            Classes="tight"
                             Content="目录"
                             ToolTip.Tip="{Binding LogPathTip}"
                             Command="{Binding OpenFolderCommand}"/>
@@ -179,7 +174,7 @@
                     Padding="{StaticResource PanePadding}"
                     Background="{DynamicResource SukiControlBackground}">
                 <DockPanel>
-                    <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="6">
+                    <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="6">
                         <TextBlock Grid.Column="0"
                                    Classes="mono"
                                    Text="{Binding SelectedEvent, Converter={StaticResource LogText}, ConverterParameter=Time}"
@@ -197,6 +192,11 @@
                                    VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis"/>
                         <Button Grid.Column="3"
+                                Classes="tight"
+                                Content="复制"
+                                ToolTip.Tip="复制这一条记录"
+                                Command="{Binding CopySelectedCommand}"/>
+                        <Button Grid.Column="4"
                                 Classes="icon"
                                 Content="✕"
                                 ToolTip.Tip="关闭详情"

@@ -18,6 +18,12 @@
     <ProjectReference Include="..\Layeron.Plugin.Abstractions\Layeron.Plugin.Abstractions.csproj" />
     <ProjectReference Include="..\Layeron.Plugin.Host\Layeron.Plugin.Host.csproj" />
     <!--
+      The scripting contract must be in the test's default context: Roslyn loads the compiled script
+      there, and the script host plugin binds ScriptGlobals to this one copy. Without the reference it
+      would only exist inside the plugin folder, which the default context cannot see.
+    -->
+    <ProjectReference Include="..\Layeron.Scripting.Abstractions\Layeron.Scripting.Abstractions.csproj" />
+    <!--
       The script host is built but not referenced: the tests only need its assembly on disk, because it
       is exercised through the plugin loader exactly as a user's plugin would be.
     -->

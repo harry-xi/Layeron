@@ -35,33 +35,45 @@ public sealed class PluginMenuNode
 
     internal void SetCommand(ICommand command) => Command = command;
 
-    /// <summary>Builds the nested tree from flat path descriptions.</summary>
+    /// <summary>
+    /// Builds the nested tree from flat path descriptions.
+    /// <para>
+    /// A contribution's <c>Path</c> names the folder it lives in and its <c>Header</c> is the entry
+    /// itself, so the leaf is appended under the folders. Treating the path as the whole tree instead -
+    /// which this used to do - assigned the command to the last folder and ignored the header, so every
+    /// entry sharing a path collapsed onto one item and its own label never appeared.
+    /// </para>
+    /// </summary>
     public static IReadOnlyList<PluginMenuNode> Build(IEnumerable<MenuDescription> menus)
     {
         var roots = new List<PluginMenuNode>();
 
         foreach (var menu in menus.OrderBy(m => m.Order).ThenBy(m => m.Header, StringComparer.OrdinalIgnoreCase))
         {
-            var segments = menu.Path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if (segments.Length == 0)
-                continue;
+            var folders = menu.Path.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
             var level = roots;
-            PluginMenuNode? node = null;
-
-            foreach (var segment in segments)
+            foreach (var folder in folders)
             {
-                node = level.FirstOrDefault(n => string.Equals(n.Header, segment, StringComparison.OrdinalIgnoreCase));
+                var node = level.FirstOrDefault(n => string.Equals(n.Header, folder, StringComparison.OrdinalIgnoreCase));
                 if (node == null)
                 {
-                    node = new PluginMenuNode(segment, menu.Order);
+                    node = new PluginMenuNode(folder, menu.Order);
                     level.Add(node);
                 }
 
                 level = node.Children;
             }
 
-            node!.SetCommand(new PluginMenuCommand(menu));
+            // Reuse an identical entry so a duplicate registration overwrites rather than doubles up.
+            var leaf = level.FirstOrDefault(n => string.Equals(n.Header, menu.Header, StringComparison.OrdinalIgnoreCase));
+            if (leaf == null)
+            {
+                leaf = new PluginMenuNode(menu.Header, menu.Order);
+                level.Add(leaf);
+            }
+
+            leaf.SetCommand(new PluginMenuCommand(menu));
         }
 
         // Sort every level once, keeping declared order first and header as the tie-breaker.

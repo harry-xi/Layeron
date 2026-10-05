@@ -11,19 +11,25 @@
       context can resolve it, so this has to be switched on explicitly.
     -->
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <!--
+      The script editor is declared in XAML, so the Avalonia XAML compiler must run for this project.
+      Avalonia itself comes from the host and is excluded from the plugin's runtime assets below.
+    -->
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
 
   <ItemGroup>
     <AssemblyMetadata Include="LayeronPluginId" Value="layeron.scripthost" />
     <AssemblyMetadata Include="LayeronPluginName" Value="C# Script Host" />
     <AssemblyMetadata Include="LayeronPluginVersion" Value="1.0.0" />
-    <AssemblyMetadata Include="LayeronPluginDescription" Value="Loads .csx scripts from the scripts folder as plugins." />
+    <AssemblyMetadata Include="LayeronPluginDescription" Value="Loads .csx scripts from the scripts folder as plugins and edits them in a dockable editor." />
     <AssemblyMetadata Include="LayeronPluginApiVersion" Value="1.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Layeron.Big3DArray\Layeron.Big3DArray.csproj" Private="false" />
     <ProjectReference Include="..\Layeron.Plugin.Abstractions\Layeron.Plugin.Abstractions.csproj" Private="false" />
+    <ProjectReference Include="..\Layeron.Scripting.Abstractions\Layeron.Scripting.Abstractions.csproj" Private="false" />
   </ItemGroup>
 
   <ItemGroup>
@@ -33,6 +39,15 @@
       framework assemblies it owns.
     -->
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.0.0" />
+    <!-- UI is the host's: compile assets only, so the plugin never ships its own Avalonia. -->
+    <PackageReference Include="Avalonia" Version="12.1.3" GeneratePathProperty="true" ExcludeAssets="runtime" />
+    <PackageReference Include="Avalonia.AvaloniaEdit" Version="12.0.0" ExcludeAssets="runtime" />
+    <!--
+      NumSharp reaches this project transitively through the scripting contract, but it is the host stack's
+      copy that must win (the script binds to the default context's). Excluded so the plugin folder does not
+      ship a second one.
+    -->
+    <PackageReference Include="NumSharp" Version="0.30.0" ExcludeAssets="runtime" />
   </ItemGroup>
 
 </Project>

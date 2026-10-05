@@ -43,6 +43,11 @@
         <ProjectReference Include="..\Layeron.Plugin.Abstractions\Layeron.Plugin.Abstractions.csproj" />
         <ProjectReference Include="..\Layeron.Plugin.Host\Layeron.Plugin.Host.csproj" />
         <!--
+          The scripting layer: the app implements IScriptHostService and must have the assembly in its
+          default context, which is also where Roslyn loads compiled scripts. See PLUGIN_SYSTEM.md §10.
+        -->
+        <ProjectReference Include="..\Layeron.Scripting.Abstractions\Layeron.Scripting.Abstractions.csproj" />
+        <!--
           The sample plugins are built with the app and deployed into a development plugin folder
           (see DeploySamplePlugins) so a plain build yields a working plugin set. They are not
           referenced as assemblies: the app must never compile against plugin code.

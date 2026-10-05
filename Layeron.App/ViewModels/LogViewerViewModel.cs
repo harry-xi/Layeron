@@ -47,7 +47,7 @@ public sealed class LogViewerViewModel : Tool, IDisposable
         Id = DockableIds.Log;
         CanClose = true;
         ClearCommand = ReactiveCommand.Create(Log.Clear);
-        CopyCommand = ReactiveCommand.CreateFromTask(CopyAsync);
+        CopySelectedCommand = ReactiveCommand.CreateFromTask(() => CopyRecordAsync(_selected));
         OpenFolderCommand = ReactiveCommand.Create(OpenFolder);
         // The lambda returns RxVoid explicitly: ReactiveCommand.Create infers its result type from the
         // delegate, so an assignment expression would produce a command whose result is the event.
@@ -122,7 +122,10 @@ public sealed class LogViewerViewModel : Tool, IDisposable
     /// </summary>
     public string LogPathTip => Log.FilePath ?? "(未启用文件日志)";
     public ReactiveCommand<RxVoid, RxVoid> ClearCommand { get; private set; } = null!;
-    public ReactiveCommand<RxVoid, RxVoid> CopyCommand { get; private set; } = null!;
+
+    /// <summary>Copies the selected record, for the detail pane's button.</summary>
+    public ReactiveCommand<RxVoid, RxVoid> CopySelectedCommand { get; private set; } = null!;
+
     public ReactiveCommand<RxVoid, RxVoid> OpenFolderCommand { get; private set; } = null!;
     /// <summary>
     /// Hides the detail pane by clearing the selection. The pane is bound to the selection, so binding
@@ -218,17 +221,33 @@ public sealed class LogViewerViewModel : Tool, IDisposable
     // -----------------------------------------------------------------------
     //  Commands
     // -----------------------------------------------------------------------
-    private async Task CopyAsync()
+    /// <summary>
+    /// Puts one record on the clipboard: a record's complete line, which is what is worth pasting into a
+    /// report. The window deliberately offers no "copy everything" action - a whole log is what the log
+    /// file is for, and the 目录 button opens it.
+    /// <para>
+    /// Two callers, one behaviour: the detail pane's button passes the selection, and a row's context menu
+    /// passes the record the pointer is on (a context menu is its own visual tree, so that record travels
+    /// through the view rather than through a binding).
+    /// </para>
+    /// </summary>
+    public async Task CopyRecordAsync(LogEvent? logEvent)
     {
-        var clipboard = Avalonia.Controls.TopLevel.GetTopLevel(
-            Avalonia.Application.Current?.ApplicationLifetime is
-                Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
-                ? desktop.MainWindow
-                : null)?.Clipboard;
-        if (clipboard == null)
+        if (logEvent is null)
             return;
-        await clipboard.SetTextAsync(string.Join(Environment.NewLine, Events.Select(e => e.Line())));
+
+        if (Clipboard() is not { } clipboard)
+            return;
+
+        await clipboard.SetTextAsync(logEvent.Line());
     }
+
+    /// <summary>The main window's clipboard, or null when there is no window (designer, headless test).</summary>
+    private static IClipboard? Clipboard() => Avalonia.Controls.TopLevel.GetTopLevel(
+        Avalonia.Application.Current?.ApplicationLifetime is
+            Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+            ? desktop.MainWindow
+            : null)?.Clipboard;
     private void OpenFolder()
     {
         if (Log.FilePath is not { } path)

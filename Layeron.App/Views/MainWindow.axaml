@@ -26,12 +26,14 @@
                 <MenuItem Header="生成16位演示数据" Command="{Binding SharedData.GenerateDemo16Command}"/>
                 <Separator/>
                 <MenuItem Header="从图片创建" Command="{Binding SharedData.CreateFromImagesCommand}"/>
+                <Separator/>
+                <!-- Filled from code: the current workspace and ways to change it. -->
+                <MenuItem x:Name="WorkspaceMenu" Header="工作区"/>
             </MenuItem>
             <MenuItem Header="窗口">
                 <MenuItem Header="轴位 (Axial) 视图" Command="{Binding Dock.CreateAxialCommand}"/>
                 <MenuItem Header="冠状位 (Coronal) 视图" Command="{Binding Dock.CreateCoronalCommand}"/>
                 <MenuItem Header="矢状位 (Sagittal) 视图" Command="{Binding Dock.CreateSagittalCommand}"/>
-                <MenuItem Header="代码编辑器" Command="{Binding Dock.CreateCodeEditorCommand}"/>
                 <Separator/>
                 <MenuItem Header="重置布局" Command="{Binding Dock.ResetLayoutCommand}"/>
                 <MenuItem x:Name="SettingsMenuItem" Header="设置"/>
@@ -46,7 +48,13 @@
         </Menu>
         
         <Border DockPanel.Dock="Bottom" Padding="10,4" Background="{DynamicResource SukiCardBackground}">
-            <TextBlock Text="{Binding SharedData.StatusText}" VerticalAlignment="Center"/>
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="{Binding SharedData.StatusText}" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"/>
+                <!-- Set from code: the workspace is the one piece of global context worth keeping visible. -->
+                <TextBlock x:Name="WorkspaceText" Grid.Column="1" VerticalAlignment="Center"
+                           Opacity="0.7" Margin="12,0,0,0" TextTrimming="CharacterEllipsis"/>
+            </Grid>
         </Border>
         
         <controls:DockControl Layout="{Binding Dock.Layout}"/>
