@@ -25,15 +25,18 @@ namespace Layeron.Scripting.Abstractions;
 /// </summary>
 public sealed class ScriptGlobals
 {
-    /// <summary>Revision of the main volume when this execution started; guards against stale results.</summary>
-    private long _version;
+    /// <summary>
+    /// Revision of the main volume when this instance was created; the baseline a stale-result warning is
+    /// measured against. It never blocks a write - see <see cref="WarnIfVolumeReplaced"/>.
+    /// </summary>
+    private long _baselineVersion;
 
     public ScriptGlobals(IPluginContext context, string scriptPath, ScriptRunContext? run = null)
     {
         Plugin = context;
         ScriptPath = scriptPath;
         Run = run ?? ScriptRunContext.None;
-        _version = context.Services.Volumes.Version;
+        _baselineVersion = context.Services.Volumes.Version;
     }
 
     /// <summary>The script's plugin context: registrations made here unload with the script.</summary>
@@ -145,14 +148,16 @@ public sealed class ScriptGlobals
     /// Adds a mask layer. It is user data, so it stays after the run's registrations are torn down -
     /// exactly like a mask produced by a compiled plugin.
     /// <para>
-    /// Rejected when the main volume has been replaced since this run started: a mask derived from an
-    /// older revision no longer matches the data on screen.
+    /// A mask is accepted even when the main volume has been replaced since this instance was created;
+    /// the mismatch is only logged as a warning. The baseline is the instance's creation time, which
+    /// cannot tell a stale result apart from a long-lived script re-reading the current volume, so
+    /// blocking on it would reject good data. Dimension checking still applies as usual.
     /// </para>
     /// </summary>
     public IMaskLayer AddMask(string name, Big3DBitMap bitmap, MaskColor? color = null)
     {
         ArgumentNullException.ThrowIfNull(bitmap);
-        RequireCurrentVolume();
+        WarnIfVolumeReplaced();
 
         IMaskLayer? layer = null;
         Run.Invoke(() =>
@@ -175,20 +180,26 @@ public sealed class ScriptGlobals
         Run.Invoke(() =>
         {
             Host.Volumes.Replace(volume);
-            // The script's own replacement becomes the new baseline, so a mask built from it is allowed.
-            _version = Host.Volumes.Version;
+            // The script's own replacement becomes the new baseline, so masks built from it are not
+            // warned about as stale.
+            _baselineVersion = Host.Volumes.Version;
         });
     }
 
     /// <summary>Non-destructive preview overlays, for showing an intermediate result while working.</summary>
     public IPreviewChannel Preview => Host.Preview;
 
-    private void RequireCurrentVolume()
+    /// <summary>
+    /// Logs a warning - it does not block anything - when the main volume has been replaced since this
+    /// instance was created, because a result produced now may have been derived from the older revision.
+    /// </summary>
+    private void WarnIfVolumeReplaced()
     {
-        if (Host.Volumes.Version != _version)
+        if (Host.Volumes.Version != _baselineVersion)
         {
-            throw new InvalidOperationException(
-                "主卷在本脚本运行期间已被替换，结果已过期；请重新运行。");
+            Host.Log.Warn(
+                "[{Script}] 主卷在本次运行期间已被替换，掩膜可能基于已过期数据。",
+                Path.GetFileName(ScriptPath));
         }
     }
 

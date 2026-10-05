@@ -42,7 +42,7 @@ Save and run exist only on the script window, because they need one specific scr
 The full list of available members and signatures is in [API Reference → ScriptGlobals](/en/plugin/api-reference#scriptglobals).
 
 ::: tip The data may have changed
-If the session's volume is replaced while a run is processing it, a mask derived from the old data is rejected with a request to run again. Fetching the data together with its version avoids this.
+Fetch the data together with its version (`Snapshot()`) so a mask derived from old data is never published. If the volume has been replaced by the time you call `AddMask`, it is only logged as a warning and the mask is still added.
 :::
 
 ## Installing a script as a plugin

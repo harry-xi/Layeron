@@ -286,7 +286,7 @@ void Menu(...) / void Tool(...) / void Contribute(...)
 要点：
 
 - **读只有一种数据模型**：`Volume` 直接就是核心类型，没有中间抽象层；批量遍历用 `GetBlockSpan` / `ForEachInVolumeRange`（§6）。ROI 走新增的 `ReadonlyBig3DArray<T>.ReadRoi`（块级拷贝，不逐体素查索引器），再由脚本层包成 `NDArray`。
-- **写回带过期防护**：`AddMask` 拒绝一份基于**已过期版本**掩膜——“主卷在本次运行期间已被替换”；`ReplaceVolume` 走宿主的原子替换路径（校验掩膜维度、版本自增）。
+- **写回不与过期拦截对抗**：`AddMask` 遇到基于**已过期版本**的掩膜只记一条警告（“主卷在本次运行期间已被替换”），掩膜照常加入——版本基线取自 `ScriptGlobals` 创建时刻，区分不了“陈旧结果”与“长驻脚本重读当前卷”，拦截会误伤后者；真正的把关是 `ReplaceVolume` 的原子替换与掩膜的维度校验。
 - **会话对象是 UI 线程的**：`AddMask` / `ReplaceVolume` / `Menu` / `Tool` / `Contribute` 都经 `ScriptRunContext.Invoke` 调度回 UI 线程（与阈值插件 `Task.Run` + 同步上下文回写的既有做法一致）；无头宿主里 `Invoke` 直接内联执行。
 - **结果去哪**：`Result(label, value)` 写成一条结构化日志（`[{Script}] 结果 {Label} = {Value}`），因此结果在日志窗口里是可筛选、可逐条复制的字段；掩膜 / 主卷变更进会话，天然超过本次运行。
 

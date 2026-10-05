@@ -256,6 +256,54 @@ public sealed class ScriptHostTests
             Assert.IsTrue(
                 ((TestMaskService)adapter.Services.Masks).Layers.Any(l => l.Name == "script mask"),
                 "AddMask must register a layer on the session");
+
+            // Nothing replaced the volume, so the staleness warning must stay silent.
+            Assert.IsFalse(scriptLog.Contains("已被替换"),
+                "an unchanged volume must not be reported as stale; log was: "
+                    + string.Join(" | ", scriptLog.Messages));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void Script_MaskFromAReplacedVolume_IsWarnedAboutButStillAdded()
+    {
+        var directory = TestPaths.CreateTemporaryPluginDirectory();
+        try
+        {
+            // The volume moves on while the script holds it: the same situation as a load landing mid-run.
+            // The mask must still reach the session. The baseline is as old as the globals object, so it
+            // cannot tell a stale result apart from a long-lived script that re-read the current volume -
+            // blocking on it would reject good data, which is why it only warns.
+            WriteScript(directory, "stale", """
+                if (Volume is ReadonlyBig3DArray<byte> v)
+                {
+                    Host.Volumes.Replace(v);
+                    AddMask("after replace", new Big3DBitMap(v.X, v.Y, v.Z));
+                }
+                """);
+
+            var adapter = new TestHostAdapter(TestVolumes.Small());
+            ((TestServices)adapter.Services).AdditionalService =
+                new FakeScriptHostService(Path.Combine(directory, "scripts"));
+
+            using var manager = CreateManager(adapter, directory);
+            Assert.AreEqual(ScriptHostId, manager.LoadAssembly(TestPaths.ScriptHostPluginAssembly),
+                "load failed; log: " + string.Join(" | ", adapter.Log.Messages));
+
+            var scriptLog = (CollectingLog)((TestServices)adapter.Services).Log;
+
+            Assert.IsTrue(
+                ((TestMaskService)adapter.Services.Masks).Layers.Any(l => l.Name == "after replace"),
+                "a mask from a replaced volume must still be added; log was: "
+                    + string.Join(" | ", scriptLog.Messages));
+
+            Assert.IsTrue(scriptLog.Contains("已被替换"),
+                "the replaced volume must be reported as a warning; log was: "
+                    + string.Join(" | ", scriptLog.Messages));
         }
         finally
         {
