@@ -31,8 +31,6 @@ namespace Layeron.App;
 /// </summary>
 public class DockFactory : Factory
 {
-    private int _windowCount;
-
     private readonly ISessionManager _sessions;
     private readonly IPreviewChannel? _preview;
 
@@ -51,6 +49,7 @@ public class DockFactory : Factory
         // Dockables may hold session subscriptions; release them on close so a removed
         // slice view does not stay rooted to the session manager.
         DockableClosed += (_, e) => (e.Dockable as IDisposable)?.Dispose();
+        
     }
 
     /// <summary>
@@ -165,6 +164,14 @@ public class DockFactory : Factory
         // to) turns any GetDockable("CenterColumn") into the whole tree.
         DockableLocator = BuildLocators(layout);
 
+        // CreateWindowFrom only builds the IDockWindow model; the platform window that actually shows a
+        // floating pane is supplied here. This cannot live in the model layer: HostWindow is in
+        // Dock.Avalonia, which Dock.Model.ReactiveUI does not reference.
+        HostWindowLocator = new Dictionary<string, Func<IHostWindow?>>
+        {
+            [nameof(IDockWindow)] = () => new HostWindow()
+        };
+
         base.InitLayout(layout);
     }
 
@@ -210,19 +217,7 @@ public class DockFactory : Factory
             Root = rootNode
         };
     }
-
-    // -----------------------------------------------------------------------
-    //  Runtime helpers
-    // -----------------------------------------------------------------------
-
-    public IHostWindow CreateWindow()
-    {
-        _windowCount++;
-        var window = new HostWindow();
-        window.Title = $"Window {_windowCount}";
-        return window;
-    }
-
+    
     public void AddDocument(IRootDock root, IDockable newDockable)
     {
         if (FindActiveDock<IDocumentDock>(root) is { } documentDock)
@@ -579,6 +574,16 @@ public class DockFactory : Factory
         window.Title = dockable.Title;
         AddWindow(root, window);
         window.Present(window.IsModal);
+    }
+
+    public override IDockWindow? CreateWindowFrom(IDockable dockable)
+    {
+        Log.Debug("Dock", "Create window for {Title} ({TypeId})", dockable.Title, TypeIdOf(dockable) ?? "(unknown type)");
+        var window = base.CreateWindowFrom(dockable);
+        if (window is null)
+            Log.Warn("Dock", "Create window failed for {Title} ({TypeId})", dockable.Title, TypeIdOf(dockable) ?? "(unknown type)");
+
+        return window;
     }
 
     /// <summary>Describes a dockable that a load could not restore.</summary>
