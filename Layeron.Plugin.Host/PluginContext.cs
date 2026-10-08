@@ -19,6 +19,29 @@ internal sealed class PluginContext : IPluginContext
     private readonly PluginManager _manager;
     private readonly PluginContext? _parent;
 
+    private PluginDescriptor _descriptor = new()
+    {
+        Id = "unknown",
+        Name = "Unknown",
+        Version = "0.0.0",
+        Description = "Unknown plugin"
+    };
+
+    public PluginContext(
+        PluginDescriptor descriptor,
+        PluginManager manager,
+        IPluginServices services,
+        PluginContext? parent)
+    {
+        PluginId = descriptor.Id;
+        PluginName = descriptor.Name;
+        _manager = manager;
+        _parent = parent;
+        _registry = new PluginRegistry(this, services, manager.PointRegistry, manager);
+        _parent?._children.Add(this);
+        _descriptor = descriptor;
+    }
+
     public PluginContext(
         string pluginId,
         string? pluginName,
@@ -40,6 +63,15 @@ internal sealed class PluginContext : IPluginContext
 
     /// <summary>Enclosing scope, or null for a top-level plugin. Loaders create children.</summary>
     public PluginContext? Parent => _parent;
+
+    /// <summary>The plugin's descriptor.</summary>
+    public PluginDescriptor PluginDescriptor => _descriptor;
+
+    /// <summary>Path of the plugin's folder, or null if unknown.</summary>
+    public string? PluginDirectory => Path.GetDirectoryName(_descriptor.Location);
+
+    /// <summary>Path of the plugin's data folder, or null if unknown.</summary>
+    public string? PluginDataDirectory => _manager.GetPluginDataDirectory(PluginId);
 
     /// <summary>True when this context nests inside <paramref name="candidate"/> at any depth.</summary>
     public bool IsNestedInside(PluginContext candidate)

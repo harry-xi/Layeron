@@ -29,6 +29,12 @@ public interface IPluginContext : IDisposable
     /// <summary>Human readable plugin name, when known.</summary>
     string? PluginName { get; }
 
+    PluginDescriptor PluginDescriptor { get; }
+
+    string? PluginDirectory { get; }
+
+    string? PluginDataDirectory { get; }
+
     /// <summary>Host services (volume, masks, preview, logging).</summary>
     IPluginServices Services { get; }
 

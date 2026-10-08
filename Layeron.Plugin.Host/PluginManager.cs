@@ -359,7 +359,7 @@ public sealed class PluginManager : IDisposable
             }
 
             var services = Adapter.Services;
-            var context = new PluginContext(id, descriptor.Name, this, services, parentContext);
+            var context = new PluginContext(descriptor, this, services, parentContext);
 
             try
             {
@@ -865,6 +865,17 @@ public sealed class PluginManager : IDisposable
     {
         UnloadAll();
         VerifyUnloaded();
+    }
+
+    internal string? GetPluginDataDirectory(string pluginId)
+    {
+        var basePath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Layeron","plugins_data");
+
+        var path = Path.Combine(basePath, pluginId);
+        Directory.CreateDirectory(path);
+        return path;
     }
 
     private sealed class SourceRegistration(IPluginSource source, PluginContext ownerContext)
