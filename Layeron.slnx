@@ -8,6 +8,7 @@
   <Project Path="Layeron.Plugin.Host/Layeron.Plugin.Host.csproj" />
   <Project Path="Layeron.Plugin.Test/Layeron.Plugin.Test.csproj" />
   <Project Path="Layeron.Plugins.Model3D/Layeron.Plugins.Model3D.csproj" />
+  <Project Path="Layeron.Plugins.PythonRunner/Layeron.Plugins.PythonRunner.csproj" />
   <Project Path="Layeron.Plugins.ScriptHost/Layeron.Plugins.ScriptHost.csproj" />
   <Project Path="Layeron.Plugins.Threshold/Layeron.Plugins.Threshold.csproj" />
   <Project Path="Layeron.Scripting.Abstractions/Layeron.Scripting.Abstractions.csproj" />

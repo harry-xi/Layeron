@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <AssemblyMetadata Include="LayeronPluginId" Value="layeron.pythonrunner" />
+        <AssemblyMetadata Include="LayeronPluginName" Value="Python Runner" />
+        <AssemblyMetadata Include="LayeronPluginVersion" Value="1.0.0" />
+        <AssemblyMetadata Include="LayeronPluginDescription" Value="A plugin for running Python scripts." />
+        <AssemblyMetadata Include="LayeronPluginApiVersion" Value="1.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Layeron.Plugin.Abstractions\Layeron.Plugin.Abstractions.csproj" />
+    </ItemGroup>
+
+</Project>

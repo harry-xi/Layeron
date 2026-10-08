@@ -55,6 +55,7 @@
         <ProjectReference Include="..\Layeron.Plugins.ScriptHost\Layeron.Plugins.ScriptHost.csproj" ReferenceOutputAssembly="false" />
         <ProjectReference Include="..\Layeron.Plugins.Threshold\Layeron.Plugins.Threshold.csproj" ReferenceOutputAssembly="false" />
         <ProjectReference Include="..\Layeron.Plugins.Model3D\Layeron.Plugins.Model3D.csproj" ReferenceOutputAssembly="false" />
+        <ProjectReference Include="..\Layeron.Plugins.PythonRunner\Layeron.Plugins.PythonRunner.csproj" ReferenceOutputAssembly="false" />
     </ItemGroup>
 
     <ItemGroup>
@@ -79,6 +80,9 @@
             </SamplePluginFile>
             <SamplePluginFile Include="..\Layeron.Plugins.Model3D\bin\$(Configuration)\net10.0\**\*.*">
                 <PluginFolder>layeron.model3d</PluginFolder>
+            </SamplePluginFile>
+            <SamplePluginFile Include="..\Layeron.Plugins.PythonRunner\bin\$(Configuration)\net10.0\**\*.*">
+                <PluginFolder>layeron.pythonrunner</PluginFolder>
             </SamplePluginFile>
         </ItemGroup>
 
