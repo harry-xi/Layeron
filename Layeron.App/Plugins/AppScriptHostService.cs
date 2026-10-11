@@ -1,18 +1,22 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Threading.Tasks;
 using Avalonia.Platform.Storage;
+using Layeron.App.Logging;
 using Layeron.App.Workspaces;
 using Layeron.Scripting.Abstractions;
 
 namespace Layeron.App.Plugins;
 
 /// <summary>
-/// The application's implementation of the scripting host seam: it owns the parts of "editing and
-/// running a script" that only the host can do - where the user's scripts live, the file dialogs, and
-/// re-scanning after a script is installed as a plugin.
+/// The application's implementation of the scripting seam: file dialogs and a plugin re-scan, and nothing
+/// else.
 /// <para>
-/// The editor UI itself lives in the script host plugin. This class is deliberately UI-free beyond the
-/// file dialogs, so the plugin never takes a reference to the application.
+/// Note what is absent. This class has no idea that scripts have extensions, that C# scripts live in a
+/// folder called <c>scripts</c> or that Python ones live in <c>python</c> - all of that belongs to the
+/// plugins that read and write those files. The host only has to know how to show a dialog, so another
+/// scripting language needs no change here at all: it passes its own title, folder and patterns in.
 /// </para>
 /// </summary>
 public sealed class AppScriptHostService : IScriptHostService, IDisposable
@@ -27,39 +31,41 @@ public sealed class AppScriptHostService : IScriptHostService, IDisposable
         _workspaces.Changed += OnWorkspaceChanged;
     }
 
-    public event Action? ScriptsDirectoryChanged;
+    public event Action? WorkspaceChanged;
 
-    /// <summary>
-    /// The active workspace's scripts folder. The workspace holds the user's working scripts; they are
-    /// edited and run, not installed. A script becomes a plugin by being placed in the application's plugin
-    /// directory instead, which the plugin source scans.
-    /// </summary>
-    public string ScriptsDirectory => _workspaces.Current.ScriptsDirectory;
+    /// <summary>Where the active workspace's files live. Which folders exist under it is not the host's business.</summary>
+    public string WorkspaceRoot => _workspaces.Current.Root;
 
-    public async Task<string?> PickScriptToOpenAsync()
+    public async Task<string?> PickFileToOpenAsync(
+        string title,
+        string suggestedDirectory,
+        IReadOnlyList<string> patterns)
     {
-        var provider = StorageProviderAccess.Get();
-        var files = await provider.OpenFilePickerAsync(new FilePickerOpenOptions
+        var files = await StorageProviderAccess.Get().OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "打开脚本",
+            Title = title,
             AllowMultiple = false,
-            SuggestedStartLocation = await TryGetScriptsFolderAsync(provider),
-            FileTypeFilter = [ScriptFileType]
+            SuggestedStartLocation = await TryGetFolderAsync(suggestedDirectory),
+            FileTypeFilter = [FileType(title, patterns)]
         });
 
         return files.Count > 0 ? files[0].TryGetLocalPath() : null;
     }
 
-    public async Task<string?> PickScriptToSaveAsync(string suggestedFileName)
+    public async Task<string?> PickFileToSaveAsync(
+        string title,
+        string suggestedDirectory,
+        string suggestedFileName,
+        string defaultExtension,
+        IReadOnlyList<string> patterns)
     {
-        var provider = StorageProviderAccess.Get();
-        var file = await provider.SaveFilePickerAsync(new FilePickerSaveOptions
+        var file = await StorageProviderAccess.Get().SaveFilePickerAsync(new FilePickerSaveOptions
         {
-            Title = "保存脚本",
+            Title = title,
             SuggestedFileName = suggestedFileName,
-            SuggestedStartLocation = await TryGetScriptsFolderAsync(provider),
-            DefaultExtension = ScriptPaths.Extension.TrimStart('.'),
-            FileTypeChoices = [ScriptFileType]
+            SuggestedStartLocation = await TryGetFolderAsync(suggestedDirectory),
+            DefaultExtension = defaultExtension,
+            FileTypeChoices = [FileType(title, patterns)]
         });
 
         return file?.TryGetLocalPath();
@@ -68,25 +74,31 @@ public sealed class AppScriptHostService : IScriptHostService, IDisposable
     public void ReloadAllScripts() => _plugins.RefreshSources();
 
     /// <summary>
-    /// Re-targets the editor after a workspace switch. Script plugin discovery is not involved - it scans
-    /// the plugin directories, which a workspace switch does not touch - so this only tells the script host
-    /// to list the new folder's scripts.
+    /// Records a failed script run. The editor shows the last line in its own status bar, which names the
+    /// problem; the traceback is what a support request needs, and the status bar must not become a scrollback.
     /// </summary>
-    private void OnWorkspaceChanged() => ScriptsDirectoryChanged?.Invoke();
+    public void LogRunFailure(string name, string? error) =>
+        Log.Error(
+            "Plugin",
+            string.IsNullOrWhiteSpace(error) ? "Script '{Name}' failed." : "Script '{Name}' failed:\n{Error}",
+            name,
+            error);
+
+    private void OnWorkspaceChanged() => WorkspaceChanged?.Invoke();
 
     public void Dispose() => _workspaces.Changed -= OnWorkspaceChanged;
 
-    private static FilePickerFileType ScriptFileType => new("C# 脚本")
-    {
-        Patterns = ["*" + ScriptPaths.Extension]
-    };
+    private static FilePickerFileType FileType(string title, IReadOnlyList<string> patterns) =>
+        new(title) { Patterns = [.. patterns] };
 
-    /// <summary>Best-effort start location for the dialogs; a missing folder just falls back to default.</summary>
-    private async Task<IStorageFolder?> TryGetScriptsFolderAsync(IStorageProvider provider)
+    /// <summary>Best-effort start location; a missing folder falls back to the dialog's own default.</summary>
+    private static async Task<IStorageFolder?> TryGetFolderAsync(string directory)
     {
         try
         {
-            return await provider.TryGetFolderFromPathAsync(ScriptsDirectory);
+            return Directory.Exists(directory)
+                ? await StorageProviderAccess.Get().TryGetFolderFromPathAsync(directory)
+                : null;
         }
         catch
         {

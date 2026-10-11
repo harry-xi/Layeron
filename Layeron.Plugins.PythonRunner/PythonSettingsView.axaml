@@ -1,0 +1,80 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:run="using:Layeron.Plugins.PythonRunner"
+             mc:Ignorable="d" d:DesignWidth="700" d:DesignHeight="620"
+             x:Class="Layeron.Plugins.PythonRunner.PythonSettingsView">
+  <!--
+    The Python environment page. Everything here changes the deployed environment rather than the session,
+    which is why none of it is a menu item next to the console: these are the operations a user does once and
+    then forgets, and the ones that need their output visible while they run.
+  -->
+  <DockPanel>
+    <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,8">
+      <TextBlock Text="Python 环境" FontSize="16" FontWeight="SemiBold"/>
+
+      <TextBlock x:Name="InterpreterText" FontSize="12" TextWrapping="Wrap"/>
+      <TextBlock x:Name="NumpyText" FontSize="12" TextWrapping="Wrap"/>
+      <TextBlock x:Name="PipText" FontSize="12" TextWrapping="Wrap"/>
+
+      <WrapPanel>
+        <Button x:Name="BootstrapPipButton" Margin="0,4,6,0" Content="初始化 pip"/>
+        <Button x:Name="UpgradePipButton" Margin="0,4,6,0" Content="升级 pip"/>
+        <Button x:Name="RefreshButton" Margin="0,4,6,0" Content="刷新"/>
+      </WrapPanel>
+    </StackPanel>
+
+    <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,6">
+      <TextBlock Text="安装包（每行一个，或用空格分隔）" FontSize="12"/>
+      <TextBox x:Name="PackageInput" AcceptsReturn="True" Height="46" TextWrapping="Wrap"
+               PlaceholderText="例如 scikit-image 或 scikit-image==0.24.0"/>
+      <WrapPanel>
+        <Button x:Name="InstallButton" Margin="0,2,6,0" Content="安装"/>
+        <Button x:Name="UninstallButton" Margin="0,2,6,0" Content="卸载"/>
+        <Button x:Name="CancelButton" Margin="0,2,6,0" Content="取消" IsVisible="False"/>
+        <Button x:Name="ScikitImagePreset" Margin="0,2,6,0" FontSize="11"
+                Content="填入 scikit-image 预设"/>
+      </WrapPanel>
+      <TextBlock x:Name="HintText" FontSize="11" Opacity="0.7" TextWrapping="Wrap"/>
+    </StackPanel>
+
+    <Border DockPanel.Dock="Bottom" Padding="0,4,0,0">
+      <TextBlock x:Name="StatusText" FontSize="11" Opacity="0.7" TextTrimming="CharacterEllipsis"/>
+    </Border>
+
+    <!--
+      Packages and pip output share the remaining space. Both are lists of lines that can get long, and both
+      are things the user reads while an operation runs, so they sit side by side rather than stacked - which
+      is also what keeps the output visible while the package list is being looked at.
+    -->
+    <Grid ColumnDefinitions="240,*">
+      <DockPanel Grid.Column="0">
+        <TextBlock DockPanel.Dock="Top" Text="已安装的包" FontSize="12" Margin="0,0,0,4"/>
+        <ListBox x:Name="Packages">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="run:PythonPackage">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="{Binding Name}" FontSize="12"/>
+                <TextBlock Grid.Column="1" Text="{Binding Version}" FontSize="12" Opacity="0.6"
+                           Margin="8,0,0,0"/>
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+
+      <DockPanel Grid.Column="1" Margin="8,0,0,0">
+        <TextBlock DockPanel.Dock="Top" Text="pip 输出" FontSize="12" Margin="0,0,0,4"/>
+        <Border BorderThickness="1" BorderBrush="#40808080">
+          <TextBox x:Name="Output" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
+                   BorderThickness="0"
+                   FontFamily="Cascadia Code, Consolas, Menlo, Monospace"
+                   FontSize="12"
+                   Background="#1E1E1E"
+                   Foreground="#DCDCDC"/>
+        </Border>
+      </DockPanel>
+    </Grid>
+  </DockPanel>
+</UserControl>

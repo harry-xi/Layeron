@@ -41,7 +41,6 @@ public sealed class ScriptHostPlugin : IPlugin
         editor.RegisterExistingScripts();
         if (host is not null)
             context.Registry.Track(new Subscription(host, editor.RegisterExistingScripts));
-
         Menu(context, "新建脚本", () => editor.OpenNew());
         Menu(context, "打开脚本…", () => _ = editor.OpenFileAsync());
         Menu(context, "重新加载脚本", () => host?.ReloadAllScripts());
@@ -66,7 +65,7 @@ public sealed class ScriptHostPlugin : IPlugin
         {
             _host = host;
             _handler = handler;
-            host.ScriptsDirectoryChanged += handler;
+            host.WorkspaceChanged += handler;
         }
 
         public void Dispose()
@@ -74,7 +73,7 @@ public sealed class ScriptHostPlugin : IPlugin
             if (_disposed)
                 return;
             _disposed = true;
-            _host.ScriptsDirectoryChanged -= _handler;
+            _host.WorkspaceChanged -= _handler;
         }
     }
 }

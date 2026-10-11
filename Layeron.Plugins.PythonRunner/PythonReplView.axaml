@@ -1,0 +1,42 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="Layeron.Plugins.PythonRunner.PythonReplView">
+  <!--
+    The interactive console, contributed as a tool panel. Input and output share one text box, the way a
+    terminal works: a user reading a session wants to see what they typed next to what it produced, and
+    separating the two into panes makes the transcript something they have to reconstruct in their head.
+  -->
+  <DockPanel>
+    <DockPanel DockPanel.Dock="Top" Background="LightGray">
+      <Menu DockPanel.Dock="Left">
+        <MenuItem x:Name="ClearButton" Header="清空"/>
+        <MenuItem x:Name="ResetButton" Header="重置会话"/>
+        <MenuItem x:Name="InterruptButton" Header="中断" IsVisible="False"/>
+      </Menu>
+      <TextBlock x:Name="StateText" Margin="8,0" VerticalAlignment="Center"
+                 FontSize="11" Opacity="0.7" TextTrimming="CharacterEllipsis"/>
+    </DockPanel>
+
+    <Border DockPanel.Dock="Bottom" Padding="8,3" Background="LightGray">
+      <TextBlock x:Name="StatusText" FontSize="11" Opacity="0.7" TextTrimming="CharacterEllipsis"/>
+    </Border>
+
+    <TextBox x:Name="Transcript"
+             AcceptsReturn="True"
+             TextWrapping="NoWrap"
+             FontFamily="Cascadia Code, Consolas, Menlo, Monospace"
+             FontSize="14"
+             Background="#1E1E1E"
+             Foreground="#DCDCDC"
+             CaretBrush="#DCDCDC">
+      <!--
+        The user types in the last lines of this box, after the prompt. Everything above is transcript and
+        is not editable - preventing that here rather than by trimming text on every keystroke is what keeps
+        a long history cheap.
+      -->
+    </TextBox>
+  </DockPanel>
+</UserControl>

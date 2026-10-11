@@ -3,9 +3,9 @@ using Layeron.Plugin.Abstractions;
 namespace Layeron.Plugins.Threshold;
 
 /// <summary>
-/// The plugin entry point. It contributes a tool panel and a menu entry, and it publishes the
-/// extension point other plugins feed to add buttons to its panel - a plugin that both extends the
-/// host and is extended by other plugins.
+/// The plugin entry point. It contributes a tool panel, and it publishes the extension point other
+/// plugins feed to add buttons to its panel - a plugin that both extends the host and is extended by
+/// other plugins.
 /// <para>
 /// Activation touches no UI type at all: the panel is created lazily by the host's content factory,
 /// and the panel subscribes to the extension point itself. That keeps the plugin loadable in a
@@ -39,6 +39,5 @@ public sealed class ThresholdPlugin : IPlugin
             PreferredDock = DockHint.Right,
             ContentFactory = () => new ThresholdToolView(services, context.PluginId, point)
         });
-        
     }
 }

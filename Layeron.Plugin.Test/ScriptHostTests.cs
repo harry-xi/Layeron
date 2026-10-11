@@ -190,11 +190,10 @@ public sealed class ScriptHostTests
 
             var adapter = new TestHostAdapter(TestVolumes.Small());
             ((TestServices)adapter.Services).AdditionalService =
-                new FakeScriptHostService(Path.Combine(directory, "scripts"));
+                new FakeScriptHostService(directory);
 
             using var manager = CreateManager(adapter, directory);
             Assert.AreEqual(ScriptHostId, manager.LoadAssembly(TestPaths.ScriptHostPluginAssembly));
-
             // The editor is the plugin's own UI: it registers a document for every script it can see, so
             // a saved layout can restore a script tab.
             Assert.IsTrue(
@@ -238,7 +237,7 @@ public sealed class ScriptHostTests
 
             var adapter = new TestHostAdapter(TestVolumes.Small());
             ((TestServices)adapter.Services).AdditionalService =
-                new FakeScriptHostService(Path.Combine(directory, "scripts"));
+                new FakeScriptHostService(directory);
 
             using var manager = CreateManager(adapter, directory);
             Assert.AreEqual(ScriptHostId, manager.LoadAssembly(TestPaths.ScriptHostPluginAssembly),
@@ -288,7 +287,7 @@ public sealed class ScriptHostTests
 
             var adapter = new TestHostAdapter(TestVolumes.Small());
             ((TestServices)adapter.Services).AdditionalService =
-                new FakeScriptHostService(Path.Combine(directory, "scripts"));
+                new FakeScriptHostService(directory);
 
             using var manager = CreateManager(adapter, directory);
             Assert.AreEqual(ScriptHostId, manager.LoadAssembly(TestPaths.ScriptHostPluginAssembly),
@@ -325,7 +324,7 @@ public sealed class ScriptHostTests
                 """Menu("from workspace", () => { });""");
 
             var adapter = new TestHostAdapter(TestVolumes.Small());
-            ((TestServices)adapter.Services).AdditionalService = new FakeScriptHostService(workspaceScripts);
+            ((TestServices)adapter.Services).AdditionalService = new FakeScriptHostService(workspace);
 
             using var manager = CreateManager(adapter, pluginDirectory);
             Assert.AreEqual(ScriptHostId, manager.LoadAssembly(TestPaths.ScriptHostPluginAssembly));
@@ -362,20 +361,26 @@ public sealed class ScriptHostTests
         File.WriteAllText(Path.Combine(scriptDirectory, $"{name}.csx"), code);
     }
 
-    /// <summary>Host capabilities the editor reaches for; only the scripts folder matters here.</summary>
-    private sealed class FakeScriptHostService(string scriptsDirectory) : IScriptHostService
+    /// <summary>Host capabilities the editor reaches for; only the workspace root matters here.</summary>
+    private sealed class FakeScriptHostService(string workspaceRoot) : IScriptHostService
     {
-        public event Action? ScriptsDirectoryChanged;
+        public event Action? WorkspaceChanged;
 
-        public string ScriptsDirectory { get; } = scriptsDirectory;
+        public string WorkspaceRoot { get; } = workspaceRoot;
 
-        public Task<string?> PickScriptToOpenAsync() => Task.FromResult<string?>(null);
+        public Task<string?> PickFileToOpenAsync(string title, string suggestedDirectory, IReadOnlyList<string> patterns) =>
+            Task.FromResult<string?>(null);
 
-        public Task<string?> PickScriptToSaveAsync(string suggestedFileName) => Task.FromResult<string?>(null);
+        public Task<string?> PickFileToSaveAsync(string title, string suggestedDirectory, string suggestedFileName, string defaultExtension, IReadOnlyList<string> patterns) =>
+            Task.FromResult<string?>(null);
 
         public void ReloadAllScripts() { }
 
+        public void LogRunFailure(string name, string? error) => _failures.Add($"{name}: {error}");
+
+        private readonly List<string> _failures = [];
+
         /// <summary>Test hook: mimics the host switching workspace.</summary>
-        public void RaiseDirectoryChanged() => ScriptsDirectoryChanged?.Invoke();
+        public void RaiseWorkspaceChanged() => WorkspaceChanged?.Invoke();
     }
 }

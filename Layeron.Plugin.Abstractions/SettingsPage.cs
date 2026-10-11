@@ -61,6 +61,27 @@ public sealed class SettingItem
 }
 
 /// <summary>
+/// Optional interface for a settings page's content.
+/// <para>
+/// A contributed page's content is created once and cached for the application's lifetime, while a control
+/// can only belong to one visual tree at a time. The settings window is created and destroyed every time it
+/// is opened, so a page that puts its control in that window has to take it back out when the window closes,
+/// or the next window cannot show it - measured: without this, the settings window opens once and every
+/// later attempt fails while laying itself out.
+/// </para>
+/// <para>
+/// Deliberately an interface rather than a required member: the contract between host and plugin page is a
+/// single <see cref="object"/>, and most pages need nothing here. Duck-typing keeps the requirement off
+/// pages that have no state to preserve across windows.
+/// </para>
+/// </summary>
+public interface ISettingsPageContent
+{
+    /// <summary>Removes the page's content from the visual tree it was last shown in.</summary>
+    void Detach();
+}
+
+/// <summary>
 /// 插件向设置窗口贡献的一页。镜像 <see cref="ToolContribution"/> 的做法：内容以
 /// <see cref="object"/> 交付（Avalonia 宿主中即 <c>Control</c>），宿主永远不引用插件类型；
 /// 返回的对象若实现 <see cref="IDisposable"/>，页面被移除时会得到释放，

@@ -1,43 +1,58 @@
 namespace Layeron.Scripting.Abstractions;
 
 /// <summary>
-/// The host capabilities a script editor needs but cannot implement itself: where scripts live, picking
-/// files, and asking the host to (re)activate a script.
+/// The host capabilities a script editor needs but cannot implement itself: picking a file with the host's
+/// own dialog, and asking the host to re-scan its plugin directories.
 /// <para>
-/// This is the seam between the two systems. The editor UI ships with the script host plugin, but only
-/// the host owns the plugin manager, the window and the storage provider - so the plugin reaches them
-/// through this interface instead of taking a dependency on the application. The application implements
-/// it and hands it over through <c>IPluginServices.GetService&lt;IScriptHostService&gt;()</c>.
+/// This is the whole seam between a script-editing plugin and the application, and it is deliberately about
+/// the host's own facilities only. What a plugin's files look like - extension, how a tab id is formed - is
+/// the plugin's business, so the dialog filter is passed in as a value: the plugin knows what a Python file
+/// looks like, the host only knows how to show a file dialog.
+/// </para>
+/// <para>
+/// Where those files live is split deliberately. C# scripts get a helper of their own from the scripting
+/// contract (<c>ScriptPaths</c>) because that contract is the plugin-facing half of the host's own layout;
+/// Python's folder is resolved by the Python plugin against <see cref="WorkspaceRoot"/> and is not named
+/// here at all, which is what shows the boundary works - a language added later needs no host change.
 /// </para>
 /// </summary>
 public interface IScriptHostService
 {
     /// <summary>
-    /// The folder holding the user's scripts - the active workspace's <c>scripts</c> folder.
-    /// <para>
-    /// These are working documents: the editor opens them and runs them against the current data. Nothing
-    /// here is auto-installed as a plugin; a script becomes a plugin only by being placed in the
-    /// application's plugin directory (see <see cref="ScriptPaths.PluginScriptsDirectory"/>), which is a
-    /// deliberate act rather than a side effect of saving.
-    /// </para>
+    /// Asks the user for an existing file, filtered by the plugin's own patterns and starting in
+    /// <paramref name="suggestedDirectory"/>. Returns null when the user cancels.
     /// </summary>
-    string ScriptsDirectory { get; }
+    Task<string?> PickFileToOpenAsync(string title, string suggestedDirectory, IReadOnlyList<string> patterns);
 
     /// <summary>
-    /// Raised after <see cref="ScriptsDirectory"/> changed, e.g. the user switched workspace. Script plugin
-    /// discovery is unaffected - it scans the plugin directories - so this only tells the editor to list the
-    /// new folder's scripts.
+    /// Asks the user where to save a file, filtered by the plugin's own patterns. Returns null when the user
+    /// cancels.
     /// </summary>
-    event Action? ScriptsDirectoryChanged;
-
-    /// <summary>Asks the user for an existing script file; null when cancelled.</summary>
-    Task<string?> PickScriptToOpenAsync();
-
-    /// <summary>Asks the user where to save a script; null when cancelled.</summary>
-    Task<string?> PickScriptToSaveAsync(string suggestedFileName);
+    Task<string?> PickFileToSaveAsync(
+        string title,
+        string suggestedDirectory,
+        string suggestedFileName,
+        string defaultExtension,
+        IReadOnlyList<string> patterns);
 
     /// <summary>
-    /// Re-scans every script source, so a script just installed into the plugin directory becomes a plugin.
+    /// The active workspace's root folder. A plugin that keeps files in a workspace joins its own subfolder
+    /// onto this, so the host never has to be taught another language's folder name.
+    /// </summary>
+    string WorkspaceRoot { get; }
+
+    /// <summary>Raised after <see cref="WorkspaceRoot"/> changed, so a plugin can re-list its own folder.</summary>
+    event Action? WorkspaceChanged;
+
+    /// <summary>
+    /// Re-scans every plugin source, so a script just installed into a plugin directory becomes a plugin.
     /// </summary>
     void ReloadAllScripts();
+
+    /// <summary>
+    /// Records a failed script run in the application log. Here rather than in the plugin because only the
+    /// host owns the log; the editor shows the last line itself and this keeps the traceback somewhere it can
+    /// be found later.
+    /// </summary>
+    void LogRunFailure(string name, string? error);
 }

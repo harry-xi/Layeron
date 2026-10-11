@@ -5,6 +5,11 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+        <!--
+          The console and the editor are declared in XAML, so the Avalonia XAML compiler must run for this
+          project. Avalonia itself comes from the host and is excluded from the plugin's runtime assets.
+        -->
+        <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     </PropertyGroup>
 
     <ItemGroup>
@@ -13,15 +18,63 @@
         <AssemblyMetadata Include="LayeronPluginVersion" Value="1.0.0" />
         <AssemblyMetadata Include="LayeronPluginDescription" Value="A plugin for running Python scripts." />
         <AssemblyMetadata Include="LayeronPluginApiVersion" Value="1.0" />
+        <!--
+          The engine is internal, and the bridge between numpy and the session can only be verified against a
+          real interpreter - there is no meaningful way to fake pythonnet's marshalling. The test assembly is
+          the only thing that sees inside.
+        -->
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Layeron.Plugin.Test</_Parameter1>
+        </AssemblyAttribute>
     </ItemGroup>
 
     <ItemGroup>
         <PackageReference Include="Numpy" Version="3.11.1.35" />
-        <!-- <PackageReference Include="Python.Included" Version="3.13.6" />
-        <PackageReference Include="pythonnet" Version="3.2.0" /> -->
+        <!--
+          Pinned above the version Numpy draws in. pythonnet 3.0.1 serialises its runtime data with
+          BinaryFormatter in Shutdown, which throws PlatformNotSupportedException on .NET 10 - measured,
+          not inferred - and 3.2.1 no longer does. Numpy's own bindings load unchanged against it.
+        -->
+        <PackageReference Include="pythonnet" Version="3.2.1" />
+        <!--
+          The compiler needs the UI types (AvaloniaEdit's TextEditor, the MenuItem) in the plugin's own
+          output so it can resolve them; they are compile assets only, so the plugin never ships a second
+          copy of the host's stack.
+        -->
+        <PackageReference Include="Avalonia" Version="12.1.3" GeneratePathProperty="true" ExcludeAssets="runtime" />
+        <PackageReference Include="Avalonia.AvaloniaEdit" Version="12.0.0" ExcludeAssets="runtime" />
     </ItemGroup>
     <ItemGroup>
-      <ProjectReference Include="..\Layeron.Plugin.Abstractions\Layeron.Plugin.Abstractions.csproj" />
+      <ProjectReference Include="..\Layeron.Big3DArray\Layeron.Big3DArray.csproj" Private="false" />
+      <ProjectReference Include="..\Layeron.Plugin.Abstractions\Layeron.Plugin.Abstractions.csproj" Private="false" />
+      <!--
+        The scripting contract carries the host seam the editor uses: file dialogs and the workspace root. It
+        is shared with the host, so the host's copy must win.
+      -->
+      <ProjectReference Include="..\Layeron.Scripting.Abstractions\Layeron.Scripting.Abstractions.csproj" Private="false" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <!--
+        The Python-side sources are embedded rather than kept as loose files in the output: they are part of
+        the engine's behaviour, so they have to travel with the assembly that installs them and cannot drift
+        from it. Keeping them as .py files rather than C# string literals is what lets an editor highlight
+        them and keeps the quotes inside them from colliding with a C# raw string delimiter.
+      -->
+      <EmbeddedResource Include="Resources\layeron.py">
+        <LogicalName>Layeron.PythonRunner.layeron.py</LogicalName>
+      </EmbeddedResource>
+      <EmbeddedResource Include="Resources\bootstrap.py">
+        <LogicalName>Layeron.PythonRunner.bootstrap.py</LogicalName>
+      </EmbeddedResource>
+      <!--
+        Examples for the user's workspace. Embedded rather than kept in the repository as loose files so that
+        a plugin update ships the current version, and deployed into the workspace only when the file is not
+        there already - the user's own edits to an example must survive.
+      -->
+      <EmbeddedResource Include="Resources\python\edge_detection.py">
+        <LogicalName>Layeron.PythonRunner.sample.edge_detection.py</LogicalName>
+      </EmbeddedResource>
     </ItemGroup>
 
 </Project>

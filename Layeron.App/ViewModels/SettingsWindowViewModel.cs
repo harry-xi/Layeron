@@ -117,6 +117,37 @@ public sealed class SettingsWindowViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Lets plugin pages know the window that was showing them is gone.
+    /// <para>
+    /// A page's content is created once and cached for the application's lifetime, but a control can only be
+    /// in one visual tree at a time - so a page that kept its old parent is refused by the next window, and
+    /// the window fails to lay itself out. Telling the page to detach keeps the cache (and with it any output
+    /// the page has accumulated) while making the control re-hostable.
+    /// </para>
+    /// <para>
+    /// Best effort and duck-typed through <see cref="ISettingsPageContent"/>: the host must not know a
+    /// plugin's page type, and a page that does not care simply does not implement it.
+    /// </para>
+    /// </summary>
+    public void NotifyWindowClosed()
+    {
+        foreach (var page in Pages)
+        {
+            if (page.Content is ISettingsPageContent content)
+            {
+                try
+                {
+                    content.Detach();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Page '{page.Id}' detach failed: {ex.Message}");
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// 插件自定义页的宿主包装：内容由工厂惰性创建一次并缓存，
     /// 宿主只持有 <see cref="object"/>，从不引用插件类型。
     /// 仅当贡献不带声明式设置项时才会用到（见 <see cref="CreatePage"/>）。

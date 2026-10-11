@@ -35,8 +35,16 @@ internal sealed class ScriptEditorController : IDisposable
         Host = host;
     }
 
-    /// <summary>Host capabilities (dialogs, reloads); null in a headless host.</summary>
+    /// <summary>Host capabilities (dialogs, workspace root, reloads); null in a headless host.</summary>
     public IScriptHostService? Host { get; }
+
+    /// <summary>
+    /// Where this plugin's scripts live: its own folder inside the active workspace. The host reports the
+    /// workspace root and this plugin joins the folder on, so the host never learns the folder's name.
+    /// </summary>
+    public string? ScriptsDirectory => Host is null
+        ? null
+        : Path.Combine(Host.WorkspaceRoot, ScriptPaths.FolderName);
 
     /// <summary>
     /// Registers a document for every script already in the scripts folder. Doing this at activation
@@ -45,15 +53,11 @@ internal sealed class ScriptEditorController : IDisposable
     /// </summary>
     public void RegisterExistingScripts()
     {
-        if (Host is null)
+        if (ScriptsDirectory is not { } directory || !Directory.Exists(directory))
             return;
 
         try
         {
-            var directory = Host.ScriptsDirectory;
-            if (!Directory.Exists(directory))
-                return;
-
             foreach (var file in Directory.EnumerateFiles(directory, "*" + ScriptPaths.Extension)
                          .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
             {
@@ -82,7 +86,10 @@ internal sealed class ScriptEditorController : IDisposable
             return;
         }
 
-        var path = await Host.PickScriptToOpenAsync();
+        var path = await Host.PickFileToOpenAsync(
+            "打开脚本",
+            ScriptsDirectory ?? string.Empty,
+            ["*" + ScriptPaths.Extension]);
         if (path is null)
             return;
 

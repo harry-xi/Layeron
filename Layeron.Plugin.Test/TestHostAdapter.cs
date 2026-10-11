@@ -106,6 +106,9 @@ internal sealed class TestServices : IPluginServices
 
     public IPluginLog Log { get; } = new CollectingLog();
 
+    /// <summary>The same instance as <see cref="Log"/>, typed so tests can read what was written.</summary>
+    public CollectingLog Messages => (CollectingLog)Log;
+
     /// <summary>Optional capability a test can expose, mirroring the app's scripting host service.</summary>
     public object? AdditionalService { get; set; }
 
@@ -168,6 +171,16 @@ internal sealed class TestMaskService : IMaskService
     public event Action? ContentChanged;
 
     public int NotifyCount { get; private set; }
+
+    /// <summary>
+    /// Drops every layer and resets the notification count. Exists so a test that shares one service
+    /// instance with others starts from a known state.
+    /// </summary>
+    public void Clear()
+    {
+        _layers.Clear();
+        NotifyCount = 0;
+    }
 
     public IMaskLayer Add(string name, Big3DBitMap bitmap, MaskColor color, double opacity = 0.4)
     {

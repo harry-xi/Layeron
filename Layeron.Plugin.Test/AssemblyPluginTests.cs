@@ -28,7 +28,11 @@ public sealed class AssemblyPluginTests
 
         Assert.IsTrue(adapter.Tools.ContainsKey("layeron.threshold::threshold"),
             "the plugin's tool must be attached to the host");
-        Assert.IsTrue(adapter.Menus.Keys.Any(k => k.StartsWith("layeron.threshold::")));
+
+        // A tool panel only. The plugin used to contribute a menu entry as well, and it was removed on
+        // purpose ("feat: improve some ui"); a menu here would mean something put one back.
+        Assert.IsFalse(adapter.Menus.Keys.Any(k => k.StartsWith("layeron.threshold::")),
+            "the threshold plugin contributes a tool panel but no menu");
     }
 
     [TestMethod]
@@ -37,10 +41,9 @@ public sealed class AssemblyPluginTests
         var adapter = new TestHostAdapter(TestVolumes.Small());
         var manager = new PluginManager(adapter);
 
-        var (toolAttached, menuCount) = LoadInspectAndUnload(manager, adapter);
+        var toolAttached = LoadInspectAndUnload(manager, adapter);
 
         Assert.IsTrue(toolAttached, "the plugin's tool must be attached while it is loaded");
-        Assert.IsTrue(menuCount > 0, "the plugin's menu entries must be attached while it is loaded");
         Assert.AreEqual(0, adapter.Tools.Count, "tools must be detached on unload");
         Assert.AreEqual(0, adapter.Menus.Count, "menus must be detached on unload");
 
@@ -101,15 +104,14 @@ public sealed class AssemblyPluginTests
     /// because any live <c>LoadedPlugin</c> - even a temporary one - references the plugin instance and
     /// would pin the load context, making the check fail for the wrong reason.
     /// </summary>
-    private static (bool ToolAttached, int MenuCount) LoadInspectAndUnload(PluginManager manager, TestHostAdapter adapter)
+    private static bool LoadInspectAndUnload(PluginManager manager, TestHostAdapter adapter)
     {
         manager.LoadAssembly(TestPaths.ThresholdPluginAssembly);
 
         var toolAttached = adapter.Tools.ContainsKey("layeron.threshold::threshold");
-        var menuCount = adapter.Menus.Count;
 
         manager.Unload("layeron.threshold");
-        return (toolAttached, menuCount);
+        return toolAttached;
     }
 
     [TestMethod]

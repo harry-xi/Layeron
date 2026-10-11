@@ -84,11 +84,18 @@ public sealed partial class ScriptEditorView : UserControl, IScriptEditor
         }
 
         var suggested = _path is null ? $"script{ScriptPaths.Extension}" : Path.GetFileName(_path);
-        if (await host.PickScriptToSaveAsync(suggested) is not { } path)
+        var path = await host.PickFileToSaveAsync(
+            "保存脚本",
+            Path.GetDirectoryName(_path ?? string.Empty) ?? _controller?.ScriptsDirectory ?? string.Empty,
+            suggested,
+            ScriptPaths.Extension.TrimStart('.'),
+            ["*" + ScriptPaths.Extension]);
+
+        if (path is not { } saved)
             return;
 
-        _path = path;
-        await WriteAsync(path);
+        _path = saved;
+        await WriteAsync(saved);
     }
 
     /// <summary>
