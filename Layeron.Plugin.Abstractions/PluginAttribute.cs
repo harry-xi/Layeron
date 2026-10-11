@@ -11,21 +11,10 @@ namespace Layeron.Plugin.Abstractions;
 /// </para>
 /// </summary>
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
-public sealed class PluginAttribute : Attribute
+public sealed class PluginAttribute(string id) : Attribute
 {
-    public PluginAttribute(string id) => Id = id;
-
     /// <summary>Stable, unique plugin id (e.g. <c>layeron.threshold</c>).</summary>
-    public string Id { get; }
-
-    /// <summary>Human readable name shown in the UI.</summary>
-    public string? Name { get; set; }
-
-    /// <summary>Informational version string.</summary>
-    public string? Version { get; set; }
-
-    /// <summary>Short description shown in the plugin list.</summary>
-    public string? Description { get; set; }
+    public string Id { get; } = id;
 }
 
 /// <summary>

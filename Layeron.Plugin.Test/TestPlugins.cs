@@ -15,7 +15,7 @@ internal static class TestPoints
 /// plugins, that contributions survive the contributor's own unload rules, and that a point defined by
 /// a plugin disappears with it.
 /// </summary>
-[Plugin("test.publisher", Name = "Publisher")]
+[Plugin("test.publisher")]
 internal sealed class PublisherPlugin : IPlugin
 {
     public static readonly List<string> Seen = [];
@@ -33,7 +33,7 @@ internal sealed class PublisherPlugin : IPlugin
 }
 
 /// <summary>Contributes to a point another plugin defined, and registers a tool of its own.</summary>
-[Plugin("test.consumer", Name = "Consumer")]
+[Plugin("test.consumer")]
 internal sealed class ConsumerPlugin : IPlugin
 {
     public void Activate(IPluginContext context)
@@ -64,7 +64,7 @@ internal sealed class ConsumerPlugin : IPlugin
 /// A plugin that is itself a plugin loader. It registers a source offering one in-process plugin, which
 /// is how the tests exercise nested loading without depending on an external format.
 /// </summary>
-[Plugin("test.loader", Name = "Loader")]
+[Plugin("test.loader")]
 internal sealed class LoaderPlugin : IPlugin
 {
     public const string ChildId = "test.loader.child";
@@ -118,7 +118,7 @@ internal sealed class ConstantPluginSource(string sourceId, string pluginId, Fun
 }
 
 /// <summary>Plugin that writes into a mask and publishes a preview, i.e. uses the data services.</summary>
-[Plugin("test.producer", Name = "Producer")]
+[Plugin("test.producer")]
 internal sealed class ProducerPlugin : IPlugin
 {
     public void Activate(IPluginContext context)
@@ -167,7 +167,7 @@ internal sealed class CopyFilter : IVolumeFilter
 }
 
 /// <summary>Contributes a volume filter through the first-class registry method.</summary>
-[Plugin("test.filter", Name = "Filter")]
+[Plugin("test.filter")]
 internal sealed class FilterPlugin : IPlugin
 {
     public static readonly CopyFilter Filter = new();

@@ -26,23 +26,20 @@ namespace Layeron.Plugins.PythonRunner;
 /// when the console is opened or the first script is run, and never before.
 /// </para>
 /// </remarks>
-[Plugin(Id, Name = "Python Runner", Version = "1.0.0",
-    Description = "Runs embedded Python: an interactive console and a script editor on the current data.")]
+[Plugin("layeron.pythonrunner")]
 public sealed class PythonRunnerPlugin : IPlugin
 {
-    /// <summary>Plugin id; must match the assembly metadata.</summary>
-    public const string Id = "layeron.pythonrunner";
-
     private static readonly string[] MenuPath = ["Python"];
 
     public void Activate(IPluginContext context)
     {
         var host = context.Services.GetService<IScriptHostService>();
-        var engine = new PythonSession(context.PluginDirectory ?? AppContext.BaseDirectory, context.Services);
-
-        // The data API's write calls land on the UI thread: the session's volume and mask manager are
-        // UI-thread objects, and a script runs on a thread pool thread.
-        engine.UiInvoke = action => Dispatcher.UIThread.Invoke(action);
+        var engine = new PythonSession(context.PluginDirectory ?? AppContext.BaseDirectory, context.Services)
+        {
+            // The data API's write calls land on the UI thread: the session's volume and mask manager are
+            // UI-thread objects, and a script runs on a thread pool thread.
+            UiInvoke = Dispatcher.UIThread.Invoke
+        };
 
         context.Registry.Track(engine);
 

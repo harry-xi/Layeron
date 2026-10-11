@@ -12,13 +12,9 @@ namespace Layeron.Plugins.Model3D;
 /// headless host where the engine could not start at all.
 /// </para>
 /// </summary>
-[Plugin(Id, Name = "Mask 3D Model", Version = "1.0.0",
-    Description = "Downsamples a mask layer and shows it as an interactive 3D surface.")]
+[Plugin("layeron.model3d")]
 public sealed class Mask3DPlugin : IPlugin
 {
-    /// <summary>Plugin id; must match the assembly metadata.</summary>
-    public const string Id = "layeron.model3d";
-
     public void Activate(IPluginContext context)
     {
         var services = context.Services;

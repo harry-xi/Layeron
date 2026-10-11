@@ -79,7 +79,7 @@ public sealed class LoaderRegistrationTests
     }
 }
 /// <summary>Contributes a custom data source through the first-class registry method.</summary>
-[Plugin("test.dicom", Name = "Source loader")]
+[Plugin("test.dicom")]
 internal sealed class SourceLoaderPlugin : IPlugin
 {
     public const int Width = 5;

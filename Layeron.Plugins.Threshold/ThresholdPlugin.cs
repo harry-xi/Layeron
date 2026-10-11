@@ -17,13 +17,9 @@ namespace Layeron.Plugins.Threshold;
 /// plugin - or hot reloading it - is a single dispose.
 /// </para>
 /// </summary>
-[Plugin(Id, Name = "Threshold Segmentation", Version = "1.0.0",
-    Description = "Interactive threshold segmentation producing mask layers.")]
+[Plugin("layeron.threshold")]
 public sealed class ThresholdPlugin : IPlugin
 {
-    /// <summary>Plugin id; must match the assembly metadata.</summary>
-    public const string Id = "layeron.threshold";
-
     public void Activate(IPluginContext context)
     {
         var services = context.Services;

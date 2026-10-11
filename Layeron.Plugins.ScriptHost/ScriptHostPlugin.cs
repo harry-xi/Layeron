@@ -15,8 +15,7 @@ namespace Layeron.Plugins.ScriptHost;
 /// the scripting contract, the host owns the window, the storage provider and the plugin manager.
 /// </para>
 /// </summary>
-[Plugin(Id, Name = "C# Script Host", Version = "1.0.0",
-    Description = "Loads .csx scripts from the workspace as plugins and edits them in a dockable editor.")]
+[Plugin("layeron.scripthost")]
 public sealed class ScriptHostPlugin : IPlugin
 {
     /// <summary>Plugin id; must match the assembly metadata.</summary>

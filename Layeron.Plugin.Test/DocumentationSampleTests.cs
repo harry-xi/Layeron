@@ -10,7 +10,7 @@ namespace Layeron.Plugin.Test;
 /// that does not compile is worse than none, so the sample lives here as real code and is checked by the
 /// test below.
 /// </summary>
-[Plugin("test.docs-sample", Name = "Docs Sample", Version = "1.0.0")]
+[Plugin("test.docs-sample")]
 internal sealed class DocsSamplePlugin : IPlugin
 {
     public void Activate(IPluginContext context)
