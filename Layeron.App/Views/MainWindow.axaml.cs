@@ -36,10 +36,8 @@ public partial class MainWindow : Window
 
     private void ShowSettings()
     {
-        Log.Info("App","Open settings window");
         if (DataContext is not MainWindowViewModel vm)
             return;
-        Log.Info("App","Open settings window2");
         // 复用与应用同寿命的视图模型；窗口本体每次新建，关闭即丢。
         var window = new SettingsWindow { DataContext = vm.Settings, ShowInTaskbar = false };
         window.Show(this);

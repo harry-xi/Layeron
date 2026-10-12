@@ -44,6 +44,7 @@ internal static class PluginMetadataReader
                 Version = values.GetValueOrDefault(Abstractions.PluginMetadataKeys.Version),
                 Description = values.GetValueOrDefault(Abstractions.PluginMetadataKeys.Description),
                 ApiVersion = values.GetValueOrDefault(Abstractions.PluginMetadataKeys.ApiVersion),
+                LifetimeStyle = values.GetValueOrDefault(Abstractions.PluginMetadataKeys.LivetimeStyle),
                 AssemblyPath = assemblyPath
             };
         }
@@ -96,4 +97,6 @@ internal sealed class PluginMetadata
     public string? Description { get; init; }
     public string? ApiVersion { get; init; }
     public required string AssemblyPath { get; init; }
+
+    public string? LifetimeStyle { get; init; }
 }

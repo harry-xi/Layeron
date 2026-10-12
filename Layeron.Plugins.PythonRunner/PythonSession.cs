@@ -17,12 +17,6 @@ public sealed record PythonOutput(string Stream, string Text)
     public const string StandardError = "stderr";
 }
 
-/// <summary>Outcome of running one piece of Python code.</summary>
-/// <param name="Ok">False when the code raised or the wait was cancelled.</param>
-/// <param name="Error">Traceback when <see cref="Ok"/> is false, otherwise null.</param>
-/// <param name="ElapsedMs">How long the call took.</param>
-public sealed record PythonRun(bool Ok, string? Error, double ElapsedMs);
-
 /// <summary>
 /// One installed package, as pip reports it. Public because the settings page's list binds to it from XAML.
 /// </summary>

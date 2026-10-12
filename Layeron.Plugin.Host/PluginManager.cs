@@ -104,7 +104,9 @@ public sealed class PluginManager : IDisposable
     public event Action? Changed;
 
     /// <summary>Shared extension points. Host code can define its own points here before loading.</summary>
-    public PointRegistry PointRegistry { get; 
+    public PointRegistry PointRegistry
+    {
+        get;
         private set;
     }
 
@@ -167,6 +169,33 @@ public sealed class PluginManager : IDisposable
             loaded.AddRange(LoadDirectory(Options.PluginDirectory));
 
         return loaded;
+    }
+
+    /// <summary>Initializes the plugin system, loading all plugins from the configured directories.</summary>
+    public IReadOnlyList<string> InitLoad()
+    {
+        throw new NotImplementedException();
+    }
+
+    /// <summary>Scans a directory for plugin assemblies and returns their metadata.</summary>
+    private IReadOnlyList<PluginMetadata> ScanDirectory(string directory)
+    {
+        var metadata = new List<PluginMetadata>();
+
+        foreach (var file in EnumeratePluginAssemblies(directory))
+        {
+            var info = PluginMetadataReader.TryRead(file);
+            if (info != null)
+                metadata.Add(info);
+        }
+
+        return metadata;
+    }
+
+    /// <summary>Loads plugins with app-lifetime.</summary>
+    private IReadOnlyList<PluginDescriptor> LoadAppLifetimePlugin(IReadOnlyCollection<PluginMetadata> candidates)
+    {
+        throw new NotImplementedException();
     }
 
     /// <summary>
@@ -275,9 +304,11 @@ public sealed class PluginManager : IDisposable
             Description = metadata.Description,
             ApiVersion = metadata.ApiVersion,
             Location = assemblyPath,
-            Origin = "assembly metadata"
+            Origin = "assembly metadata",
+            LifetimeStyle = metadata.LifetimeStyle
         };
     }
+
 
     private bool IsApiCompatible(string? declaredApiVersion, string assemblyPath)
     {
@@ -302,6 +333,14 @@ public sealed class PluginManager : IDisposable
         return false;
     }
 
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="descriptor"></param>
+    /// <param name="sourceId"></param>
+    /// <param name="parentContext"></param>
+    /// <returns>The id of the activated plugin, or null if activation failed.</returns>
+    /// <exception cref="InvalidOperationException"></exception>
     private string? ActivateDescriptor(
         PluginDescriptor descriptor,
         string? sourceId,
@@ -310,6 +349,18 @@ public sealed class PluginManager : IDisposable
         IPlugin? plugin = null;
         PluginLoadContext? loadContext = null;
         var id = descriptor.Id;
+
+        if (string.IsNullOrEmpty(id))
+            return null;
+
+        lock (_gate)
+        {
+            if (_plugins.Any(p => string.Equals(p.Id, id, StringComparison.Ordinal)))
+            {
+                Adapter.Log.Debug($"Plugin '{id}' is already loaded; ignoring duplicate descriptor.");
+                return null;
+            }
+        }
 
         try
         {
@@ -343,19 +394,6 @@ public sealed class PluginManager : IDisposable
                 }
 
                 plugin = (IPlugin)Activator.CreateInstance(entry)!;
-            }
-
-            if (string.IsNullOrEmpty(id))
-                return null;
-
-            lock (_gate)
-            {
-                if (_plugins.Any(p => string.Equals(p.Id, id, StringComparison.Ordinal)))
-                {
-                    Adapter.Log.Debug($"Plugin '{id}' is already loaded; ignoring duplicate descriptor.");
-                    loadContext?.Unload();
-                    return null;
-                }
             }
 
             var services = Adapter.Services;
@@ -635,7 +673,11 @@ public sealed class PluginManager : IDisposable
             var found = _plugins.FirstOrDefault(p => string.Equals(p.Id, pluginId, StringComparison.Ordinal));
             if (found == null)
                 return false;
-
+            if (found.Descriptor.LifetimeStyle == "app")
+            {
+                Adapter.Log.Warn($"Plugin '{pluginId}' is marked as app-lifetime and cannot be unloaded.");
+                return false;
+            }
             root = found;
 
             // Everything whose scope nests inside the root's scope goes too - that is the whole
@@ -871,7 +913,7 @@ public sealed class PluginManager : IDisposable
     {
         var basePath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Layeron","plugins_data");
+                "Layeron", "plugins_data");
 
         var path = Path.Combine(basePath, pluginId);
         Directory.CreateDirectory(path);

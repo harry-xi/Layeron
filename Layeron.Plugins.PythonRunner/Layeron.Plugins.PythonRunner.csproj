@@ -52,6 +52,7 @@
         is shared with the host, so the host's copy must win.
       -->
       <ProjectReference Include="..\Layeron.Scripting.Abstractions\Layeron.Scripting.Abstractions.csproj" Private="false" />
+      <ProjectReference Include="..\Layeron.Plugins.PythonRunner.Api\Layeron.Plugins.PythonRunner.Api.csproj" Private="false" />
     </ItemGroup>
 
     <ItemGroup>

@@ -34,6 +34,8 @@ public static class PluginMetadataKeys
     public const string Version = "LayeronPluginVersion";
     public const string Description = "LayeronPluginDescription";
     public const string ApiVersion = "LayeronPluginApiVersion";
+
+    public const string LivetimeStyle = "LayeronPluginLifetime";
 }
 
 /// <summary>

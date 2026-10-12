@@ -30,6 +30,9 @@ public sealed class PluginDescriptor
 
     /// <summary>Free-form origin used in diagnostics, e.g. a script path.</summary>
     public string? Origin { get; init; }
+
+    /// <summary>Lifetime style for the plugin.</summary>
+    public string? LifetimeStyle { get; init; }
 }
 
 /// <summary>

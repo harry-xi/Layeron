@@ -45,6 +45,7 @@ public class App : Application
             };
 
             Log.Info("App", "Layeron started; log file: {Path}", Log.FilePath);
+            provider.GetRequiredService<MainWindowViewModel>().Plugins.EnableAll();
         }
 
         base.OnFrameworkInitializationCompleted();

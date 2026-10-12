@@ -98,6 +98,20 @@ public sealed class PluginController : IDisposable
         return loaded;
     }
 
+    /// <summary>Initializes the plugin system, loading all plugins from the configured directories.</summary>
+    public IReadOnlyList<string> InitLoad()
+    {
+        var loaded = _manager.InitLoad();
+        RefreshLoadedList();
+        return loaded;
+    }
+
+    /// <summary>Enables all plugins.</summary>
+    internal void EnableAll()
+    {
+        throw new NotImplementedException();
+    }
+
     /// <summary>Loads a single plugin assembly (used by tests and by "load from file" tooling).</summary>
     public string? LoadAssembly(string path) => _manager.LoadAssembly(path);
 

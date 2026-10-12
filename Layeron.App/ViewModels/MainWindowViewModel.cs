@@ -37,7 +37,7 @@ public class MainWindowViewModel : ViewModelBase
         Session.SharedData.Loaders = Plugins.Loaders;
 
         Plugins.EnsureDirectories();
-        Plugins.LoadAll();
+        Plugins.InitLoad();
     }
 
     /// <summary>The live session. Replaced when <see cref="ISessionManager"/> opens a new one.</summary>

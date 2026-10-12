@@ -94,6 +94,8 @@ public sealed class PythonRunnerPlugin : IPlugin
             Title = "Python",
             ContentFactory = () => new PythonSettingsView(engine, context.Services.Log)
         }));
+
+        context.Registry.Contribute<IPythonRunnerService>("layeron.pythonrunner.python_runner",new PythonRunnerService(engine));
     }
 
     private static void Menu(IPluginContext context, string header, Action execute) =>
