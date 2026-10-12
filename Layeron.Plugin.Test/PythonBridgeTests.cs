@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Layeron.Big3DArray;
 using Layeron.Plugin.Abstractions;
 using Layeron.Plugins.PythonRunner;
@@ -398,5 +399,166 @@ except Exception as error:
         Assert.IsTrue(Said("raised True"), Describe());
     }
 
-    
+    /// <summary>
+    /// A run must not hold the thread that started it.
+    /// <para>
+    /// The callers of <c>EvalAsync</c> are UI-thread callers - the editor's Run command and the console's
+    /// Enter both are - so a block that runs inline on the calling thread freezes the window along with the
+    /// Cancel button that would have stopped it. Responsiveness is measured with a stand-in for a dispatcher
+    /// thread: a thread with its own work queue and <see cref="SynchronizationContext"/>, counting how many
+    /// pump iterations it completes while a script runs. It stops counting exactly when it is stuck inside the
+    /// callback it was running, which is the freeze.
+    /// </para>
+    /// <para>
+    /// Measured before the offload was introduced: <b>zero</b> iterations for the whole run, then one when it
+    /// finished. The threshold is deliberately low, because the fact under test is "the pump ran at all" and a
+    /// loaded machine must not turn that into a failure.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public async Task Eval_KeepsTheCallersThreadFreeWhileTheScriptRuns()
+    {
+        var session = Session();
+        using var ui = new UiPump();
+        var run = new TaskCompletionSource<PythonRun>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // Started on the pump thread, so EvalAsync is awaited there - the same shape as a button handler.
+        ui.Post(() => _ = RunAsync());
+
+        async Task RunAsync()
+        {
+            try
+            {
+                run.TrySetResult(await session.EvalAsync("""
+import time
+time.sleep(1.0)
+"""));
+            }
+            catch (Exception ex)
+            {
+                run.TrySetException(ex);
+            }
+        }
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        while (watch.ElapsedMilliseconds < 10_000 && !run.Task.IsCompleted)
+            await Task.Delay(50);
+
+        var ticks = ui.Ticks;
+        var result = await run.Task;
+
+        Assert.IsTrue(result.Ok, result.Error);
+        Assert.IsTrue(ticks >= 5,
+            $"The calling thread's message loop ran only {ticks} times while a one-second script was running.");
+    }
+
+    /// <summary>
+    /// A caller that arrives while a script is already running must not be held on its own thread either.
+    /// <para>
+    /// This is the ordinary case of two consumers at once - the editor's Run and a command from another plugin
+    /// - and the second one waits on the session's gate. Waiting for the gate is the interesting half: it must
+    /// suspend, not block, or a UI-thread caller is stuck for the whole of somebody else's script.
+    /// </para>
+    /// <para>
+    /// The first-run path (deploying the interpreter) is routed through the same offload but cannot be covered
+    /// here: pythonnet allows one runtime per process, so a session that has not started yet cannot be built
+    /// once this one is up. That is the same constraint the class notes at the top of this file.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public async Task Eval_KeepsTheCallersThreadFreeWhileWaitingForTheGate()
+    {
+        var session = Session();
+        using var ui = new UiPump();
+
+        var first = new TaskCompletionSource<PythonRun>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var second = new TaskCompletionSource<PythonRun>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        ui.Post(() => _ = RunAsync("import time\ntime.sleep(1.0)\n", first));
+        ui.Post(() => _ = RunAsync("1 + 1\n", second));
+
+        async Task RunAsync(string code, TaskCompletionSource<PythonRun> sink)
+        {
+            try
+            {
+                sink.TrySetResult(await session.EvalAsync(code));
+            }
+            catch (Exception ex)
+            {
+                sink.TrySetException(ex);
+            }
+        }
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        while (watch.ElapsedMilliseconds < 20_000 && !second.Task.IsCompleted)
+            await Task.Delay(50);
+
+        var ticks = ui.Ticks;
+        var firstResult = await first.Task;
+        var secondResult = await second.Task;
+
+        Assert.IsTrue(firstResult.Ok, firstResult.Error);
+        Assert.IsTrue(secondResult.Ok, secondResult.Error);
+
+        // The queued caller is the one that proves the gate wait suspends: it would have blocked the pump for
+        // the whole preceding second if it did not.
+        Assert.IsTrue(ticks >= 5,
+            $"The calling thread's message loop ran only {ticks} times while two blocks were queued.");
+    }
+
+    /// <summary>
+    /// A stand-in for the UI thread: a single thread that owns a work queue and drains it in a loop, with a
+    /// <see cref="SynchronizationContext"/> so an <c>await</c> started there resumes there. It is deliberately
+    /// the structure a dispatcher has, and not merely an idle thread, because the freeze being tested for is
+    /// the queue not being drained - a thread that only slept would stay "responsive" through a block.
+    /// </summary>
+    private sealed class UiPump : IDisposable
+    {
+        private readonly BlockingCollection<(SendOrPostCallback Callback, object? State)> _queue = [];
+        private readonly Thread _thread;
+        private volatile bool _stopped;
+
+        /// <summary>Completed pump iterations; how responsive this stand-in window is.</summary>
+        public volatile int Ticks;
+
+        public UiPump()
+        {
+            _thread = new Thread(Loop) { IsBackground = true, Name = "test-ui" };
+            _thread.Start();
+        }
+
+        public void Post(Action action) => _queue.Add((_ => action(), null));
+
+        public void Dispose()
+        {
+            _stopped = true;
+            _thread.Join(TimeSpan.FromSeconds(2));
+            _queue.Dispose();
+        }
+
+        private void Loop()
+        {
+            SynchronizationContext.SetSynchronizationContext(new PumpContext(_queue));
+
+            while (!_stopped)
+            {
+                if (_queue.TryTake(out var work, 20))
+                {
+                    // A callback that blocks - which is the whole point of the measurement - simply delays the
+                    // counter, exactly as it would delay a window's redraw.
+                    work.Callback(work.State);
+                }
+
+                Ticks++;
+            }
+        }
+
+        private sealed class PumpContext(BlockingCollection<(SendOrPostCallback Callback, object? State)> queue)
+            : SynchronizationContext
+        {
+            public override void Post(SendOrPostCallback d, object? state) => queue.Add((d, state));
+
+            public override void Send(SendOrPostCallback d, object? state) => queue.Add((d, state));
+        }
+    }
 }

@@ -95,6 +95,9 @@ internal sealed class PythonSession : IDisposable
     private volatile bool _cancelRequested;
     private bool _disposed;
 
+    /// <summary>How long unload waits for an in-flight block before giving up on releasing the session.</summary>
+    private static readonly TimeSpan DisposeGateWait = TimeSpan.FromSeconds(5);
+
     public PythonSession(string pluginDirectory, IPluginServices services)
     {
         _log = services.Log;
@@ -170,10 +173,7 @@ internal sealed class PythonSession : IDisposable
             if (IsReady)
                 return;
 
-            await DeployAsync(ct);
-            EnsureLayout();
-            StartRuntime();
-            StartSession();
+            await OffThreadAsync(() => Prepare(ct), ct);
 
             IsReady = true;
             _log.Info("Python ready: {Version}", Version);
@@ -182,6 +182,25 @@ internal sealed class PythonSession : IDisposable
         {
             _gate.Release();
         }
+    }
+
+    /// <summary>
+    /// Everything that has to happen before the first block can run, as one synchronous unit so it can be put
+    /// on a thread pool thread in one piece.
+    /// <para>
+    /// This is the first-run path that deploys an interpreter, and the plugin host activates plugins and runs
+    /// their commands on the UI thread - so every step here is a step that freezes the window if it runs
+    /// there. Deployment is the one genuinely asynchronous part and is waited for rather than awaited on
+    /// purpose: blocking this thread is what keeps the caller's thread free, which is the whole point.
+    /// </para>
+    /// </summary>
+    private void Prepare(CancellationToken ct)
+    {
+        DeployAsync(ct).GetAwaiter().GetResult();
+
+        EnsureLayout();
+        StartRuntime();
+        StartSession();
     }
 
     /// <summary>
@@ -195,7 +214,7 @@ internal sealed class PythonSession : IDisposable
         await _gate.WaitAsync(ct);
         try
         {
-            StartSession();
+            await OffThreadAsync(StartSession, ct);
         }
         finally
         {
@@ -214,6 +233,26 @@ internal sealed class PythonSession : IDisposable
         // Waiting on the gate is what stops a second caller from interleaving with a run in flight. It is
         // released in the finally below, so a caller that walks away leaves the session usable.
         await _gate.WaitAsync(ct);
+
+        try
+        {
+            return await OffThreadAsync(() => RunOne(code, fileName), ct);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Runs one block and reports what happened: the successful result, or the traceback it raised.
+    /// <para>
+    /// Runs on whatever thread <see cref="OffThreadAsync{T}"/> put it on, never on a UI-thread caller - the
+    /// GIL scope below is synchronous, so it holds that thread for as long as the script runs.
+    /// </para>
+    /// </summary>
+    private PythonRun RunOne(string code, string? fileName)
+    {
         var stopwatch = Stopwatch.StartNew();
 
         try
@@ -239,11 +278,29 @@ internal sealed class PythonSession : IDisposable
             _log.Error("Python execution failed", ex);
             return new PythonRun(false, ex.Message, stopwatch.Elapsed.TotalMilliseconds);
         }
-        finally
-        {
-            _gate.Release();
-        }
     }
+
+    /// <summary>
+    /// Moves interpreter work off the calling thread.
+    /// <para>
+    /// The callers of this class are UI-thread callers - the editor's Run command and the console's Enter both
+    /// are - and every block below that takes the GIL is synchronous, so running one directly holds the UI
+    /// thread for as long as the script runs and freezes the window with it. Measured, not assumed: a script
+    /// sleeping 1.5 s stops the calling thread's own dispatcher from completing a single pump iteration until
+    /// it finishes. Awaiting a task does not help either, because a method that runs to completion without
+    /// ever suspending hands back a task that is already finished.
+    /// </para>
+    /// <para>
+    /// The thread pool rather than a dedicated engine thread: the GIL already serialises the interpreter, so
+    /// a worker would add a second serialisation on top of the one the runtime provides. Every block routed
+    /// through here is also reached under <see cref="_gate"/>, so two of them are never in flight at once
+    /// whatever thread runs them.
+    /// </para>
+    /// </summary>
+    private static Task<T> OffThreadAsync<T>(Func<T> work, CancellationToken ct) => Task.Run(work, ct);
+
+    /// <inheritdoc cref="OffThreadAsync{T}"/>
+    private static Task OffThreadAsync(Action work, CancellationToken ct) => Task.Run(work, ct);
 
     /// <summary>
     /// Asks the running code to stop, and reports whether it actually did.
@@ -331,7 +388,9 @@ internal sealed class PythonSession : IDisposable
         await _gate.WaitAsync(ct);
         try
         {
-            DropSession();
+            // Dropping the session takes the GIL, and it is about to be replaced anyway: nothing is kept, so
+            // there is nothing to serialise against.
+            await OffThreadAsync(DropSession, ct);
         }
         finally
         {
@@ -360,7 +419,7 @@ internal sealed class PythonSession : IDisposable
         await _gate.WaitAsync(CancellationToken.None);
         try
         {
-            StartSession();
+            await OffThreadAsync(StartSession, CancellationToken.None);
         }
         finally
         {
@@ -388,11 +447,34 @@ internal sealed class PythonSession : IDisposable
         // engine that never started into a reported failure.
         if (PythonEngine.IsInitialized)
         {
-            using (Py.GIL())
-                DropSessionCore();
+            // Off the caller's thread, because unload runs on the UI thread and the GIL is a synchronous wait
+            // on it. Behind the gate, because runs no longer hold the thread that started them: one may still
+            // be in flight on a pool thread, and releasing the namespace it is executing in would turn closing
+            // a tab into a crash. If it does not come free in time the handles are simply left - the process is
+            // ending, which is what the interpreter was always meant to outlive anyway.
+            OffThreadAsync(() =>
+            {
+                if (!_gate.Wait(DisposeGateWait))
+                {
+                    _log.Warn("A script was still running at unload; its session handles were left to the process.");
+                    return;
+                }
+
+                try
+                {
+                    DropSession();
+                }
+                finally
+                {
+                    _gate.Release();
+                }
+            }, CancellationToken.None).GetAwaiter().GetResult();
         }
 
-        _gate.Dispose();
+        // The gate is deliberately not disposed. A caller that is already past its own check can still arrive,
+        // and releasing a disposed semaphore throws - so disposing it here would convert a race into a crash.
+        // Nothing is leaked by leaving it: a SemaphoreSlim allocates no handle, and the session is meant to
+        // outlive every caller anyway.
     }
 
     /// <summary>

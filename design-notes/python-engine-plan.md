@@ -33,6 +33,131 @@ numpy 都不依赖它）。现在 pip 只在用户显式点按钮时初始化。
 从 pip 读到 6 项（偏离 K、M）。设计文档 §3 P7 的验收标准"实测装通 + import"已成立。**注意**：pip 是
 "UI 触发的运维操作"，因此它不参与任何隐式路径——`EnsureReadyAsync` 只做部署 + numpy + 启动会话。
 
+## 0.3 实施记录：UI 阻塞已修复，以及下一步"异步调用"的设计（仅设计，未实现）
+
+### 0.3.1 已落地的修复：脚本执行不再占住 UI 线程
+
+**问题**：跑脚本时整个窗口冻结。**根因（实测，不是推断）**：`EvalAsync` 从入口到出口**全程不 await**
+（只有计数为 1 的 `_gate.WaitAsync` 会瞬间完成），所以它返回的是一个**已经完成**的 Task——`await` 它
+不会让出调用线程，整段脚本就在那个线程上跑完。探针实测：`sleep(2.0)` 之后
+`EvalAsync returned a Task after 2018 ms, completed=True`。用一个假的"UI 线程"（带消息队列 +
+`SynchronizationContext` 的线程）测量：脚本 `sleep(1.5)` 期间该线程的消息泵 **ticks = 0**，跑完才 tick 了
+一次。
+
+**注意本文多处（§0.1 偏离 C、§2.3、§2.5）写着"线程池执行"——那是**文档**，代码里从来没有 offload**（全
+仓库 `Task.Run` 有 15 处，PythonRunner 一处都没有）。这次是把它真正落实。
+
+| 改动 | 内容 |
+|---|---|
+| `PythonSession.OffThreadAsync` | 新增 `Task.Run` 包装；所有"在调用方线程上取 GIL"的路径都经由它 |
+| `EvalAsync` | 拆出同步的 `RunOne`，经 `OffThreadAsync`；gate 的释放挪到外层 `finally`，保证 `await` 抛出时也释放 |
+| `EnsureReadyAsync` | 首次部署（解包解释器 + numpy wheel，分钟级）合并为 `Prepare(ct)` 一次 offload。`DeployAsync` 用 `GetAwaiter().GetResult()` 是**有意**的：阻塞在池线程上才叫让出 UI 线程 |
+| `ResetSessionAsync` / pip 前后的 `StartSession`、`DropSession` | 同样取 GIL，同样 offload |
+| `Dispose` | offload + **有界等 gate**（5s）；超时就放弃释放句柄并记日志，而不是拿一个还在执行中的命名空间去释放 |
+| `Dispose` 不再 `_gate.Dispose()` | offload 之后"脚本仍在跑、tab 已关"成为常态，此时 `finally` 里 `Release` 一个已释放的信号量会抛异常——把关闭标签页变成崩溃。`SemaphoreSlim` 不占句柄，留着不泄漏 |
+| `PythonSettingsView` | `ListPackagesAsync`（spawn `pip list` 子进程）与 pip 操作改经 `Task.Run`；前者原本在构造函数里用阻塞的 `GetAwaiter().GetResult()` 跑，即"打开设置页就卡住" |
+
+**验证**：修复后同一探针 1.5s 脚本期间消息泵 ticks 由 **0 → 51**（连续跳动）。新增两条回归测试
+（`PythonBridgeTests.Eval_KeepsTheCallersThreadFreeWhileTheScriptRuns` /
+`...WhileWaitingForTheGate`），**负对照**：把 offload 换回 inline，测试立刻失败（"ran only 2 times"）。
+全量 109/109 + 25/25 全绿。
+
+### 0.3.2 遗留但**故意不动**的：数据 API 的同步 Send
+
+`PythonBridge` 的写调用走 `UiInvoke = Dispatcher.UIThread.Invoke`，即同步 Send：脚本线程等 UI 线程。经
+确认，**这些方法本身只需 ms 级，不需要改**。真正的放大情形只有两种，且都不属于那些方法：
+
+1. **UI 侧的后续开销**——`Volumes.Replace(volume)` 之后是切片视图重绘、`Masks.NotifyContentChanged()`
+   之后是重渲染。脚本本可以继续算，却被 Send 扣住了。
+2. **循环里几百次调用**，每次一个 Send 往返 + 排队。
+
+### 0.3.3 设计：`Post` + Job 句柄（异步调用面）
+
+目标：**脚本永不等待 UI 线程完成，只轮询。**
+
+**三条不可动的约束**
+
+| 约束 | 原因 |
+|---|---|
+| 脚本线程在 `exec` 期间**持 GIL** | `EvalAsync` 的 `using (Py.GIL())` 已经如此，异步面不改这一点 |
+| UI 线程上执行的活儿**只能碰托管状态**，禁止新建/使用 `PyObject` | `PythonBridge` 现在就守着这条（`Masks.Add` / `Volumes.Replace` 都是纯托管），`PyObject` 一律回到脚本线程再造（如 `SetVolume` 末尾的 `Info()`） |
+| 现有的 ms 级同步方法保持不变 | 已优化过，改它没有收益 |
+
+第二条是**死锁与否的分水岭**：只要 UI 线程永不索要 GIL，脚本线程就永远可以安全地阻塞等它；一旦违反
+就是经典环（UI 要 GIL ← 脚本持有，脚本等 UI）。这条要从"事实上的约定"升格为**由签名强制的规则**——job
+的委托返回普通托管类型，Python 侧的包装层负责转换。
+
+```mermaid
+sequenceDiagram
+    participant S as 脚本线程（持 GIL）
+    participant Q as 待办队列
+    participant U as UI 线程（只碰托管状态）
+    S->>Q: submit("set_volume", arr) 立即返回 Job
+    S->>S: 继续本地计算 / pump()
+    Q->>U: Dispatcher.Post(...)
+    U->>U: 纯托管：Replace / 通知重绘
+    U->>Q: 置完成标记
+    S->>Q: pump() / result() 读到结果
+```
+
+**C# 侧**（新增，正交于现有面）
+
+- `PythonSession` 增一条 seam：`Action<Action> UiPost { get; set; }`（插件设为 `Dispatcher.UIThread.Post`；
+  headless/测试默认内联，与 `UiInvoke` 同样处理）。**`UiInvoke`（Send）原样保留**给现在那些调用。
+- `PythonBridge` 增一族 `Submit*`：参数为纯托管类型 → 返回 `JobHandle`（内含 `TaskCompletionSource`）。
+  job 体就是现在 `_invoke(() => ...)` 里的那段托管代码，一字不改地挪过去。
+- `JobHandle`：`IsDone` / `TryGetError()` / `Result`。结果值以托管形态（`byte[]` / `ushort[]` / record）
+  持有，**由包装层在脚本线程上转成 numpy / `PyObject`**——完全复刻 `SetVolume` → `Info()` 的既有分工。
+
+**Python 侧**（`Resources/layeron.py` 加一节，转发依旧平铺）
+
+```python
+job = layeron.write_volume_async(arr)   # 立即返回
+while not job.done:
+    ...本地计算...
+    layeron.pump()                      # 消费已完成 job；失败则抛出；顺带响应取消
+result = job.result()                   # 显式阻塞，见下面第 2 点
+```
+
+三个语义要点：
+
+1. **`pump()` 不碰 UI 线程**，只读托管标志位——这是"脚本不等待 UI"的全部底气。
+2. **`job.result()` 允许阻塞**，且在约束二成立时无死锁风险（UI 不需要 GIL）。但仍建议把轮询当默认写法：
+   UI 忙 500 ms 时阻塞写法就会白等 500 ms。与 `InterruptAsync` 的哲学一致——如实报告、有界等待。
+3. **顺序性免费拿到**：`Post` 和 `Send` 进的是同一个 dispatcher 队列，同优先级下 FIFO，所以
+   `submit(写)` 之后紧跟的同步 `read_roi()` 天然排在它后面；而且完成信号是在 posted 回调**内部**置的，
+   Send 返回时前面的 job 必然已经执行完。这不需要额外加 barrier，但必须在注释里写死"两者优先级必须
+   一致"。
+
+**收尾**：`Execute` 结束时必须 drain 一次——队列里还有在飞的 job 就等完（有界），否则 `Ok=True` 是在撒谎。
+
+### 0.3.4 更便宜的第一步：批量合并（建议先于异步做）
+
+只想解决"循环里几百次调用"的话，**先做 batch 比做异步划算得多**，而且完全不碰协议：
+
+```python
+with layeron.batch():
+    for z in range(200):
+        layeron.mask_set_slice(handle, z, plane)   # 期间不发 NotifyContentChanged
+```
+
+现在 `MaskAdd` 已经有了一次性 publish 的概念（`_published` 集合 + `mask_publish`）：把
+`NotifyContentChanged()` 从每次写推迟到批次末尾即可。异步不该被用来掩盖一个本该合并的调用模式。
+
+### 0.3.5 明确**不做**的方案
+
+**asyncio / `await`**：要让顶层脚本 `await`，就得把整块代码在事件循环里跑（`asyncio.run` 语义），这会
+同时改掉 `single` 模式的尾表达式回显和单行 REPL 的前提——为一个只有少数脚本才需要的特性，换掉整个会话
+的语义。
+
+### 0.3.6 落手前需要先验的点（各一个小实验）
+
+1. Avalonia `Dispatcher.Post` 的**默认优先级**是否与 `UIThread.Invoke` 一致——顺序性假设全押在这上面。
+2. `JobHandle` 用 `TaskCompletionSource` 还是 `ManualResetEventSlim`：前者在 UI 线程置结果，注意别把续体
+   调度回队列造成二次延迟。
+3. 脚本线程持 GIL 时阻塞等托管事件，pythonnet 是否真的不进解释器——约束二成立时理论上无关，但值得用
+   "UI 回调里故意摸一下 `PyObject`"做反向对照，确认崩/挂的表现。
+
 ## 0.1 实施记录：P1–P5 已落地，与本文的三处偏离（实测得出）
 
 P1–P5（契约 + 环境部署 + 会话/stdio 修复 + REPL + 脚本编辑器 + 菜单）已实现并验证。实现过程中有三处
@@ -42,7 +167,7 @@ P1–P5（契约 + 环境部署 + 会话/stdio 修复 + REPL + 脚本编辑器 +
 |---|---|---|---|
 | A | `pythonnet 3.0.1`（由 `Numpy` 带入） | `PythonEngine.Shutdown()` 在 .NET 10 上抛 `PlatformNotSupportedException`：它用 `BinaryFormatter` 序列化 `RuntimeData`，而该类型已被移除。开 `EnableUnsafeBinaryFormatterSerialization` 可绕过，但那要求宿主加进程级开关 | 显式引用 `pythonnet 3.2.1`；`Numpy` 的绑定在其上原样可用。**注意**：3.2.1 的 `Shutdown` 能返回，但随后 `Initialize` 抛 `NotImplementedException`（`NoopFormatter`）——所以运行时仍然只能在进程内初始化一次，计划 §2.5 的"环境重建 = 停会话 → 重装 → 重启会话"按此实现（清包+重建会话，不动 runtime） |
 | B | §1.2 修复 stdio：`sys.stdout` 换成自定义 `io.TextIOBase` 子类，`write()` 回调 .NET sink | 成立，且是**唯一**可行的形态。`PythonEngine.Initialize()` 之后再 `Console.SetOut(...)` 对 Python 完全不可见（实测捕获为空）；只有从 Python 侧替换 `sys.stdout` 才生效 | 按计划实现，脚本在 `Resources/bootstrap.py`，随程序集嵌入部署 |
-| C | §2.3 用独立 worker 线程 + 队列承载所有 Py 调用 | 不必要。GIL 本身已把进入解释器的线程串行化，worker 只是在 GIL 之上再加一层串行；而"可中断性"实测为零（见 D） | 改为 `SemaphoreSlim` 串行 + 线程池执行（`Task.Run` 语义），少一个线程、少一份队列状态，行为等价 |
+| C | §2.3 用独立 worker 线程 + 队列承载所有 Py 调用 | 不必要。GIL 本身已把进入解释器的线程串行化，worker 只是在 GIL 之上再加一层串行；而"可中断性"实测为零（见 D） | 改为 `SemaphoreSlim` 串行 + 线程池执行（`Task.Run` 语义），少一个线程、少一份队列状态，行为等价。**但"线程池执行"当时只写进了注释、没有落进代码**：`EvalAsync` 全程不 await，实际是在调用方线程上跑完的，代价是跑脚本时窗口冻结——见 §0.3.1 |
 | D | §0 决策 6：协作式取消 + best-effort `KeyboardInterrupt` | `PythonEngine.Interrupt(0)` 返回 **0（失败）**，`while True: pass` 的循环继续执行；且从主线程调用 `Interrupt` 后若再去 `Join()` worker 会**死锁调用者**（实测：进程 180s 无输出）。`KeyboardInterrupt` 注入在纯 CPU 循环上完全无效 | 保留协作式取消（`layeron.check_cancelled()`）+ best-effort `Interrupt`，但**不**阻塞等待：`InterruptAsync` 用有界等待并如实返回"没停下来"，由"重置会话"兜底。文档明示该限制 |
 | E | §0 决策 1：新增 `Layeron.Python.Abstractions` 共享程序集 | P1–P5 内没有任何跨插件消费者（设计里的消费者是 P6 的 `layeron.volume` 与 P8 的 `IDocumentService`），为一个零消费者建程序集 + 加 `SharedPrefixes` + 改 slnx，属于为将来付现在的复杂度 | 暂不建独立程序集：引擎与视图同处插件内，契约（`PythonOutput`/`PythonRun`）先作为插件内部类型。等 P6/P8 真正出现第二个消费者时再抽 |
 | F | §1.5 / §2.6：`Workspace.PythonScriptsDirectory`、`IScriptHostService` 复用 | 这两个文件夹名/后缀是**插件的文件约定**，而 `Layeron.Scripting.Abstractions` 与 `Layeron.App` 属于宿主侧——把 `"python"`/`".py"` 放进去等于让宿主知道插件的布局，每加一门脚本语言都要改宿主 | 宿主侧只保留真正属于宿主的能力：文件对话框（标题/目录/通配符由插件传入）、`WorkspaceRoot`、`LogRunFailure`、插件重扫。`scripts`/`.csx`/`python`/`.py` 分别归 `ScriptHost` 与 `PythonRunner` 插件自己的 `*Paths` 类型；`Workspace.EnsureCreated()` 只建根目录，子目录由各插件首次保存时创建 |
@@ -214,7 +339,7 @@ public interface IDocumentService
 ### 2.3 插件内部模块
 | 文件 | 职责 |
 |---|---|
-| `PythonSessionHost.cs` | 专属后台线程 + `SemaphoreSlim(1)` 队列；持 `Py.GIL()`；`EnsureReady/Reset/Eval/Invoke`；异常规范化；快照版本戳 |
+| `PythonSessionHost.cs` | 专属后台线程 + `SemaphoreSlim(1)` 队列；持 `Py.GIL()`；`EnsureReady/Reset/Eval/Invoke`；异常规范化；快照版本戳。**实现见 §0.1 偏离 C 与 §0.3.1**：没有专属线程，只有 `SemaphoreSlim` + 线程池，且所有取 GIL 的路径都必须真正 offload |
 | `PythonEnvironment.cs` | 部署（`SetupPython` + `_pth` 修复）、pip bootstrap、`python -m pip` 子进程（实时输出）、`site-packages` 校验、包路径配置、`layeron.py` 落盘 |
 | `PythonBridge.cs` | `Numpy` 绑定：体素/mask ↔ `ndarray`；只读零拷贝视图（[z,y,x]）+ 复制型 ROI/切片；`set_volume`/`mask_add` 的读取与校验 |
 | `PythonBuffers.cs` | 实现 `IPythonDocuments`（内存优先、磁盘兜底；保存走编辑器） |
@@ -246,7 +371,9 @@ layeron.call(qualified_name, *args) # 转发到 IpythonEngine.Invoke
 - 版本戳语义与 `VolumeSnapshot` 一致：过期只告警，不阻塞。
 
 ### 2.5 会话与生命周期
-- 引擎线程：所有 Py API 收敛到这一条线程（含 Reset/安装后的重启）。
+- 引擎线程：所有 Py API 收敛到这一条线程（含 Reset/安装后的重启）。**实际实现是 `SemaphoreSlim` 串行 +
+  线程池**，不是专属线程——见 §0.1 偏离 C 与 §0.3.1；关键是每次取 GIL 都必须在池线程上，不能在调用方
+  （UI）线程上。
 - **Reset（会话重置）**：清 `__main__` globals → 重跑 `bootstrap.py` → 重设 `sys.path`/stdio/displayhook/ps1。轻量、常用。
 - **环境重建（重按钮）**：停会话 → 清 `Lib\site-packages`（保留 pip 引导能力）→ 重装 pip → 重装 numpy → 重启会话。
 - **安装包**：停会话 → `python -m pip install …`（带 `numpy<2` 约束；输出实时进设置页）→ 重启会话。
@@ -273,6 +400,8 @@ layeron.call(qualified_name, *args) # 转发到 IpythonEngine.Invoke
 | P8 | `AppDocumentService` + `AppPluginServices` 服务表泛化 | 单测：文档列表/Active/Open |
 | P9 | 文档：`docs/{,en/}guide/python.md`、`api-reference` 增补、`EXTENSION_ARCHITECTURE.md` §6 更新 | —— |
 | P10 | 集成测试（解释器缺席时 Skip）+ 清理 demo | `dotnet test` |
+| P11 | ✅ **执行不再阻塞 UI**：所有取 GIL 的路径 offload 到线程池（`EnsureReady`/`Eval`/`Reset`/pip/`Dispose`）+ 回归测试 | ✅ 探针 ticks 0 → 51；109 + 25 全绿（见 §0.3.1） |
+| P12 | （**仅设计**，未排期）数据 API 的异步调用面：`UiPost` + `JobHandle` + `layeron.pump()`；先做 batch 合并 | 见 §0.3.3 / §0.3.4 |
 
 ---
 
@@ -287,3 +416,5 @@ layeron.call(qualified_name, *args) # 转发到 IpythonEngine.Invoke
 | 跨 ALC 传活对象 | 只传契约接口 + 文本/JSON；大体数据走 App 服务 |
 | REPL 与脚本共用 `__main__` 的命名冲突 | 顺其自然（已确认不隔离）；REPL 提供 `dir()`/globals 计数；重置是唯一清理手段 |
 | 零拷贝视图在 volume 被替换后失效 | 视图绑定版本戳；`set_volume` 后旧视图标记失效，访问时给出明确异常 |
+| 异步调用面若在 UI 回调里碰 `PyObject` | 由签名强制：job 委托返回托管类型，转换只在脚本线程做（§0.3.3 约束二）；违反即死锁，不是性能问题 |
+| `Post` 与 `Send` 优先级不一致会打破"submit 后同步读"的顺序性 | 落手前先实测默认优先级（§0.3.6 第 1 条）；完成信号在 posted 回调内部置位，不额外加 barrier |

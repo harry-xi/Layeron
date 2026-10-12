@@ -148,6 +148,10 @@ internal sealed partial class PythonSettingsView : UserControl, IDisposable, ISe
     /// <summary>
     /// Fills the package list. Never throws: a page that cannot list packages must still be able to install
     /// or bootstrap the thing that is missing.
+    /// <para>
+    /// Started from the page's constructor, so it runs while the first window is still being shown: the pip
+    /// child process is waited for on a background thread rather than on the one opening the window.
+    /// </para>
     /// </summary>
     private async Task ReloadPackagesAsync()
     {
@@ -156,7 +160,7 @@ internal sealed partial class PythonSettingsView : UserControl, IDisposable, ISe
 
         try
         {
-            var packages = await _engine.ListPackagesAsync();
+            var packages = await Task.Run(() => _engine.ListPackagesAsync());
 
             _packageItems.Clear();
             foreach (var package in packages)
@@ -190,7 +194,10 @@ internal sealed partial class PythonSettingsView : UserControl, IDisposable, ISe
 
         try
         {
-            var ok = await work(cts.Token);
+            // Off the UI thread: an operation here can start a pip child process and wait on it, and the first
+            // one also deploys the interpreter - so awaiting it on the thread that draws the window is what
+            // used to leave the page's Cancel button unresponsive for the whole install.
+            var ok = await Task.Run(() => work(cts.Token));
             SetStatus(ok ? $"{status}：完成" : $"{status}：失败（见上方输出）");
         }
         catch (Exception ex)
