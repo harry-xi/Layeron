@@ -1,0 +1,116 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="using:Layeron.Plugins.Agent"
+             mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="640"
+             x:Class="Layeron.Plugins.Agent.AgentChatView"
+             x:DataType="local:AgentChatViewModel">
+  <DockPanel>
+    <!--
+      工具栏。发送与取消都放在这里而不是塞进输入区：输入区只回答"写什么"，
+      这两个动作改变的是整轮对话的状态。
+    -->
+    <Border DockPanel.Dock="Top" Background="LightGray" Padding="6,4">
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <Button Content="发送" Command="{Binding SendCommand}" IsEnabled="{Binding CanSend}"/>
+        <Button Content="取消" Command="{Binding CancelCommand}" IsEnabled="{Binding IsBusy}"/>
+        <Button Content="清空对话" Command="{Binding ClearCommand}" IsEnabled="{Binding HasMessages}"/>
+        <Button Content="Check Python" Command="{Binding CheckPythonCommand}"/>
+        <ProgressBar Width="80" Height="4" VerticalAlignment="Center"
+                     IsIndeterminate="True" IsVisible="{Binding IsBusy}"/>
+      </StackPanel>
+    </Border>
+
+    <Border DockPanel.Dock="Bottom" Padding="6,3" Background="LightGray">
+      <TextBlock Text="{Binding StatusText}" FontSize="11" Opacity="0.7"
+                 TextTrimming="CharacterEllipsis"/>
+    </Border>
+
+    <Border DockPanel.Dock="Bottom" Padding="6">
+      <StackPanel Spacing="4">
+        <!-- 待发附件：换行排布，附件多时不会把输入框挤出窗口。 -->
+        <DockPanel IsVisible="{Binding HasAttachments}">
+          <Button DockPanel.Dock="Right" Content="全部移除" FontSize="11" Padding="6,1"
+                  VerticalAlignment="Top" Margin="6,0,0,0"
+                  Command="{Binding RemoveAllAttachmentsCommand}"/>
+          <ItemsControl ItemsSource="{Binding Attachments}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <WrapPanel Orientation="Horizontal"/>
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate DataType="local:AgentAttachment">
+                <Border Background="#20808080" CornerRadius="10" Padding="8,2" Margin="0,0,6,4"
+                        ToolTip.Tip="{Binding Tooltip}">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="{Binding DisplayText}" FontSize="11" VerticalAlignment="Center"
+                               MaxWidth="200" TextTrimming="CharacterEllipsis"/>
+                    <Button Content="✕" FontSize="10" Padding="4,0" Background="Transparent"
+                            BorderThickness="0" VerticalAlignment="Center"
+                            Command="{Binding RemoveCommand}"/>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </DockPanel>
+
+        <TextBox Text="{Binding Draft, Mode=TwoWay}"
+                 AcceptsReturn="True"
+                 TextWrapping="Wrap"
+                 MinHeight="56" MaxHeight="140"
+                 PlaceholderText="输入消息后点发送"/>
+
+        <!--
+          添加附件只有两条不依赖插件类型的入口：从磁盘选，或手填路径。具体路径怎么来
+          （拖放、历史记录、某种外部对象）由调用方决定，面板只负责把它变成一条附件。
+        -->
+        <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
+          <Button Grid.Column="0" Content="添加文件…" Command="{Binding BrowseAttachmentCommand}"/>
+          <TextBox Grid.Column="1" Text="{Binding ExternalPath, Mode=TwoWay}"
+                   PlaceholderText="或粘贴一个文件路径"/>
+          <Button Grid.Column="2" Content="添加路径" Command="{Binding AddPathAttachmentCommand}"/>
+          <Button Grid.Column="3" Content="存为文本附件" Command="{Binding AddTextAttachmentCommand}"
+                  ToolTip.Tip="把输入框里的内容变成一个文本附件"/>
+        </Grid>
+      </StackPanel>
+    </Border>
+
+    <!--
+      消息列表。气泡按角色左右分开：谁说的要一眼可见，而不是靠读标题。
+    -->
+    <ScrollViewer x:Name="MessageScroller" VerticalScrollBarVisibility="Auto">
+      <ItemsControl ItemsSource="{Binding Messages}" Margin="6">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate DataType="local:ChatMessage">
+            <StackPanel HorizontalAlignment="{Binding BubbleAlignment}" Margin="0,0,0,10">
+              <TextBlock Text="{Binding Header}" FontSize="10" Opacity="0.55" Margin="4,0,4,2"
+                         HorizontalAlignment="{Binding BubbleAlignment}"/>
+              <Border Background="{Binding BubbleBrush}" CornerRadius="10" Padding="10,6" MaxWidth="320">
+                <StackPanel Spacing="4">
+                  <TextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                             Foreground="{Binding TextBrush}"
+                             IsVisible="{Binding HasText}"/>
+                  <ItemsControl ItemsSource="{Binding Attachments}" IsVisible="{Binding HasAttachments}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate DataType="local:AgentAttachment">
+                        <!--
+                          附件行只说明"引用了什么"：气泡背景已经区分了角色，这里再挑颜色只会让一条
+                          消息里的两段文字看起来属于不同的人。
+                        -->
+                        <TextBlock Text="{Binding TranscriptText}" FontSize="11" Opacity="0.85"
+                                   TextWrapping="Wrap"/>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>

@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Layeron.Plugins.Agent</AssemblyName>
+    <!-- 视图与聊天面板声明在 XAML 中，因此需要运行 Avalonia 的 XAML 编译器。 -->
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <!-- 插件身份写进程序集元数据：宿主无需加载（更不会运行）插件就能读到。 -->
+  <ItemGroup>
+    <AssemblyMetadata Include="LayeronPluginId" Value="layeron.agent" />
+    <AssemblyMetadata Include="LayeronPluginName" Value="Agent" />
+    <AssemblyMetadata Include="LayeronPluginVersion" Value="1.0.0" />
+    <AssemblyMetadata Include="LayeronPluginDescription" Value="Chat panel for an AI agent, with attachments and a settings page." />
+    <AssemblyMetadata Include="LayeronPluginApiVersion" Value="1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      契约只编译期引用：运行时必须用宿主的那一份，否则插件会看到第二个 IPlugin 类型。
+      这样插件目录里也不会出现宿主程序集的副本。
+    -->
+    <ProjectReference Include="..\Layeron.Big3DArray\Layeron.Big3DArray.csproj" Private="false" />
+    <ProjectReference Include="..\Layeron.Plugin.Abstractions\Layeron.Plugin.Abstractions.csproj" Private="false" />
+    <!-- 附件选择要走宿主的文件对话框：脚本宿主服务正是宿主已有的那个 UI 缝隙。 -->
+    <ProjectReference Include="..\Layeron.Scripting.Abstractions\Layeron.Scripting.Abstractions.csproj" Private="false" />
+
+    <!--
+      另一个插件的契约：智能体要把 Python 当作工具调用，靠的就是这一份共享程序集。
+      Private="false" 是这里唯一重要的事——运行时它由宿主的共享加载上下文提供（plugins.shared 目录），
+      而不是随本插件复制一份。复制一份就会得到"同名但不同"的 IPythonRunnerService，扩展点里取到的
+      实例将无法转换，而且不会有任何报错。详见 docs/plugin/shared-contracts.md。
+    -->
+    <ProjectReference Include="..\Layeron.Plugins.PythonRunner.Api\Layeron.Plugins.PythonRunner.Api.csproj" Private="false" />
+
+    <!-- UI 插件对宿主的 Avalonia 声明视图；排除运行时资产，插件不会附上第二份副本。 -->
+    <PackageReference Include="Avalonia" Version="12.1.3" GeneratePathProperty="true" ExcludeAssets="runtime" />
+    <!-- 与宿主 App 相同的 MVVM 栈（ReactiveUI），在运行时共享。版本需与 Layeron.App 一致。 -->
+    <PackageReference Include="ReactiveUI.Avalonia" Version="12.1.2" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+</Project>

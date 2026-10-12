@@ -104,6 +104,8 @@ public interface IPluginRegistry
 
     /// <summary>Tracks an arbitrary disposable so its disposal follows the plugin lifetime.</summary>
     IDisposable Track(IDisposable disposable);
+
+    IReadOnlyCollection<string> PointIds { get; }
 }
 
 /// <summary>

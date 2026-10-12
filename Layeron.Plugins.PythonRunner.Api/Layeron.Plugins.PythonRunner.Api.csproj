@@ -6,4 +6,15 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!--
+    This project is the plugin's published contract: the types another plugin needs in order to use the
+    Python runner (its services) without referencing the runner itself.
+
+    It is an ordinary class library on purpose - no packing, no shipping. The host loads it into the
+    shared load context from its shared folder, and every plugin that references it does so with
+    Private="false" so the assembly is never copied next to a plugin. That is what makes the interface
+    here the SAME type in the runner and in its consumers; a copy per plugin would be a different type
+    with the same name, and the published service would silently be unreachable.
+  -->
+
 </Project>

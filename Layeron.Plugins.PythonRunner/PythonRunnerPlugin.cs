@@ -95,7 +95,12 @@ public sealed class PythonRunnerPlugin : IPlugin
             ContentFactory = () => new PythonSettingsView(engine, context.Services.Log)
         }));
 
-        context.Registry.Contribute<IPythonRunnerService>("layeron.pythonrunner.python_runner",new PythonRunnerService(engine));
+        // The service other plugins use, published as a plain host-defined extension point rather than
+        // as a discoverable type: consumers resolve it by id, so they need this contract assembly and
+        // nothing of the runner. The point is defined with a null owner, so it outlives this plugin's
+        // scope the way the host's own points do and the contribution is removed on unload.
+        context.Registry.DefinePoint<IPythonRunnerService>(IPythonRunnerService.PointId, "Python runner service");
+        context.Registry.Contribute<IPythonRunnerService>(IPythonRunnerService.PointId, new PythonRunnerService(engine));
     }
 
     private static void Menu(IPluginContext context, string header, Action execute) =>

@@ -57,6 +57,7 @@
         <ProjectReference Include="..\Layeron.Plugins.Threshold\Layeron.Plugins.Threshold.csproj" ReferenceOutputAssembly="false" />
         <ProjectReference Include="..\Layeron.Plugins.Model3D\Layeron.Plugins.Model3D.csproj" ReferenceOutputAssembly="false" />
         <ProjectReference Include="..\Layeron.Plugins.PythonRunner\Layeron.Plugins.PythonRunner.csproj" ReferenceOutputAssembly="false" />
+        <ProjectReference Include="..\Layeron.Plugins.Agent\Layeron.Plugins.Agent.csproj" ReferenceOutputAssembly="false" />
     </ItemGroup>
 
     <ItemGroup>
@@ -85,9 +86,31 @@
             <SamplePluginFile Include="..\Layeron.Plugins.PythonRunner\bin\$(Configuration)\net10.0\**\*.*">
                 <PluginFolder>layeron.pythonrunner</PluginFolder>
             </SamplePluginFile>
+            <SamplePluginFile Include="..\Layeron.Plugins.Agent\bin\$(Configuration)\net10.0\**\*.*">
+                <PluginFolder>layeron.agent</PluginFolder>
+            </SamplePluginFile>
         </ItemGroup>
 
         <Copy SourceFiles="@(SamplePluginFile)" DestinationFiles="@(SamplePluginFile->'$(OutDir)plugins.dev\%(PluginFolder)\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
     </Target>
-    
+
+    <!--
+      Copies the plugin-to-plugin contracts into $(OutDir)plugins.shared/. The plugin manager loads that
+      whole folder into one load context (PluginSharedAssemblies) and every plugin resolves those names
+      from it, which is what makes a type defined by one plugin the same type in another. A contract must
+      therefore NOT sit in a plugin's own folder: that copy would be a second, incompatible type.
+
+      Projects that publish a contract are the ones that reference it with Private="false"; the copy here
+      is the single deployment of it.
+    -->
+    <Target Name="DeploySharedContracts" AfterTargets="Build">
+        <ItemGroup>
+            <SharedContractFile Include="..\Layeron.Plugins.PythonRunner.Api\bin\$(Configuration)\net10.0\Layeron.Plugins.PythonRunner.Api.*" />
+        </ItemGroup>
+
+        <Copy SourceFiles="@(SharedContractFile)"
+              DestinationFolder="$(OutDir)plugins.shared"
+              SkipUnchangedFiles="true" />
+    </Target>
+
 </Project>

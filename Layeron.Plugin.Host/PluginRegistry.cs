@@ -23,6 +23,8 @@ internal sealed class PluginRegistry : IPluginRegistry
 
     public IPluginServices Services { get; }
 
+    public IReadOnlyCollection<string> PointIds => _points.PointIds;
+
     public IDockableContribution AddTool(ToolContribution tool)
     {
         ArgumentNullException.ThrowIfNull(tool);

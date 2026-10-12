@@ -20,6 +20,20 @@ public sealed class PluginManagerOptions
         AppContext.BaseDirectory, "plugins.dev");
 
     /// <summary>
+    /// Folder holding the assemblies plugins share with <em>each other</em> - the
+    /// <c>Layeron.Plugins.*.Api.dll</c> contracts a plugin publishes so other plugins can compile
+    /// against the same types.
+    /// <para>
+    /// The whole folder is loaded into one non-collectible load context and every plugin resolves
+    /// those names from it, which is the only way a type defined in one plugin can be the same type
+    /// in another. Without it each plugin gets its own copy and a published service is unreachable
+    /// with no error to explain why. See <see cref="PluginSharedAssemblies"/>.
+    /// </para>
+    /// </summary>
+    public string SharedPluginDirectory { get; set; } = Path.Combine(
+        AppContext.BaseDirectory, "plugins.shared");
+
+    /// <summary>
     /// Reject descriptors whose declared API major version differs from
     /// <see cref="PluginApi.Version"/>. A plugin with no declared version is accepted and logged.
     /// </summary>
@@ -79,6 +93,7 @@ public sealed class PluginManager : IDisposable
     private readonly Dictionary<string, SourceRegistration> _sources = new(StringComparer.Ordinal);
     private readonly HashSet<string> _processedDescriptors = new(StringComparer.Ordinal);
     private readonly PointRegistry _points = new();
+    private readonly PluginSharedAssemblies _shared;
     private readonly Lock _gate = new();
 
     public PluginManager(IPluginHostAdapter adapter, PluginManagerOptions? options = null)
@@ -86,6 +101,7 @@ public sealed class PluginManager : IDisposable
         Adapter = adapter;
         Options = options ?? new PluginManagerOptions();
         PointRegistry = _points;
+        _shared = new PluginSharedAssemblies(Options.SharedPluginDirectory);
 
         // Host-owned points: survive any single plugin's unload; only contributions are scoped.
         // Pre-defined here so AddFilter/AddSettingsPage (Contribute sugar) never hit "not defined".
@@ -174,7 +190,8 @@ public sealed class PluginManager : IDisposable
     /// <summary>Initializes the plugin system, loading all plugins from the configured directories.</summary>
     public IReadOnlyList<string> InitLoad()
     {
-        throw new NotImplementedException();
+        // throw new NotImplementedException();
+        return LoadAll();
     }
 
     /// <summary>Scans a directory for plugin assemblies and returns their metadata.</summary>
@@ -375,7 +392,7 @@ public sealed class PluginManager : IDisposable
                 var path = descriptor.Location
                     ?? throw new InvalidOperationException("Descriptor has neither an instance nor an assembly path.");
 
-                loadContext = new PluginLoadContext(path);
+                loadContext = new PluginLoadContext(path, _shared);
                 var assembly = loadContext.LoadFromAssemblyPath(path);
                 var entry = FindEntryType(assembly);
 
@@ -652,6 +669,29 @@ public sealed class PluginManager : IDisposable
 
         return loaded;
     }
+
+    // -----------------------------------------------------------------------
+    //  Shared contracts between plugins
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// A contract assembly shared between plugins, as it was actually loaded, or null when it is not
+    /// deployed. <paramref name="simpleName"/> is the file name without its extension, e.g.
+    /// <c>Layeron.Plugins.PythonRunner.Api</c>.
+    /// <para>
+    /// Use this instead of <c>Assembly.LoadFrom</c> when a host needs a plugin's contract: loading it
+    /// again through the default context or from the file would produce a <em>second</em> copy of every
+    /// type in it, and the host's copy would not be the one the plugins are actually using.
+    /// </para>
+    /// </summary>
+    public Assembly? GetSharedContract(string simpleName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(simpleName);
+        return _shared.TryLoad(new AssemblyName(simpleName));
+    }
+
+    /// <summary>Simple names of the currently deployed shared contracts, for diagnostics.</summary>
+    public IReadOnlyCollection<string> SharedContractNames => _shared.Names;
 
     // -----------------------------------------------------------------------
     //  Unload / reload

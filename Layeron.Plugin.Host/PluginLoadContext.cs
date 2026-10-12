@@ -7,12 +7,23 @@ namespace Layeron.Plugin.Host;
 /// One plugin, one collectible <see cref="AssemblyLoadContext"/>, so that unloading the plugin
 /// releases the whole assembly graph.
 /// <para>
-/// Shared contracts (the volume types, the plugin abstractions and the UI stack) are deliberately
-/// <em>not</em> loaded here: returning null from <see cref="Load"/> defers them to the default
-/// context. Without that, a plugin shipping its own copy of <c>Layeron.Plugin.Abstractions</c> would
-/// get a second, incompatible copy of <c>IPlugin</c> and silently fail to load. Only the plugin's
-/// private dependencies resolve from its own folder.
+/// Shared contracts are deliberately <em>not</em> loaded here. Two kinds exist and each has an owner
+/// that is consulted before this context's own folder:
 /// </para>
+/// <list type="bullet">
+/// <item>
+///   The host's own contracts (volume types, plugin abstractions and the UI stack) live in the
+///   default context. Returning null from <see cref="Load"/> defers to it, because a plugin shipping
+///   its own copy of <c>Layeron.Plugin.Abstractions</c> would otherwise get a second, incompatible
+///   copy of <c>IPlugin</c> and silently fail to load.
+/// </item>
+/// <item>
+///   Contracts <em>between plugins</em> - e.g. <c>Layeron.Plugins.*.Api.dll</c> - live in
+///   <see cref="PluginSharedAssemblies"/>. Returning that instance gives every plugin the same type,
+///   which is what lets one plugin consume a service another publishes.
+/// </item>
+/// </list>
+/// <para>Only the plugin's private dependencies resolve from its own folder.</para>
 /// </summary>
 internal sealed class PluginLoadContext : AssemblyLoadContext
 {
@@ -51,17 +62,25 @@ internal sealed class PluginLoadContext : AssemblyLoadContext
 
     private readonly AssemblyDependencyResolver _resolver;
     private readonly string _pluginDirectory;
+    private readonly PluginSharedAssemblies _shared;
 
-    public PluginLoadContext(string pluginAssemblyPath)
+    public PluginLoadContext(string pluginAssemblyPath, PluginSharedAssemblies shared)
         : base($"LayeronPlugin:{Path.GetFileNameWithoutExtension(pluginAssemblyPath)}", isCollectible: true)
     {
         _resolver = new AssemblyDependencyResolver(pluginAssemblyPath);
         _pluginDirectory = Path.GetDirectoryName(pluginAssemblyPath)!;
+        _shared = shared;
     }
 
     protected override Assembly? Load(AssemblyName assemblyName)
     {
-        if (IsShared(assemblyName.Name))
+        // Plugin-to-plugin contracts first: their owner hands out one instance that every plugin
+        // binds to. Checked before the plugin's own folder so a stray copy in it cannot win.
+        if (_shared.TryLoad(assemblyName) is { } contract)
+            return contract;
+
+        // Then the host's own contracts, which the default context already holds.
+        if (IsHostShared(assemblyName.Name))
             return null; // defer to the default context: one copy of every contract type
 
         var path = _resolver.ResolveAssemblyToPath(assemblyName);
@@ -76,7 +95,13 @@ internal sealed class PluginLoadContext : AssemblyLoadContext
 
     public string PluginDirectory => _pluginDirectory;
 
-    private static bool IsShared(string? name)
+    /// <summary>
+    /// True when an assembly is one of the <em>host's</em> own contracts and must therefore be resolved
+    /// from the default context rather than from any plugin's folder. Also used by
+    /// <see cref="PluginSharedAssemblies"/> so a host contract dropped into the shared folder by mistake
+    /// cannot become a second copy of itself.
+    /// </summary>
+    internal static bool IsHostShared(string? name)
     {
         if (string.IsNullOrEmpty(name))
             return false;
