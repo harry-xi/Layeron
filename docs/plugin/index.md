@@ -17,6 +17,7 @@ Layeron 的插件系统围绕三个概念构建：
 | 菜单项 | `Registry.AddMenu(...)` | 宿主菜单 |
 | 体数据过滤器 | `Registry.AddFilter(...)` | 宿主过滤管道 |
 | 数据加载器 | `Registry.AddLoader(...)` | `文件 → 从数据源加载` |
+| ONNX 推理 | `Registry.Contribute(IOnnxRunnerService.PointId, ...)` | 其他插件（见 [ONNX 模型运行器](/plugin/onnx)） |
 | 设置页面 | `Registry.AddSettingsPage(...)` | 设置窗口 |
 | 自定义扩展点 | `Registry.DefinePoint<T>(...)` | 其他插件 |
 | 新的插件格式 | `Registry.AddPluginSource(...)` | 宿主插件管理器 |
@@ -76,15 +77,16 @@ manager.VerifyUnloaded();   // 弱引用自检：报告没能被回收的插件
 
 托管泄漏之外，视图也必须配合：`ContentFactory` 返回的对象如果实现 `IDisposable`，宿主在关闭面板 / 标签页**或卸载插件**时会释放它。这是视图解绑宿主事件、释放 GPU 资源的时机——不这么做，插件的加载上下文无法被回收。
 
-## 三个示例插件
+## 四个示例插件
 
 | 插件 | Id | 展示的能力 |
 |---|---|---|
 | 阈值分割 | `layeron.threshold` | 工具面板 + 菜单 + **自定义扩展点**（其他插件可往它的面板加按钮） |
 | 掩膜 3D 模型 | `layeron.model3d` | **文档**贡献 + 渲染 |
+| ONNX 模型运行器 | `layeron.onnxruntime` | **模型运行器**：推理、自带私有原生运行时、发布可被其他插件调用的服务 |
 | C# 脚本宿主 | `layeron.scripthost` | **插件加载器**（`IPluginSource`）+ 自己的编辑器 UI |
 
-三者都是普通插件：没有为它们开任何特权通道。
+它们都是普通插件：没有为任何一个开特权通道。
 
 ## 接下来
 

@@ -9,6 +9,8 @@
   <Project Path="Layeron.Plugin.Test/Layeron.Plugin.Test.csproj" />
   <Project Path="Layeron.Plugins.Agent/Layeron.Plugins.Agent.csproj" />
   <Project Path="Layeron.Plugins.Model3D/Layeron.Plugins.Model3D.csproj" />
+  <Project Path="Layeron.Plugins.Onnx.Api/Layeron.Plugins.Onnx.Api.csproj" />
+  <Project Path="Layeron.Plugins.OnnxRuntime/Layeron.Plugins.OnnxRuntime.csproj" />
   <Project Path="Layeron.Plugins.PythonRunner.Api/Layeron.Plugins.PythonRunner.Api.csproj" />
   <Project Path="Layeron.Plugins.PythonRunner/Layeron.Plugins.PythonRunner.csproj" />
   <Project Path="Layeron.Plugins.ScriptHost/Layeron.Plugins.ScriptHost.csproj" />

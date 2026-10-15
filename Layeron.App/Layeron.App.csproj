@@ -59,6 +59,7 @@
         <ProjectReference Include="..\Layeron.Plugins.Model3D\Layeron.Plugins.Model3D.csproj" ReferenceOutputAssembly="false" />
         <ProjectReference Include="..\Layeron.Plugins.PythonRunner\Layeron.Plugins.PythonRunner.csproj" ReferenceOutputAssembly="false" />
         <ProjectReference Include="..\Layeron.Plugins.Agent\Layeron.Plugins.Agent.csproj" ReferenceOutputAssembly="false" />
+        <ProjectReference Include="..\Layeron.Plugins.OnnxRuntime\Layeron.Plugins.OnnxRuntime.csproj" ReferenceOutputAssembly="false" />
     </ItemGroup>
 
     <ItemGroup>
@@ -90,6 +91,9 @@
             <SamplePluginFile Include="..\Layeron.Plugins.Agent\bin\$(Configuration)\net10.0\**\*.*">
                 <PluginFolder>layeron.agent</PluginFolder>
             </SamplePluginFile>
+            <SamplePluginFile Include="..\Layeron.Plugins.OnnxRuntime\bin\$(Configuration)\net10.0\**\*.*">
+                <PluginFolder>layeron.onnxruntime</PluginFolder>
+            </SamplePluginFile>
         </ItemGroup>
 
         <Copy SourceFiles="@(SamplePluginFile)" DestinationFiles="@(SamplePluginFile->'$(OutDir)plugins.dev\%(PluginFolder)\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
@@ -107,6 +111,7 @@
     <Target Name="DeploySharedContracts" AfterTargets="Build">
         <ItemGroup>
             <SharedContractFile Include="..\Layeron.Plugins.PythonRunner.Api\bin\$(Configuration)\net10.0\Layeron.Plugins.PythonRunner.Api.*" />
+            <SharedContractFile Include="..\Layeron.Plugins.Onnx.Api\bin\$(Configuration)\net10.0\Layeron.Plugins.Onnx.Api.*" />
         </ItemGroup>
 
         <Copy SourceFiles="@(SharedContractFile)"

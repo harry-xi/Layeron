@@ -1,0 +1,101 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Layeron.Plugins.OnnxRuntime</AssemblyName>
+        <!--
+          The panel and the settings page are declared in XAML, so the Avalonia XAML compiler has to run
+          here. Avalonia itself comes from the host and is excluded from this plugin's runtime assets.
+        -->
+        <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+        <!--
+          The plugin's private dependencies must land next to it. ONNX Runtime is a native runtime plus a managed
+          wrapper, so without this the plugin folder would hold only the plugin itself and the first model load would
+          fail with a missing-assembly error. The plugin load context resolves both from here via the plugin's own
+          .deps.json, which is the same arrangement the Python runner uses for pythonnet.
+        -->
+        <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <AssemblyMetadata Include="LayeronPluginId" Value="layeron.onnxruntime" />
+        <AssemblyMetadata Include="LayeronPluginName" Value="ONNX Runner" />
+        <AssemblyMetadata Include="LayeronPluginVersion" Value="1.0.0" />
+        <AssemblyMetadata Include="LayeronPluginDescription" Value="Runs ONNX models as volume filters, with a model store, a signature-aware tensor binder and a tool panel." />
+        <AssemblyMetadata Include="LayeronPluginApiVersion" Value="1.0" />
+        <!--
+          The binder's tiling and the demo model's behaviour can only be verified against a real ONNX
+          Runtime session, so the test assembly is the one that sees inside. The demo model is an embedded
+          resource, so a test needs no file on disk to exercise the whole path.
+        -->
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Layeron.Plugin.Test</_Parameter1>
+        </AssemblyAttribute>    </ItemGroup>
+
+    <ItemGroup>
+        <!--
+          This plugin deliberately ships ONNX Runtime privately, unlike the host's shared stack: a 10-20 MB
+          native runtime would bloat the app for every user who never runs a model, and ORT does not need
+          to outlive the plugin the way a Python interpreter does, so the whole plugin still unloads and
+          passes the host's leak check.
+        -->
+        <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.31.0" />
+        <PackageReference Include="Avalonia" Version="12.1.3" GeneratePathProperty="true" ExcludeAssets="runtime" />
+        <PackageReference Include="ReactiveUI.Avalonia" Version="12.1.2" ExcludeAssets="runtime" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- Contracts are compile-time only: the host's copies must win at runtime. -->
+        <ProjectReference Include="..\Layeron.Big3DArray\Layeron.Big3DArray.csproj" Private="false" />
+        <ProjectReference Include="..\Layeron.Plugin.Abstractions\Layeron.Plugin.Abstractions.csproj" Private="false" />
+        <!--
+          The host seam the workspace root and workspace-changed event come from. Shared with the host, so the
+          host's copy must win - otherwise this plugin would see a second IScriptHostService and the cast in
+          GetService<IScriptHostService> would silently fail.
+        -->
+        <ProjectReference Include="..\Layeron.Scripting.Abstractions\Layeron.Scripting.Abstractions.csproj" Private="false" />
+        <!--
+          The published contract of this very plugin. Private="false" and deployed to plugins.shared by
+          Layeron.App, so a consumer plugin resolves the same IOnnxRunnerService the runner contributed.
+        -->
+        <ProjectReference Include="..\Layeron.Plugins.Onnx.Api\Layeron.Plugins.Onnx.Api.csproj" Private="false" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!--
+          The demo models are embedded rather than kept as loose files in the output: they are part of what
+          the plugin demonstrates, so they travel with the assembly that installs them and cannot drift
+          from it. They are deployed into the user's model folder only when the file is not there yet - a
+          model the user replaced or deleted must stay that way.
+        -->
+        <EmbeddedResource Include="Resources\demo_structure_volume.onnx">
+            <LogicalName>Layeron.Plugins.OnnxRuntime.demo.structure.volume.onnx</LogicalName>
+        </EmbeddedResource>
+        <EmbeddedResource Include="Resources\demo_structure_slice.onnx">
+            <LogicalName>Layeron.Plugins.OnnxRuntime.demo.structure.slice.onnx</LogicalName>
+        </EmbeddedResource>
+    </ItemGroup>
+
+      <!--
+        ONNX Runtime ships a native binary for every platform it supports, and with no explicit RID the whole set lands
+        in the output. The host copies a plugin's entire folder into the app, so keeping the foreign ones would add
+        roughly 200 MB per build for binaries that can never load here. Only the current RID's native assets survive;
+        ONNX Runtime's own resolver finds them through the .deps.json runtimeTargets entries it already has.
+
+        `publish` does not need this - a RID-specific publish only carries its own runtime - so the target only touches
+        a plain build's output.
+      -->
+      <Target Name="TrimForeignOnnxRuntimes" AfterTargets="Build"
+              Condition="'$(NETCoreSdkRuntimeIdentifier)' != ''">
+          <ItemGroup>
+              <!-- *.lib are C++ import libraries used when linking against ONNX Runtime, never at run time. -->
+              <ForeignOnnxRuntimeFile Include="$(OutDir)runtimes\**\*.*"
+                                      Exclude="$(OutDir)runtimes\$(NETCoreSdkRuntimeIdentifier)\**\*.*" />
+              <ForeignOnnxRuntimeFile Include="$(OutDir)runtimes\**\*.lib" />
+          </ItemGroup>
+          <Delete Files="@(ForeignOnnxRuntimeFile)" ContinueOnError="true" />
+      </Target>
+
+</Project>

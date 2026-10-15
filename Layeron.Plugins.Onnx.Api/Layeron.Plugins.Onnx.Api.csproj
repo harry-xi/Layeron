@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!--
+    This project is the ONNX runner's published contract: the types another plugin needs in order to run
+    inference without referencing the runner (and therefore without referencing ONNX Runtime).
+
+    Two rules keep it that way, and both are load-bearing:
+
+    1. No type from Microsoft.ML.OnnxRuntime appears here. Two copies of an ORT type are two different
+       types, exactly like two copies of IPlugin; a contract that leaked InferenceSession would make the
+       published service unreachable in a second plugin with no error to explain why.
+    2. The host loads this assembly into its shared load context from plugins.shared, and every
+       consumer references it with Private="false". See Layeron.Plugin.Host/PluginSharedAssemblies.cs.
+  -->
+
+  <ItemGroup>
+    <!--
+      The volume type crosses this contract, so the reference is real rather than cosmetic. Private="false"
+      for the usual reason: at runtime these must come from the host, or a consumer plugin would see a
+      second ReadonlyBig3DArray and no cast would ever succeed.
+    -->
+    <ProjectReference Include="..\Layeron.Big3DArray\Layeron.Big3DArray.csproj" Private="false" />
+    <ProjectReference Include="..\Layeron.Plugin.Abstractions\Layeron.Plugin.Abstractions.csproj" Private="false" />
+  </ItemGroup>
+
+</Project>

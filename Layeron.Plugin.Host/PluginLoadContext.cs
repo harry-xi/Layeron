@@ -86,7 +86,6 @@ internal sealed class PluginLoadContext : AssemblyLoadContext
         var path = _resolver.ResolveAssemblyToPath(assemblyName);
         return path != null ? LoadFromAssemblyPath(path) : null;
     }
-
     protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)
     {
         var path = _resolver.ResolveUnmanagedDllToPath(unmanagedDllName);
@@ -106,6 +105,11 @@ internal sealed class PluginLoadContext : AssemblyLoadContext
         if (string.IsNullOrEmpty(name))
             return false;
 
+        // A framework-shaped name the host does not actually ship belongs to the plugin, which is the only
+        // place it can come from. Checked before the prefixes so "System." does not claim it.
+        if (PluginOwnedFrameworkNames.Contains(name))
+            return false;
+
         foreach (var prefix in SharedPrefixes)
         {
             if (name.StartsWith(prefix, StringComparison.Ordinal))
@@ -115,4 +119,26 @@ internal sealed class PluginLoadContext : AssemblyLoadContext
         // Bare contract assemblies in the plugin folder must not shadow the host's.
         return name is "Layeron.Big3DArray" or "Layeron.Plugin.Abstractions";
     }
+
+    /// <summary>
+    /// Names the host's own <c>System.*</c> list defers by prefix but that the host does not actually ship,
+    /// because they are NuGet packages rather than part of the shared framework.
+    /// <para>
+    /// This is a correction to the prefix rule, not an exception to it. Deferring a name the default context
+    /// cannot provide does not fall back to the plugin's folder - the lookup simply fails - so a plugin with a
+    /// private dependency whose assembly happens to be called <c>System.Something</c> could never load it.
+    /// Measured: ONNX Runtime's managed layer depends on <c>System.Numerics.Tensors</c>, which ships as a
+    /// package; without this it failed at the first inference with "could not load file or assembly
+    /// 'System.Numerics.Tensors'".
+    /// </para>
+    /// <para>
+    /// The list is deliberately two entries long rather than "defer only names the framework actually has":
+    /// resolving the latter would mean probing for assemblies at load time, and the separation of the host's
+    /// stack from a plugin's private dependencies is worth one explicit list.
+    /// </para>
+    /// </summary>
+    private static readonly HashSet<string> PluginOwnedFrameworkNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "System.Numerics.Tensors"
+    };
 }

@@ -1,0 +1,92 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="using:Layeron.Plugins.Onnx"
+             xmlns:onnxapi="using:Layeron.Plugins.Onnx.Api"
+             mc:Ignorable="d" d:DesignWidth="330" d:DesignHeight="640"
+             x:Class="Layeron.Plugins.Onnx.OnnxToolView"
+             x:DataType="local:OnnxToolViewModel">
+  <ScrollViewer>
+    <StackPanel Spacing="8" Margin="8">
+      <Grid ColumnDefinitions="*,Auto">
+        <ComboBox Grid.Column="0"
+                  HorizontalAlignment="Stretch"
+                  PlaceholderText="没有可用模型"
+                  ItemsSource="{Binding Models}"
+                  SelectedItem="{Binding SelectedModel, Mode=TwoWay}">
+          <ComboBox.ItemTemplate>
+            <DataTemplate DataType="onnxapi:OnnxModelInfo">
+              <TextBlock Text="{Binding Name}" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+        <Button Grid.Column="1" Content="扫描" Margin="6,0,0,0" Command="{Binding RescanCommand}" />
+      </Grid>
+
+      <TextBlock Text="{Binding ModelDetailText}" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
+
+      <Border BorderThickness="1"
+              BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+              CornerRadius="4" Padding="6">
+        <TextBlock Text="{Binding SignatureText}" FontFamily="Consolas,monospace"
+                   FontSize="11" TextWrapping="Wrap" />
+      </Border>
+
+      <TextBlock Text="运行方式" FontSize="11" Opacity="0.7" />
+      <StackPanel Orientation="Horizontal" Spacing="12">
+        <RadioButton Content="按切片" GroupName="mode" IsChecked="{Binding SliceMode, Mode=TwoWay}" />
+        <RadioButton Content="按整卷" GroupName="mode" IsChecked="{Binding VolumeMode, Mode=TwoWay}" />
+      </StackPanel>
+
+      <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding SliceMode}">
+        <TextBlock Text="平面" VerticalAlignment="Center" />
+        <ComboBox SelectedIndex="{Binding PlaneIndex, Mode=TwoWay}" MinWidth="120">
+          <ComboBoxItem>XY（轴位）</ComboBoxItem>
+          <ComboBoxItem>XZ（冠状）</ComboBoxItem>
+          <ComboBoxItem>YZ（矢状）</ComboBoxItem>
+        </ComboBox>      </StackPanel>
+
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <TextBlock Text="结构阈值" VerticalAlignment="Center" />
+        <Slider Grid.Column="1" Width="120" VerticalAlignment="Center"
+                Minimum="0" Maximum="1" Value="{Binding Threshold, Mode=TwoWay}" />
+        <TextBlock Grid.Column="2" Text="{Binding ThresholdText}"
+                   VerticalAlignment="Center" MinWidth="40" TextAlignment="Right" />
+      </Grid>
+
+      <Grid ColumnDefinitions="Auto,*,Auto,*">
+        <TextBlock Text="输入" VerticalAlignment="Center" />
+        <TextBox Grid.Column="1" Text="{Binding SourceMin, Mode=TwoWay}"
+                 PlaceholderText="原始最小" Margin="4,0,0,0" MinWidth="66" />
+        <TextBlock Grid.Column="2" Text="→" VerticalAlignment="Center" Margin="4,0" />
+        <TextBox Grid.Column="3" Text="{Binding SourceMax, Mode=TwoWay}"
+                 PlaceholderText="原始最大" MinWidth="66" />
+      </Grid>
+
+      <Grid ColumnDefinitions="Auto,*,Auto,*">
+        <TextBlock Text="输出" VerticalAlignment="Center" />
+        <TextBox Grid.Column="1" Text="{Binding OutputMin, Mode=TwoWay}"
+                 PlaceholderText="模型最小" Margin="4,0,0,0" MinWidth="66" />
+        <TextBlock Grid.Column="2" Text="→" VerticalAlignment="Center" Margin="4,0" />
+        <TextBox Grid.Column="3" Text="{Binding OutputMax, Mode=TwoWay}"
+                 PlaceholderText="模型最大" MinWidth="66" />
+      </Grid>
+
+      <CheckBox Content="输出 16 位（否则 8 位）" IsChecked="{Binding VolumeUsesSixteenBit, Mode=TwoWay}"
+                IsVisible="{Binding VolumeMode}" />
+      <CheckBox Content="预览当前切片" IsChecked="{Binding PreviewEnabled, Mode=TwoWay}"
+                IsVisible="{Binding SliceMode}" />
+
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <Button Content="应用为掩膜" Command="{Binding ApplyMaskCommand}" IsVisible="{Binding SliceMode}" />
+        <Button Content="整卷运行并替换" Command="{Binding ApplyVolumeCommand}" IsEnabled="{Binding CanApply}" />
+        <Button Content="取消" Command="{Binding CancelCommand}" />
+      </StackPanel>
+
+      <ProgressBar Value="{Binding ProgressValue}" Minimum="0" Maximum="100" />
+      <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" FontSize="11" />
+      <TextBlock Text="{Binding SliceStatsText}" TextWrapping="Wrap" FontSize="11" Opacity="0.7" />
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

@@ -17,6 +17,7 @@ Layeron's plugin system is built around three concepts:
 | Menu entry | `Registry.AddMenu(...)` | Host menu |
 | Volume filter | `Registry.AddFilter(...)` | Host filter pipeline |
 | Volume loader | `Registry.AddLoader(...)` | `File → Load from data source` |
+| ONNX inference | `Registry.Contribute(IOnnxRunnerService.PointId, ...)` | Other plugins (see [ONNX Model Runner](/en/plugin/onnx)) |
 | Settings page | `Registry.AddSettingsPage(...)` | Settings window |
 | Custom extension point | `Registry.DefinePoint<T>(...)` | Other plugins |
 | A new plugin format | `Registry.AddPluginSource(...)` | Host plugin manager |
@@ -76,15 +77,16 @@ Each plugin loads in its own **collectible `AssemblyLoadContext`**. After an unl
 
 Managed leaks aside, views must cooperate: if the object returned by `ContentFactory` implements `IDisposable`, the host disposes it when the panel or tab closes **or the plugin unloads**. That is where a view detaches host events and releases GPU resources — without it, the plugin's load context cannot be collected.
 
-## The three sample plugins
+## The demo plugins
 
 | Plugin | Id | Capability demonstrated |
 |---|---|---|
 | Threshold Segmentation | `layeron.threshold` | Tool panel + menu + a **custom extension point** other plugins feed |
 | Mask 3D Model | `layeron.model3d` | **Document** contribution + rendering |
+| ONNX Model Runner | `layeron.onnxruntime` | A **model runner**: inference, its own private native runtime, and a published service |
 | C# Script Host | `layeron.scripthost` | A **plugin loader** (`IPluginSource`) + its own editor UI |
 
-All three are ordinary plugins: no privileged path was opened for them.
+All of them are ordinary plugins: no privileged path was opened for any.
 
 ## Next
 

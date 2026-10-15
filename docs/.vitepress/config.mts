@@ -34,6 +34,7 @@ const zhPlugin = [
       { text: '宿主服务', link: '/plugin/services' },
       { text: '体数据过滤器', link: '/plugin/filters' },
       { text: '数据加载器', link: '/plugin/loaders' },
+      { text: 'ONNX 模型运行器', link: '/plugin/onnx' },
       { text: '设置页面', link: '/plugin/settings' }
     ]
   },
@@ -79,6 +80,7 @@ const enPlugin = [
       { text: 'Host Services', link: '/en/plugin/services' },
       { text: 'Volume Filters', link: '/en/plugin/filters' },
       { text: 'Volume Loaders', link: '/en/plugin/loaders' },
+      { text: 'ONNX Model Runner', link: '/en/plugin/onnx' },
       { text: 'Settings Pages', link: '/en/plugin/settings' }
     ]
   },

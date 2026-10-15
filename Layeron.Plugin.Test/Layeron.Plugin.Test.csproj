@@ -46,6 +46,27 @@
       built plugin assemblies by explicit path (TestPaths).
     -->
     <ProjectReference Include="..\Layeron.Plugins.PythonRunner\Layeron.Plugins.PythonRunner.csproj" />
+    <!--
+      Reference it, not just build it: the ONNX runner's tiling, binder and settings are internal, and there is no
+      meaningful way to fake a native inference session - so the tests drive the real thing. The plugin's own
+      assembly is also loaded by explicit path in the loader test, so the deployment path is covered too.
+    -->
+    <ProjectReference Include="..\Layeron.Plugins.OnnxRuntime\Layeron.Plugins.OnnxRuntime.csproj" />
+    <!--
+      The ONNX runner's published contract. Unlike a plugin, the test assembly is not loaded into a collectible load
+      context, so it needs an ordinary copy in its own output - the contract has to come from somewhere, and there is
+      no plugins.shared folder next to a test host.
+    -->
+    <ProjectReference Include="..\Layeron.Plugins.Onnx.Api\Layeron.Plugins.Onnx.Api.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      The ONNX panel is a ReactiveUI view model, and the plugin deliberately excludes ReactiveUI's runtime assets
+      (the host supplies them). A test host has no host stack to borrow from, so the runtime is referenced here at the
+      same version Layeron.App resolves - otherwise the panel's own type cannot be loaded at all.
+    -->
+    <PackageReference Include="ReactiveUI" Version="24.2.0" />
   </ItemGroup>
 
 </Project>
