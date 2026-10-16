@@ -7,15 +7,30 @@
     <AssemblyName>Layeron.Plugins.Agent</AssemblyName>
     <!-- 视图与聊天面板声明在 XAML 中，因此需要运行 Avalonia 的 XAML 编译器。 -->
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!--
+      智能体的私有用依赖必须落在插件自己旁边。Agent Framework 和 OpenAI SDK 都不是宿主携带的程序集，
+      插件加载上下文只能从本目录解析；不复制的话插件目录里只有插件本身，第一次发送就会以找不到程序集失败。
+      宿主持有的那些（Avalonia、ReactiveUI、Microsoft.Extensions.*）仍然由宿主提供，不会被复制——见
+      HostCarriedAssemblies。
+    -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
-  <!-- 插件身份写进程序集元数据：宿主无需加载（更不会运行）插件就能读到。 -->
   <ItemGroup>
     <AssemblyMetadata Include="LayeronPluginId" Value="layeron.agent" />
     <AssemblyMetadata Include="LayeronPluginName" Value="Agent" />
     <AssemblyMetadata Include="LayeronPluginVersion" Value="1.0.0" />
     <AssemblyMetadata Include="LayeronPluginDescription" Value="Chat panel for an AI agent, with attachments and a settings page." />
     <AssemblyMetadata Include="LayeronPluginApiVersion" Value="1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Agent Framework 与 OpenAI SDK：插件的私有用依赖，运行时随插件目录部署，
+      由插件的加载上下文解析（CopyLocalLockFileAssemblies 见上）。
+    -->
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.25.0" />
+    <PackageReference Include="Microsoft.Agents.AI.OpenAI" Version="1.25.0" />
   </ItemGroup>
 
   <ItemGroup>

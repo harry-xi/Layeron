@@ -20,6 +20,7 @@ public sealed class AgentOptions
     public static class Keys
     {
         public const string Endpoint = "agent.endpoint";
+        public const string ApiKey = "agent.api-key";
         public const string Model = "agent.model";
         public const string Temperature = "agent.temperature";
         public const string MaxTokens = "agent.max-tokens";
@@ -35,8 +36,21 @@ public sealed class AgentOptions
     /// <summary>Backs the contribution's <c>ValueSetter</c>.</summary>
     public void Set(string key, object? value) => _values[key] = value;
 
-    /// <summary>OpenAI-compatible base address. Unused by the echo session; kept so the page is honest.</summary>
+    /// <summary>
+    /// OpenAI-compatible base address, e.g. <c>https://api.openai.com/v1</c> or a local runtime's URL.
+    /// </summary>
     public string Endpoint => Read(Keys.Endpoint, "https://api.openai.com/v1");
+
+    /// <summary>
+    /// Credential for <see cref="Endpoint"/>. Empty is a valid configuration - a local runtime often
+    /// wants no key - so it is not treated as a missing value.
+    /// <para>
+    /// The value never leaves the process: the settings store is this object, and nothing here writes it
+    /// to disk. It is also rendered by the host's ordinary single-line text box, which cannot mask
+    /// input, so the key is visible while it is being typed.
+    /// </para>
+    /// </summary>
+    public string ApiKey => Read(Keys.ApiKey, "");
 
     public string Model => Read(Keys.Model, "gpt-4o-mini");
 
@@ -92,9 +106,17 @@ public sealed class AgentOptions
             {
                 Key = Keys.Endpoint,
                 Title = "服务地址",
-                Description = "兼容 OpenAI 的接口基地址。",
+                Description = "兼容 OpenAI 的接口基地址，例如 https://api.openai.com/v1 或本地运行时的地址。",
                 Kind = SettingKind.Text,
                 DefaultValue = "https://api.openai.com/v1"
+            },
+            new SettingItem
+            {
+                Key = Keys.ApiKey,
+                Title = "API Key",
+                Description = "本机运行时通常留空。输入的密钥会明文显示，且只保存在本次运行的进程内。",
+                Kind = SettingKind.Text,
+                DefaultValue = ""
             },
             new SettingItem
             {

@@ -1,10 +1,9 @@
 using System.Collections.ObjectModel;
+using System.Text;
 using System.Windows.Input;
 using Layeron.Plugin.Abstractions;
-using Layeron.Plugins.PythonRunner;
 using Layeron.Scripting.Abstractions;
 using ReactiveUI;
-using ReactiveUI.Primitives;
 
 namespace Layeron.Plugins.Agent;
 
@@ -16,11 +15,11 @@ namespace Layeron.Plugins.Agent;
 /// dialogs, through the host's scripting seam. Nothing here references an Avalonia control.
 /// </para>
 /// <para>
-/// Not sealed, because the XAML designer needs a parameterless constructor and the only way to give it one
-/// without adding a "design mode" branch to this class is to derive the design-time instance from it.
+/// The session is created on the first send and owned by this object: the panel is the only thing that
+/// knows a conversation starts, ends or is thrown away, so it is the only thing that can hold the lifetime.
 /// </para>
 /// </summary>
-public class AgentChatViewModel : ReactiveObject, IDisposable
+public sealed class AgentChatViewModel : ReactiveObject, IDisposable
 {
     /// <summary>
     /// How many turns the transcript keeps. A session can run for hours, and the transcript is a working
@@ -32,7 +31,7 @@ public class AgentChatViewModel : ReactiveObject, IDisposable
     private readonly IScriptHostService? _host;
     private readonly AgentOptions _options;
 
-    private IChatSession _session = new EchoChatSession();
+    private IChatSession? _session;
     private CancellationTokenSource? _workCts;
     private bool _busy;
     private bool _disposed;
@@ -40,14 +39,14 @@ public class AgentChatViewModel : ReactiveObject, IDisposable
     private string _externalPath = "";
     private string _statusText = "就绪";
 
-    private readonly IPluginContext _context;
-
-    public AgentChatViewModel(IPluginContext context,IPluginServices services, IScriptHostService? host, AgentOptions options)
+    public AgentChatViewModel(
+        IPluginServices services,
+        IScriptHostService? host,
+        AgentOptions options)
     {
         _services = services;
         _host = host;
         _options = options;
-        _context = context;
 
         SendCommand = ReactiveCommand.CreateFromTask(SendAsync);
         CancelCommand = ReactiveCommand.Create(Cancel);
@@ -56,12 +55,12 @@ public class AgentChatViewModel : ReactiveObject, IDisposable
         AddPathAttachmentCommand = ReactiveCommand.Create(AddPathAttachment);
         AddTextAttachmentCommand = ReactiveCommand.Create(AddTextAttachment);
         RemoveAllAttachmentsCommand = ReactiveCommand.Create(RemoveAllAttachments);
-        CheckPythonCommand = ReactiveCommand.CreateFromTask(CheckPythonAsync);
 
         Append(ChatMessage.Notice(_host is null
             ? "宿主未提供文件对话框，可用「路径」或「文本」手动添加附件。"
             : "就绪。输入消息后发送，或先添加附件。"));
     }
+
 
     // -----------------------------------------------------------------------
     //  Transcript
@@ -140,7 +139,6 @@ public class AgentChatViewModel : ReactiveObject, IDisposable
     public ICommand AddTextAttachmentCommand { get; }
 
     public ICommand RemoveAllAttachmentsCommand { get; }
-    public ReactiveCommand<RxVoid, RxVoid> CheckPythonCommand { get; }
 
     // -----------------------------------------------------------------------
     //  Sending
@@ -170,12 +168,13 @@ public class AgentChatViewModel : ReactiveObject, IDisposable
 
         try
         {
-            var reply = await _session.SendAsync(text, turn, _options, ct).ConfigureAwait(true);
+            var reply = await PumpAsync(new ChatTurn { Text = text, Attachments = turn }, ct).ConfigureAwait(true);
 
-            if (reply.Length > 0)
-                Append(new ChatMessage { Role = ChatRole.Assistant, Text = reply });
-
-            StatusText = $"完成 · {DateTimeOffset.Now:HH:mm:ss}";
+            StatusText = reply.Text.Length > 0
+                ? $"完成 · {DateTimeOffset.Now:HH:mm:ss}"
+                : reply.HadReasoning
+                    ? "只收到思考内容，没有回复文本"
+                    : "完成（回复为空）";
         }
         catch (OperationCanceledException)
         {
@@ -195,6 +194,71 @@ public class AgentChatViewModel : ReactiveObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// Drains one turn's deltas into the transcript.
+    /// <para>
+    /// The transcript is a log and a reply arrives in pieces, so a bubble has to be appended on the first
+    /// piece and then grown in place - which is why <see cref="ChatMessage.Text"/> is a notifying property
+    /// rather than an init-only one.
+    /// </para>
+    /// <para>
+    /// Reasoning is folded into the same bubble as a named section. It is not the answer, but hiding it
+    /// entirely is worse: when a model returns reasoning and nothing else, a panel that dropped it would
+    /// show an empty reply and look broken.
+    /// </para>
+    /// </summary>
+    private async Task<TurnResult> PumpAsync(ChatTurn turn, CancellationToken ct)
+    {
+        // Resolved once per conversation, not per turn: rebuilding the agent mid-conversation would take
+        // the history with it. A turn that fails therefore keeps the session it failed on, and that
+        // session is let go the next time the transcript is cleared.
+        var session = _session ??= new ChatSession(_options, _services.Log);
+
+        var answer = new StringBuilder();
+        var reasoning = new StringBuilder();
+        ChatMessage? bubble = null;
+
+        await foreach (var delta in session.StreamAsync(turn, ct).ConfigureAwait(true))
+        {
+            // Cancellation can arrive between two deltas, and the session cannot observe it until it asks
+            // the provider for the next one.
+            ct.ThrowIfCancellationRequested();
+
+            var text = delta switch
+            {
+                ChatTextDelta t => t.Text,
+                ChatReasoningDelta r => r.Text,
+                _ => ""
+            };
+
+            if (text.Length == 0)
+                continue;
+
+            if (bubble is null)
+            {
+                // Appended on the first piece so the rest of the reply is visibly the same turn, and so a
+                // cancellation mid-answer leaves what already arrived on screen.
+                bubble = new ChatMessage { Role = ChatRole.Assistant };
+                Append(bubble);
+            }
+
+            if (delta is ChatTextDelta)
+            {
+                answer.Append(text);
+                bubble.Append(text);
+            }
+            else
+            {
+                reasoning.Append(text);
+                bubble.AppendReasoning(text);
+            }
+        }
+
+        return new TurnResult(answer.ToString(), reasoning.Length > 0);
+    }
+
+    private readonly record struct TurnResult(string Text, bool HadReasoning);
+
     private void Cancel()
     {
         if (!_busy)
@@ -207,6 +271,11 @@ public class AgentChatViewModel : ReactiveObject, IDisposable
     {
         Messages.Clear();
         this.RaisePropertyChanged(nameof(HasMessages));
+
+        // The transcript is the conversation the user sees, so throwing it away has to throw away the
+        // provider's copy too; otherwise the next reply answers a history that is no longer on screen.
+        DropSession();
+
         StatusText = "已清空";
     }
 
@@ -320,14 +389,21 @@ public class AgentChatViewModel : ReactiveObject, IDisposable
     // -----------------------------------------------------------------------
 
     /// <summary>
-    /// Replaces the session that answers messages. The host-provided settings page only stores values, so
-    /// whoever wires up a real provider calls this rather than the panel trying to build one from a URL.
+    /// Lets go of the current conversation: the next turn starts a new one from the settings as they are
+    /// then, which is also how a changed endpoint or model takes effect.
+    /// <para>
+    /// Disposal is fire-and-forget on purpose. It cancels a turn that may be in flight, and awaiting that
+    /// from a synchronous path - a button handler, or host disposal - would block a UI thread on a network
+    /// call. Nothing here needs the teardown to have finished.
+    /// </para>
     /// </summary>
-    public void UseSession(IChatSession session)
+    private void DropSession()
     {
-        ArgumentNullException.ThrowIfNull(session);
-        _session = session;
-        StatusText = "已接入对话后端";
+        var session = _session;
+        _session = null;
+
+        if (session is not null)
+            _ = session.DisposeAsync();
     }
 
     /// <summary>
@@ -344,29 +420,9 @@ public class AgentChatViewModel : ReactiveObject, IDisposable
         _workCts?.Dispose();
         _workCts = null;
 
+        DropSession();
         Attachments.Clear();
     }
-
-    private async Task CheckPythonAsync()
-    {
-        StatusText = "检查 Python…";
-        try
-        {
-            var result = _context.Registry.GetPoint<IPythonRunnerService>(IPythonRunnerService.PointId);
-            Console.WriteLine($"CheckPythonAsync: result={result}");
-            StatusText = result != null ? "Python 可用" : "Python 不可用";
-        }
-        catch (OperationCanceledException)
-        {
-            StatusText = "已取消";
-        }
-        catch (Exception ex)
-        {
-            _services.Log.Error("Agent 检查 Python 失败", ex, "Agent check Python failed");
-            StatusText = $"检查失败：{ex.Message}";
-        }
-    }
-
 
     /// <inheritdoc />
     public void Dispose() => Detach();

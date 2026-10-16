@@ -3,7 +3,6 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
 using Layeron.Plugin.Abstractions;
 using Layeron.Scripting.Abstractions;
-
 namespace Layeron.Plugins.Agent;
 
 /// <summary>
@@ -14,9 +13,9 @@ public sealed partial class AgentChatView : UserControl, IDisposable
 {
     private readonly AgentChatViewModel? _viewModel;
 
-    public AgentChatView(IPluginContext context, IPluginServices services, IScriptHostService? host, AgentOptions options)
+    public AgentChatView(IPluginServices services, IScriptHostService? host, AgentOptions options)
     {
-        _viewModel = new AgentChatViewModel(context, services, host, options);
+        _viewModel = new AgentChatViewModel(services, host, options);
         DataContext = _viewModel;
         InitializeComponent();
 
@@ -32,7 +31,7 @@ public sealed partial class AgentChatView : UserControl, IDisposable
         InitializeComponent();
     }
 
-    /// <summary>The panel's state, so a caller that wires up a real backend can reach it.</summary>
+    /// <summary>The panel's state, for a caller that needs to inspect it.</summary>
     public AgentChatViewModel? ViewModel => _viewModel;
 
     /// <summary>

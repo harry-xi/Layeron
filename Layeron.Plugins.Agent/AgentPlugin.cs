@@ -6,8 +6,9 @@ namespace Layeron.Plugins.Agent;
 /// The plugin entry point: one chat tool panel and one settings page, both created lazily by the host.
 /// <para>
 /// Activation touches no UI type and does no network work. The panel is built by the host's content factory
-/// on first open, and it starts on an echo session, so a session that never opens the panel never pays for
-/// an agent backend and a machine with no provider configured still has a working panel.
+/// on first open, and its conversation is created on the first send - so a session that never opens the
+/// panel never pays for an agent backend, and a machine with no provider configured still has a panel that
+/// opens.
 /// </para>
 /// <para>
 /// There is no <c>Shutdown</c>: everything registered here is scoped to the context, so unloading - or hot
@@ -38,13 +39,13 @@ public sealed class AgentPlugin : IPlugin
             Title = "Agent",
             PreferredDock = DockHint.Right,
             // File attachments need the host's dialog, which arrives through the scripting seam - the
-            // host's only UI-facing service. Absent it, the panel still works with volume and mask
+            // host's only UI-facing service. Absent it, the panel still works with path and text
             // attachments instead of failing to construct.
             ContentFactory = () => new AgentChatView(
-                context,
                 services,
                 services.GetService<Scripting.Abstractions.IScriptHostService>(),
                 options)
         });
     }
 }
+
