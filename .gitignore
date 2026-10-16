@@ -6,9 +6,10 @@
 *.useroscache
 *.sln.docstates
 
-## Rider / Visual Studio
+## Rider / Visual Studio / VS Code
 .idea/
 .vs/
+.vscode/
 
 ## BenchmarkDotNet
 BenchmarkDotNet.Artifacts/
