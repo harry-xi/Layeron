@@ -219,7 +219,7 @@ pythonnet 的托管 I/O 是**反向接线**：runtime 初始化时把 `sys.stdou
 - 具体实现形态（Python 类 vs C# 实现 write 协议）在 P0 实测后定，对外行为一致。
 
 ### 1.3 宿主侧关键约束
-- `PluginLoadContext.SharedPrefixes` 现有：`System.`、`Microsoft.Extensions.`、`Layeron.Big3DArray`、`Layeron.Plugin.Abstractions`、`Layeron.Plugin.Host`、`Layeron.Scripting.Abstractions`、`NumSharp`、Avalonia/Dock/ReactiveUI/… → 只需 **加** `Layeron.Python.Abstractions`；`Python.Runtime` 保持插件私有。
+- **宿主侧关键约束**：判定"程序集归宿主还是归插件"的规则是**进程实际携带的程序集集合**（`HostCarriedAssemblies`，取运行时的可信平台程序集清单），不再是名字前缀白名单 → `Layeron.Python.Abstractions` 只要被 App 依赖就自动归宿主，无需改任何名单；`Python.Runtime` 保持插件私有（App 不引用它，自然不被携带）。
 - `pythonnet 3.0.1` 公共面（反射核实）：`PythonEngine.IsInitialized/ProgramName/PythonHome/PythonPath/InteropConfiguration/Initialize(IEnumerable<string>,bool,bool)/InitExt/Shutdown/BeginAllowThreads/Eval(string,PyDict,PyObject)/Exec(同)/RunString(同)/Interrupt(ulong)/AddShutdownHandler`；`Runtime` 只剩 `PythonDLL/MainManagedThreadId/None/Py_Main`（**没有** `Runtime.PySys_*`，须 `PyObject` 或 `import sys`）。
 - `Python.Deployment.Installer`：`InstallPath/Source/EmbeddedPythonHome/SetupPython(force)/InstallPip()/TryInstallPip()/IsPythonInstalled()/IsPipInstalled()/IsModuleInstalled()/PipInstallModule(module,version,force)/InstallWheel/PipInstallWheel/RunCommand`。二进制内含 `RedirectStandardOutput/Error` 但**无对外事件** → pip 实时输出要**自己起 `Scripts\pip.exe`** 并读其 stdout/stderr。
 - 既有坑（原注释已记录，全部沿用）：`_pth` 必须以换行结尾；`Lib\site-packages` 必须在解释器启动**前**存在；`InstallPip`/`PipInstallModule` 只记日志不抛 → 必须事后校验；`InstallWheel` 解包进 `Lib` 而 `IsModuleInstalled` 只看 `site-packages` → numpy 用 import 校验；已 import 的原生 `.pyd` 无法被 pip 替换，会留 `~` 目录 → 安装前停会话（决策 5）。

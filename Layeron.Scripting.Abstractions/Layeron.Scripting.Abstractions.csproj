@@ -15,7 +15,8 @@
 
     This assembly must be loaded exactly once - by the default context - because Roslyn compiles a script
     into an assembly it loads there, while the script host plugin runs in its own collectible context.
-    See PluginLoadContext.SharedPrefixes and design-notes/PLUGIN_SYSTEM.md §10.
+    What is loaded once and what a plugin may ship privately is decided by which assemblies the host
+    process actually carries (PluginLoadContext.HostCarriedAssemblies); see design-notes/PLUGIN_SYSTEM.md §10.
   -->
   <ItemGroup>
     <ProjectReference Include="..\Layeron.Big3DArray\Layeron.Big3DArray.csproj" />
@@ -27,7 +28,8 @@
       Scripts hand voxel data to numeric code as an NDArray, so the type is part of the scripting contract
       and this assembly must reference it. It also has to be loaded once by the default context, for the
       same reason ScriptGlobals does: the script's assembly binds to it there while the host's copy lives
-      in its own context. See PluginLoadContext.SharedPrefixes.
+      in its own context. Referencing it here is also what puts it in the host's carried set, which is how
+      the load context knows to defer it: see PluginLoadContext.HostCarriedAssemblies.
     -->
     <PackageReference Include="NumSharp" Version="0.30.0" />
   </ItemGroup>

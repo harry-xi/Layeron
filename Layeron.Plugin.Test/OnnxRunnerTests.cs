@@ -503,30 +503,54 @@ public sealed class OnnxRunnerTests
     }
 
     /// <summary>
-    /// The internal load-context rule the loader test's dependency probe exercises. Exposed so the rule can be
-    /// asserted directly: a name that looks like the framework's but is not part of it must fall through to the
-    /// plugin's own folder, because the default context cannot provide it and there is no fallback once it has been
-    /// deferred. ONNX Runtime's managed layer depends on one such assembly, and getting this wrong failed at the first
-    /// inference with "could not load file or assembly 'System.Numerics.Tensors'".
+    /// The rule that decides whether a plugin resolves a name from the host or from its own folder: membership in
+    /// the set of assemblies this process actually carries. It is deliberately not a name pattern, because a pattern
+    /// puts both of the cases that matter on the wrong side.
+    /// <para>
+    /// The rule is checked against the process's own carried set rather than a hardcoded list, so the test states the
+    /// invariant - "carried by this process" is exactly what gets deferred - and not a snapshot of one host's stack.
+    /// </para>
     /// </summary>
     [TestMethod]
-    public void LoadContext_DefersFrameworkNamesButNotFrameworkShapedPackages()
+    public void LoadContext_DefersExactlyWhatTheHostProcessCarries()
     {
         var host = typeof(Layeron.Plugin.Host.PluginManager).Assembly;
 
-        // The prefix rule itself: everything the host owns is deferred so a plugin cannot end up with a second copy.
-        Assert.IsTrue(IsHostShared(host, "System.Runtime"));
-        Assert.IsTrue(IsHostShared(host, "System.Private.CoreLib"));
-        Assert.IsTrue(IsHostShared(host, "Microsoft.Extensions.DependencyInjection"));
-        Assert.IsTrue(IsHostShared(host, "Layeron.Plugin.Abstractions"));
-        Assert.IsTrue(IsHostShared(host, "Avalonia.Base"));
+        // Everything the process carries is deferred, so a plugin cannot end up with a second copy of it and
+        // therefore a second, incompatible identity for a type the host also uses.
+        foreach (var name in CarriedAssemblyNames())
+            Assert.IsTrue(IsHostShared(host, name),
+                $"'{name}' is carried by this process, so the default context can serve it and it must be deferred");
 
-        // The correction: a System.* name that is a NuGet package, not a framework assembly, belongs to the plugin.
-        Assert.IsFalse(IsHostShared(host, "System.Numerics.Tensors"),
-            "the host does not ship this, so deferring it would make it permanently unresolvable");
+        Assert.IsTrue(IsHostShared(host, host.GetName().Name!));
 
-        // A plugin's own private dependencies are never deferred, framework-shaped or not.
-        Assert.IsFalse(IsHostShared(host, "Microsoft.ML.OnnxRuntime"));
+        // The other direction: a name the process does not carry is left to the plugin's own folder, because a
+        // deferred name has no fallback - returning null hands the lookup to a context that has no copy. The test
+        // host references neither Roslyn nor Avalonia, so each is a plugin's to provide here.
+        Assert.IsFalse(IsHostShared(host, "Microsoft.CodeAnalysis"),
+            "the script host ships Roslyn privately; deferring it would make it permanently unresolvable");
+        Assert.IsFalse(IsHostShared(host, "Avalonia.Base"),
+            "this host does not carry Avalonia, so a plugin must be able to ship its own copy");
+
+        // A missing name is never carried.
+        Assert.IsFalse(IsHostShared(host, null!));
+        Assert.IsFalse(IsHostShared(host, ""));
+    }
+
+    /// <summary>The names this test process carries, read the same way the rule reads them.</summary>
+    private static IEnumerable<string> CarriedAssemblyNames()
+    {
+        var list = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string ?? "";
+        var names = list
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+            .Select(Path.GetFileNameWithoutExtension)
+            .OfType<string>()
+            .Where(name => name.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        Assert.IsNotEmpty(names, "the test host must carry assemblies for the rule to mean anything");
+        return names;
     }
 
     /// <summary>

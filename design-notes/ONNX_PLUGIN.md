@@ -33,7 +33,7 @@ Layeron.App                    ReferenceOutputAssembly="false" + DeploySamplePlu
 
 **契约程序集里不出现任何 `Microsoft.ML.OnnxRuntime` 类型。** 这条规则是承重的，不是风格：两份同名的 ORT 类型是两个不同的类型，正如两份 `IPlugin`。一旦契约泄漏 `InferenceSession`，第二个插件解析到的服务就永远转换失败，而且不会报错——查找只是"什么也没找到"。整个插件里 ORT 类型只在一个文件里出现（`OnnxSessionFunctor`），规矩因此由构造保证，而不是靠每次调用时记得。
 
-插件对契约用 `Private="false"`，Avalonia 用 `ExcludeAssets="runtime"`；插件的私有依赖（ORT 与 `System.Numerics.Tensors`）则用 `CopyLocalLockFileAssemblies` 落到插件目录，由插件自己的 `.deps.json` 解析——和 Python 插件处理 pythonnet 的方式一致。
+插件对契约用 `Private="false"`，Avalonia 用 `ExcludeAssets="runtime"`；插件的私有依赖（ORT 与 `System.Numerics.Tensors`）则用 `CopyLocalLockFileAssemblies` 落到插件目录，由插件自己的 `.deps.json` 解析——和 Python 插件处理 pythonnet 的方式一致。判定的依据是**进程实际携带的程序集集合**（`HostCarriedAssemblies`）：App 不引用 ORT 与 `System.Numerics.Tensors`，它们就归插件；名字像不像框架程序集不参与判断。
 
 ---
 

@@ -249,7 +249,7 @@ context.Registry.AddPluginSource(new MySource());
 
 脚本不是插件的子类型，而是另一套交付体系，因此有自己独立的契约程序集：`ScriptGlobals`（脚本看到的 API）、`ScriptRunContext`（单次执行的取消 / 报告 / UI 调度）、`IScriptHostService`（宿主能力）、`ScriptPaths`（脚本目录与扩展名）。插件层与宿主内核**都不引用它**，只有脚本宿主插件、App 和测试引用。
 
-**为什么它必须由默认上下文加载一次**：Roslyn 把脚本编译进一个由**默认上下文**加载的程序集，而脚本宿主插件本身跑在自己的 collectible 上下文中。因此脚本面向的类型（`ScriptGlobals`，以及它签名里的 `NDArray`）若随插件走，两个上下文会各持一份，Roslyn 对 globals 参数的强制转换就会因类型不相等而失败。`PluginLoadContext.SharedPrefixes` 因此把它与 **NumSharp** 一并延迟到默认上下文——这与 §7「扩展点贡献类型必须是宿主标准类型」是同一条规则。
+**为什么它必须由默认上下文加载一次**：Roslyn 把脚本编译进一个由**默认上下文**加载的程序集，而脚本宿主插件本身跑在自己的 collectible 上下文中。因此脚本面向的类型（`ScriptGlobals`，以及它签名里的 `NDArray`）若随插件走，两个上下文会各持一份，Roslyn 对 globals 参数的强制转换就会因类型不相等而失败。它们的归属由 `HostCarriedAssemblies` 判定——**程序集是否在宿主进程实际携带的集合里**，是就延迟到默认上下文；这与 §7「扩展点贡献类型必须是宿主标准类型」是同一条规则。这也是为什么 App 必须真的引用它们：`NumSharp` 由 `Layeron.Scripting.Abstractions` 传递依赖带进 App 的依赖闭包，因而自动归宿主，不需要任何名单维护。
 
 脚本插件对该层用 `Private="false"`，NumSharp 用 `ExcludeAssets="runtime"`：宿主栈的程序集一律不随插件走（部署目录已验证只含插件自身 DLL + Roslyn）。
 
