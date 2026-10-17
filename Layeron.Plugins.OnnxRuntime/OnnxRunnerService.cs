@@ -57,7 +57,15 @@ internal sealed class OnnxRunnerService : IOnnxRunnerService, IDisposable
 
     /// <inheritdoc />
     public Task<int> RescanAsync(CancellationToken cancellationToken = default) =>
-        _queue.Enqueue(() => _store.Rescan(_settings.ModelFolders(PluginDataDirectory, WorkspaceRoot)), cancellationToken);
+        _queue.Enqueue(() =>
+        {
+            // The bundled models are reconciled on every scan rather than loaded once at startup: a scan is the
+            // panel's "show me what I can run", and a list that dropped them after the first user scan would be
+            // answering a different question.
+            _store.UseEmbedded(OnnxDemoModels.Read(_ => { }));
+            return _store.Rescan(_settings.ModelFolders(PluginDataDirectory, WorkspaceRoot));
+        }, cancellationToken);
+
 
     /// <inheritdoc />
     public Task<OnnxSliceResult> RunSliceAsync(OnnxSliceRequest request, CancellationToken cancellationToken = default)

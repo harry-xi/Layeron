@@ -212,7 +212,7 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
         // Resolved once per conversation, not per turn: rebuilding the agent mid-conversation would take
         // the history with it. A turn that fails therefore keeps the session it failed on, and that
         // session is let go the next time the transcript is cleared.
-        var session = _session ??= new ChatSession(_options, _services.Log);
+        var session = _session ??= new ChatSession(_options, _services, _host);
 
         var answer = new StringBuilder();
         var reasoning = new StringBuilder();

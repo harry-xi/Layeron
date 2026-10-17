@@ -1,6 +1,7 @@
 using System.Reflection;
 using Layeron.Big3DArray;
 using Layeron.Plugin.Abstractions;
+using Layeron.Plugins.Agent;
 using Layeron.Plugins.Onnx;
 using Layeron.Plugins.Onnx.Api;
 using Layeron.Plugins.Onnx.Runtime;
@@ -9,7 +10,7 @@ namespace Layeron.Plugin.Test;
 
 /// <summary>
 /// Exercises the ONNX runner against the real demo models, which are embedded in the plugin assembly so the whole
-/// path - resource deployment, session creation, native ONNX Runtime resolution, tiling and quantisation - is
+/// path - resource reading, session creation, native ONNX Runtime resolution, tiling and quantisation - is
 /// covered with no file on disk and no fixture to keep in sync.
 /// <para>
 /// The runner's internals are internal, hence the plugin's <c>InternalsVisibleTo</c>. That is deliberate for the
@@ -21,40 +22,35 @@ namespace Layeron.Plugin.Test;
 public sealed class OnnxRunnerTests
 {
     private static string _dataFolder = string.Empty;
-    private static string _modelFolder = string.Empty;
     private static OnnxSettings _settings = null!;
 
     [ClassInitialize]
-    public static void Deploy(TestContext context)
+    public static void Initialize(TestContext context)
     {
         _ = context;
 
-        // The layout mirrors the app's: a plugin data folder holding the models in a "models" subfolder. Tests that go
-        // through the runner must use this shape, because the runner resolves its own folders from the data directory -
-        // pointing it at the models folder directly would make it scan a folder that does not exist and, because a scan
-        // drops models it can no longer find, silently empty the store.
+        // Only the plugin's data folder is real now: the bundled demo models are embedded resources loaded straight
+        // into a session, so there is no model folder to create, populate, or keep in sync with the assembly.
         _dataFolder = Path.Combine(Path.GetTempPath(), "layeron-onnx-test", Guid.NewGuid().ToString("N"));
-        _modelFolder = Path.Combine(_dataFolder, OnnxModelStore.DemoFolderName);
-        Directory.CreateDirectory(_modelFolder);
-
-        var written = OnnxDemoModels.Deploy(_modelFolder);
-        Assert.HasCount(2, written, "both bundled demo models must deploy on a first run");
-        var reopened = OnnxDemoModels.Deploy(_modelFolder);
-
-        // Deploying twice must be a no-op: a user who deleted a demo model keeps that decision.
-        Assert.IsEmpty(reopened, "a second deploy must write nothing");
+        Directory.CreateDirectory(_dataFolder);
     }
 
     [TestInitialize]
     public void Setup() => _settings = new OnnxSettings(_dataFolder);
 
+    /// <summary>Reads the bundled models the way the runner does, for the tests that assert on their shape.</summary>
+    private static IReadOnlyList<(string FileName, byte[] Bytes)> EmbeddedModels() => OnnxDemoModels.Read();
+
     [TestMethod]
     public void DemoModels_AreSmallAndReadable()
     {
-        foreach (var file in Directory.GetFiles(_modelFolder, "*.onnx"))
+        var models = EmbeddedModels();
+        Assert.HasCount(2, models, "both bundled demo models must be present in the assembly");
+
+        foreach (var (fileName, bytes) in models)
         {
-            var size = new FileInfo(file).Length;
-            Assert.IsLessThan(4096, size, $"{Path.GetFileName(file)} should stay tiny; got {size} bytes");
+            Assert.IsLessThan(4096, bytes.LongLength, $"{fileName} should stay tiny; got {bytes.Length} bytes");
+            Assert.IsGreaterThan(0, bytes.Length, $"{fileName} must not be empty");
         }
     }
 
@@ -66,10 +62,8 @@ public sealed class OnnxRunnerTests
     public void ModelStore_ReadsSignaturesAndResolvesTheNativeRuntime()
     {
         using var store = new OnnxModelStore();
-        var folders = new[] { _modelFolder };
 
-        var loaded = store.Rescan(folders);
-        Assert.AreEqual(2, loaded, "both demo models must load");
+        store.UseEmbedded(EmbeddedModels());
         Assert.IsEmpty(store.Failures, "nothing should fail to load");
 
         var slice = store.Find("demo_structure_slice")?.Info;
@@ -186,7 +180,7 @@ public sealed class OnnxRunnerTests
         });
 
         using var store = new OnnxModelStore();
-        store.Rescan([_modelFolder]);
+        store.UseEmbedded(EmbeddedModels());
 
         var services = new TestServices(volume);
         using var runner = new OnnxRunnerService(store, _settings, services.Volumes)
@@ -240,7 +234,7 @@ public sealed class OnnxRunnerTests
         var volume = TestVolumes.Small(size);
 
         using var store = new OnnxModelStore();
-        store.Rescan([_modelFolder]);
+        store.UseEmbedded(EmbeddedModels());
 
         // The volume model declares rank 5, but the plane path binds it a rank-4 input by splicing a depth of one.
         // Its fixed 64x64 spatial window still applies, so a 200x200 plane needs several tiles.
@@ -274,7 +268,7 @@ public sealed class OnnxRunnerTests
         var volume = TestVolumes.Small(size);
 
         using var store = new OnnxModelStore();
-        store.Rescan([_modelFolder]);
+        store.UseEmbedded(EmbeddedModels());
 
         var services = new TestServices(volume);
         using var runner = new OnnxRunnerService(store, _settings, services.Volumes)
@@ -333,7 +327,7 @@ public sealed class OnnxRunnerTests
         var volume = TestVolumes.Small16(40);
 
         using var store = new OnnxModelStore();
-        store.Rescan([_modelFolder]);
+        store.UseEmbedded(EmbeddedModels());
 
         var services = new TestServices(volume: null);
         ((TestVolumeService)services.Volumes).Replace(volume);
@@ -360,7 +354,7 @@ public sealed class OnnxRunnerTests
     public void SliceRun_RejectsAnUnknownModelAndAnEmptySession()
     {
         using var store = new OnnxModelStore();
-        store.Rescan([_modelFolder]);
+        store.UseEmbedded(EmbeddedModels());
 
         var services = new TestServices(volume: null);
         using var runner = new OnnxRunnerService(store, _settings, services.Volumes)
@@ -436,10 +430,10 @@ public sealed class OnnxRunnerTests
 
         Assert.IsNotNull(settings.SetExtraFolders(Path.Combine(folder, "does-not-exist")),
             "a missing folder must be reported instead of stored");
-        Assert.IsNull(settings.SetExtraFolders(_modelFolder), "an existing folder must be accepted");
+        Assert.IsNull(settings.SetExtraFolders(folder), "an existing folder must be accepted");
 
         Assert.HasCount(1, settings.ExtraFolders);
-        Assert.AreEqual(Path.GetFullPath(_modelFolder), Path.GetFullPath(settings.ExtraFolders[0]));
+        Assert.AreEqual(Path.GetFullPath(folder), Path.GetFullPath(settings.ExtraFolders[0]));
     }
 
     /// <summary>
@@ -481,6 +475,45 @@ public sealed class OnnxRunnerTests
     }
 
     /// <summary>
+    /// A scan and a store-change refresh can land at the same time - the constructor issues a scan, and the store
+    /// raises <c>Changed</c> from whichever thread loaded the model. The list is rebuilt in place, so without
+    /// serialisation the two rebuilds interleave their clears with each other's adds and every model ends up listed
+    /// twice, which is what the panel then shows the user.
+    /// </summary>
+    [TestMethod]
+    public async Task ToolViewModel_DoesNotDuplicateModelsWhenAScanAndAStoreChangeOverlap()
+    {
+        using var store = new OnnxModelStore();
+
+        var services = new TestServices(TestVolumes.Small());
+        using var runner = new OnnxRunnerService(store, _settings, services.Volumes)
+        {
+            PluginDataDirectory = _dataFolder
+        };
+
+        // A marshaller that runs each action on its own thread: this is what the panel does in the app, where the
+        // scan's continuation and the store's change event arrive from different threads.
+        var panel = new OnnxToolViewModel(
+            services,
+            runner,
+            _settings,
+            action => Task.Run(action));
+
+        // Force the overlap: the store change fires while the panel's own scan is still rebuilding the list.
+        store.UseEmbedded(EmbeddedModels());
+
+        var scan = panel.RescanAsync();
+        store.UseEmbedded(EmbeddedModels());
+        await scan;
+        await panel.RescanAsync();
+
+        var ids = panel.Models.Select(m => m.Id).OrderBy(id => id, StringComparer.Ordinal).ToList();
+        CollectionAssert.AllItemsAreUnique(ids, "a model must appear in the list exactly once");
+        Assert.HasCount(2, ids, "both bundled models must be listed");
+        panel.Dispose();
+    }
+
+    /// <summary>
     /// A model whose file cannot be loaded must be reported rather than silently missing, because the panel otherwise
     /// has nothing to show and nothing to say about why.
     /// </summary>
@@ -489,7 +522,8 @@ public sealed class OnnxRunnerTests
     {
         var folder = Path.Combine(Path.GetTempPath(), "layeron-onnx-test", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder);
-        OnnxDemoModels.Deploy(folder);
+        foreach (var (fileName, bytes) in EmbeddedModels())
+            File.WriteAllBytes(Path.Combine(folder, fileName), bytes);
         File.WriteAllText(Path.Combine(folder, "broken.onnx"), "this is not a graph");
 
         using var store = new OnnxModelStore();
@@ -606,6 +640,42 @@ public sealed class OnnxRunnerTests
         // loaded rather than assume the point is there.
         Assert.DoesNotContain(IOnnxRunnerService.PointId, result.PointIdsAfterUnload,
             "the plugin's own point must disappear with it");
+    }
+
+    /// <summary>
+    /// The agent plugin is loaded from its built assembly, activated headlessly and unloaded. Activation now reads
+    /// the plugin's data directory, so this is also the check that the options store tolerates being constructed in
+    /// a real host - a settings page that showed defaults because loading threw would look correct and be useless.
+    /// <para>
+    /// The panel's view model is deliberately not touched: it needs Avalonia, which the headless test host has no
+    /// stack for. The same reason the ONNX loader test inspects contributions rather than running behaviour.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public void AgentPlugin_LoadsContributesAndUnloads()
+    {
+        var adapter = new TestHostAdapter(TestVolumes.Small());
+        using var manager = new Plugin.Host.PluginManager(adapter);
+
+        var id = manager.LoadAssembly(TestPaths.AgentPluginAssembly);
+
+        Assert.AreEqual(AgentPlugin.PluginId, id, "the id must come from the assembly metadata");
+        Assert.AreEqual("Agent", manager.Plugins.Single().Descriptor.Name);
+
+        Assert.IsTrue(adapter.Tools.ContainsKey($"{AgentPlugin.PluginId}::{AgentPlugin.ChatToolId}"),
+            "the plugin must contribute its chat panel");
+
+        // The settings page is a host-defined point carrying a host-defined type, so unlike the ONNX contract it is
+        // safe to read here: everything named below lives in Layeron.Plugin.Abstractions.
+        var pages = manager.PointRegistry.GetPoint<SettingsPageContribution>(SettingsPoints.Pages);
+        Assert.IsNotNull(pages, "the host must define the settings page point");
+        Assert.IsTrue(pages.Items.Any(p => p.Id == "layeron.agent.settings"),
+            "the plugin must contribute its settings page");
+
+        manager.Unload(AgentPlugin.PluginId);
+
+        Assert.AreEqual(0, adapter.Tools.Count, "tools must be detached on unload");
+        Assert.AreEqual(0, adapter.Menus.Count, "menus must be detached on unload");
     }
 
     /// <summary>What the loader test observed, as values only. See the test's remarks for why that matters.</summary>

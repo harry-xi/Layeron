@@ -58,6 +58,11 @@
       no plugins.shared folder next to a test host.
     -->
     <ProjectReference Include="..\Layeron.Plugins.Onnx.Api\Layeron.Plugins.Onnx.Api.csproj" />
+    <!--
+      Referenced so the agent's option store can be tested directly: what it writes, what it refuses to write,
+      and where the key comes from are all decisions that have nothing to do with the network or the UI.
+    -->
+    <ProjectReference Include="..\Layeron.Plugins.Agent\Layeron.Plugins.Agent.csproj" />
   </ItemGroup>
 
   <ItemGroup>

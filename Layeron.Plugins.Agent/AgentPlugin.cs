@@ -11,6 +11,10 @@ namespace Layeron.Plugins.Agent;
 /// opens.
 /// </para>
 /// <para>
+/// The one thing activation does do eagerly is read the options, because a settings page that shows values
+/// before loading them would present the defaults as if they were the user's configuration.
+/// </para>
+/// <para>
 /// There is no <c>Shutdown</c>: everything registered here is scoped to the context, so unloading - or hot
 /// reloading - the plugin is a single dispose.
 /// </para>
@@ -26,7 +30,11 @@ public sealed class AgentPlugin : IPlugin
     public void Activate(IPluginContext context)
     {
         var services = context.Services;
-        var options = new AgentOptions();
+
+        // Options are restored from the plugin's data directory rather than kept in a field: the endpoint and
+        // model are the kind of thing a user sets once, and re-typing them after every restart is the kind of
+        // papercut that makes a panel feel like a demo.
+        var options = new AgentOptions(context.PluginDataDirectory ?? context.PluginDirectory);
 
         // The options object is created once and shared: the settings page writes into it through the
         // host's declarative rows, and the chat panel reads the same instance on every send. That is why

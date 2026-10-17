@@ -3,7 +3,7 @@
 The `Layeron.Plugins.OnnxRuntime` plugin brings ONNX models in as a **way of processing volume data**: it owns a model folder, reads each model's signature, binds session data to it, and turns the result into a preview overlay, a mask layer, or a new volume.
 
 ::: tip Works out of the box
-The plugin ships two demo models (structure enhancement) and writes them into the model folder on first run, so there is something to run without hunting for an `.onnx` file first.
+The plugin ships two demo models (structure enhancement). They are embedded in the plugin assembly and loaded straight from memory at run time, writing nothing to disk, so there is something to run without hunting for an `.onnx` file first - and nothing that comes back after you delete it.
 :::
 
 ## The panel
@@ -85,16 +85,16 @@ The **ONNX** page in the settings window:
 | Setting | Meaning |
 |---|---|
 | Extra model folders | Semicolon-separated. Earlier folders win, which is how you shadow a bundled demo model |
-| Deploy bundled demo models | Turning this off stops new demo files being written; existing files are untouched |
 
 Per-model bindings (plane, threshold, ranges, mode) are stored in `onnx.settings.json` under the plugin's data folder, so they **survive an unload and reload**.
 
 ::: tip Where models live
 - `<workspace>/models/` — travels with the workspace, so switching workspaces switches the model set;
 - **Extra model folders** in settings — your own library, preferred over the bundled demos;
-- `<plugin data folder>/models/` — where the bundled demos land.
+- `<plugin install folder>/models/` — for models you want to ship alongside the plugin;
+- `<plugin data folder>/models/` — the plugin's own data folder.
 
-When the same model id (the file name without extension) appears in several folders, **the earlier folder wins**.
+The two bundled demo models belong to none of these folders: they are embedded in the plugin and loaded from memory. When the same model id (the file name without extension) appears in several folders, **the earlier folder wins** - so dropping your own model of the same name into a folder listed earlier shadows the bundled one.
 :::
 
 ## Known limitations

@@ -18,7 +18,6 @@ internal sealed class OnnxSettings
     internal static class Keys
     {
         public const string ExtraFolders = "onnx.folders";
-        public const string DeployDemoModels = "onnx.demo.deploy";
         public const string TileOverlap = "onnx.tiles.overlap";
     }
 
@@ -43,22 +42,28 @@ internal sealed class OnnxSettings
         Read(Keys.ExtraFolders, string.Empty)
             .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-    /// <summary>Whether the bundled demo models are written into the model folder when missing.</summary>
-    public bool DeployDemoModels => Read(Keys.DeployDemoModels, true);
+    /// <summary>
+    /// <c>models</c> folder inside the plugin's own install directory, set at activation. Scanned like any other
+    /// folder, which is what lets a user drop a model next to the plugin instead of into their workspace.
+    /// </summary>
+    public string? PluginModelsFolder { get; set; }
 
     /// <summary>Voxel overlap between whole-volume tiles.</summary>
     public int TileOverlap => (int)Read(Keys.TileOverlap, 4L);
 
     /// <summary>
-    /// Folders scanned for models, in precedence order: user folders first, then a workspace folder, then the
-    /// plugin's own data folder. Order matters because the first folder to declare a model id owns it.
+    /// Folders scanned for models, in precedence order: user folders first, then the plugin's own folder, then a
+    /// workspace folder, then the plugin's data folder. Order matters because the first folder to declare a model id
+    /// owns it.
     /// </summary>
     public IReadOnlyList<string> ModelFolders(string pluginDataDirectory, string? workspaceRoot)
     {
         var candidates = new List<string>(ExtraFolders);
+        if (!string.IsNullOrWhiteSpace(PluginModelsFolder))
+            candidates.Add(PluginModelsFolder);
         if (!string.IsNullOrWhiteSpace(workspaceRoot))
-            candidates.Add(Path.Combine(workspaceRoot, "models"));
-        candidates.Add(Path.Combine(pluginDataDirectory, OnnxModelStore.DemoFolderName));
+            candidates.Add(Path.Combine(workspaceRoot, OnnxModelStore.ModelsFolderName));
+        candidates.Add(Path.Combine(pluginDataDirectory, OnnxModelStore.ModelsFolderName));
 
         // De-duplicated by full path so a user who lists the default folder explicitly does not make it appear
         // twice in the settings page or get scanned twice.

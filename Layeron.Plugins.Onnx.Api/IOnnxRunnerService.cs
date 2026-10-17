@@ -21,8 +21,19 @@ public sealed class OnnxModelInfo
     /// <summary>Free-form description from the model's metadata, when present.</summary>
     public string? Description { get; init; }
 
-    /// <summary>Full path of the model file on disk.</summary>
+    /// <summary>
+    /// Where the model came from, for display and for the runner's own lookup: the full file path of a model
+    /// scanned from a folder, or the bundled resource name of one loaded in memory. Never null, so a caller can
+    /// always print something.
+    /// </summary>
     public required string Path { get; init; }
+
+    /// <summary>
+    /// True when the model is one the plugin carries inside itself and loads from memory rather than from a file.
+    /// A caller that wants to treat a bundled model differently - hide it from a file-manager view, say - can,
+    /// and everyone else can ignore it.
+    /// </summary>
+    public bool IsEmbedded { get; init; }
 
     /// <summary>Inputs, in graph order.</summary>
     public required IReadOnlyList<OnnxTensorSpec> Inputs { get; init; }

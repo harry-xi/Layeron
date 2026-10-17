@@ -39,6 +39,9 @@ internal sealed class OnnxModelEntry : IDisposable
     /// <summary>File timestamp at load time, so a rescan can tell a changed model from an unchanged one.</summary>
     public DateTime LastWriteTimeUtc { get; }
 
+    /// <summary>True when this model came from the plugin itself rather than from a file in a scanned folder.</summary>
+    public bool IsEmbedded => Info.IsEmbedded;
+
     /// <summary>
     /// Takes a hold on the session for the duration of a query. Returns null once the entry has been released,
     /// which is how a caller that raced with a rescan learns the model is gone instead of touching a dead session.

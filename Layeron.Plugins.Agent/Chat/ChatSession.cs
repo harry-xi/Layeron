@@ -1,5 +1,7 @@
 using System.Runtime.CompilerServices;
 using Layeron.Plugin.Abstractions;
+using Layeron.Plugins.Agent.Chat;
+using Layeron.Scripting.Abstractions;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using OpenAI.Chat;
@@ -22,7 +24,7 @@ namespace Layeron.Plugins.Agent;
 /// This is the only type in the plugin that references the framework, and it never mentions Avalonia.
 /// </para>
 /// </summary>
-internal sealed class ChatSession(AgentOptions options, IPluginLog log) : IChatSession
+internal sealed class ChatSession(AgentOptions options, IPluginServices services, IScriptHostService seciptHost) : IChatSession
 {
     /// <summary>
     /// Cancelled when the session is disposed, so a turn still in flight when the panel closes is torn
@@ -30,11 +32,13 @@ internal sealed class ChatSession(AgentOptions options, IPluginLog log) : IChatS
     /// </summary>
     private readonly CancellationTokenSource _lifetime = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
-
+    
     private AIAgent? _agent;
     private AgentSession? _conversation;
     private bool _disposed;
 
+    private readonly IPluginLog _log = services.Log;
+    
     public async IAsyncEnumerable<ChatDelta> StreamAsync(
         ChatTurn turn,
         [EnumeratorCancellation] CancellationToken ct)
@@ -67,7 +71,7 @@ internal sealed class ChatSession(AgentOptions options, IPluginLog log) : IChatS
             await foreach (var update in agent.RunStreamingAsync(message, _conversation, options: null, token)
                            .ConfigureAwait(false))
             {
-                foreach (var delta in Translate(update))
+                foreach (var delta in Translate(update,services.Log))
                     yield return delta;
             }
         }
@@ -112,7 +116,8 @@ internal sealed class ChatSession(AgentOptions options, IPluginLog log) : IChatS
         {
             Instructions = options.SystemPrompt,
             Temperature = (float)options.Temperature,
-            MaxOutputTokens = (int)options.MaxTokens
+            MaxOutputTokens = (int)options.MaxTokens,
+            Tools = new ChatTools(services,seciptHost).BuildTools()
         };
 
         var agentOptions = new ChatClientAgentOptions
@@ -120,10 +125,10 @@ internal sealed class ChatSession(AgentOptions options, IPluginLog log) : IChatS
             Id = AgentPlugin.ChatToolId,
             Name = "Layeron Agent",
             ChatOptions = chatOptions,
-            ChatHistoryProvider = new InMemoryChatHistoryProvider()
+            ChatHistoryProvider = new InMemoryChatHistoryProvider(),
         };
 
-        log.Info("Agent 已连接 {Endpoint}，模型 {Model}。", options.Endpoint, options.Model);
+        _log.Info("Agent 已连接 {Endpoint}，模型 {Model}。", options.Endpoint, options.Model);
 
         return client.AsAIAgent(agentOptions);
     }
@@ -151,10 +156,11 @@ internal sealed class ChatSession(AgentOptions options, IPluginLog log) : IChatS
     /// Turns one framework update into panel deltas. Reasoning travels as its own kind so the panel can
     /// show it apart from the answer instead of concatenating the two into one confusing paragraph.
     /// </summary>
-    private static IEnumerable<ChatDelta> Translate(AgentResponseUpdate update)
+    private static IEnumerable<ChatDelta> Translate(AgentResponseUpdate update,IPluginLog logger)
     {
         foreach (var content in update.Contents)
         {
+            logger.Debug("Agent update: {ContentType} {Content}", content.GetType().Name, content.RawRepresentation);
             switch (content)
             {
                 case TextReasoningContent { Text.Length: > 0 } reasoning:

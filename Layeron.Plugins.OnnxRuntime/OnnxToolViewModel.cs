@@ -37,6 +37,15 @@ internal sealed class OnnxToolViewModel : ReactiveObject, IDisposable
     private bool _suppressRefresh;
 
     /// <summary>
+    /// Serialises <see cref="RefreshModels"/>. The list is rebuilt in place, and a rebuild can start from three
+    /// places at once - the constructor's scan, a user scan and the store's change event - so two runs interleave
+    /// their clears with each other's adds and leave every model in the list twice. A lock rather than a UI-thread
+    /// hop because <see cref="RefreshModels"/> may legitimately run inline on the caller's thread; it is short and
+    /// touches no native state, so serialising it is cheaper than reasoning about who won.
+    /// </summary>
+    private readonly Lock _modelsGate = new();
+
+    /// <summary>
     /// Marshals work onto the UI thread. Injectable so the panel's logic is testable without a running Avalonia
     /// dispatcher - which matters because the interesting bugs here are "the list never got seeded" and "the busy
     /// flag never cleared", and neither needs a window to reproduce.
@@ -463,10 +472,10 @@ internal sealed class OnnxToolViewModel : ReactiveObject, IDisposable
 
     private void OnModelsChanged()
     {
-        if (Dispatcher.UIThread.CheckAccess())
-            RefreshModels();
-        else
-            Dispatcher.UIThread.Post(RefreshModels);
+        // Through the same injected marshaller as everything else rather than the dispatcher directly: the panel's
+        // rule is that every continuation returns via one seam, and a handler that reached for the dispatcher itself
+        // would be the one path a test could not run headless.
+        _ = OnUi(RefreshModels);
     }
 
     private void OnBindingChanged()
@@ -509,14 +518,17 @@ internal sealed class OnnxToolViewModel : ReactiveObject, IDisposable
 
     private void RefreshModels()
     {
-        var previousId = SelectedModel?.Id;
-        Models.Clear();
-        foreach (var model in _runner.Models)
-            Models.Add(model);
+        lock (_modelsGate)
+        {
+            var previousId = SelectedModel?.Id;
+            Models.Clear();
+            foreach (var model in _runner.Models)
+                Models.Add(model);
 
-        SelectedModel = previousId is null
-            ? Models.FirstOrDefault()
-            : Models.FirstOrDefault(m => m.Id == previousId) ?? Models.FirstOrDefault();
+            SelectedModel = previousId is null
+                ? Models.FirstOrDefault()
+                : Models.FirstOrDefault(m => m.Id == previousId) ?? Models.FirstOrDefault();
+        }
 
         this.RaisePropertyChanged(nameof(CanApply));
     }

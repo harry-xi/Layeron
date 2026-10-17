@@ -14,10 +14,11 @@ namespace Layeron.Plugins.Onnx.Runtime;
 internal sealed class OnnxModelStore : IDisposable
 {
     /// <summary>
-    /// Folder name under the plugin's data directory where the bundled demo models are deployed, and the one
-    /// folder that always exists - so a first run has something to show without the user finding a model.
+    /// Conventional folder name for a plugin's own model files. The plugin uses it as the name of the folder it
+    /// ships inside its own directory, and a caller looking for "the folder this plugin's models live in" should
+    /// find the same one.
     /// </summary>
-    public const string DemoFolderName = "models";
+    public const string ModelsFolderName = "models";
 
     private readonly Lock _gate = new();
     private readonly Dictionary<string, OnnxModelEntry> _entries = new(StringComparer.Ordinal);
@@ -78,7 +79,10 @@ internal sealed class OnnxModelStore : IDisposable
         var changed = 0;
         lock (_gate)
         {
-            foreach (var id in _entries.Keys.Where(id => !found.ContainsKey(id)).ToList())
+            // A bundled model is not in any folder, so a folder scan must leave it alone rather than treat it as a
+            // file that disappeared - and must not re-add it on the next scan either, which is what would make the
+            // loaded set flap and fire a change event on every rescan.
+            foreach (var id in _entries.Keys.Where(id => !_entries[id].IsEmbedded && !found.ContainsKey(id)).ToList())
             {
                 _entries[id].Dispose();
                 _entries.Remove(id);
@@ -89,6 +93,9 @@ internal sealed class OnnxModelStore : IDisposable
             {
                 if (_entries.TryGetValue(id, out var existing))
                 {
+                    if (existing.IsEmbedded)
+                        continue;
+
                     if (existing.Path == target.Path && existing.LastWriteTimeUtc == target.Stamp)
                         continue;
 
@@ -113,6 +120,52 @@ internal sealed class OnnxModelStore : IDisposable
             Changed?.Invoke();
 
         return changed;
+    }
+
+    /// <summary>
+    /// Loads the plugin's bundled models from memory, replacing whatever was loaded before.
+    /// <para>
+    /// Separate from <see cref="Rescan"/> because it is the opposite kind of source: a folder is re-read on demand
+    /// and its models come and go with the files, while a bundled model is always there and is loaded once. Nothing
+    /// is written to disk, so there is no deployment, no file timestamp to compare and no failure to report - a
+    /// bundled model either loads or it does not exist.
+    /// </para>
+    /// </summary>
+    /// <returns>The number of bundled models now loaded.</returns>
+    public int UseEmbedded(IReadOnlyList<(string FileName, byte[] Bytes)> models)
+    {
+        ArgumentNullException.ThrowIfNull(models);
+
+        var changed = 0;
+        lock (_gate)
+        {
+            foreach (var id in _entries.Keys.Where(id => _entries[id].IsEmbedded).ToList())
+            {
+                _entries[id].Dispose();
+                _entries.Remove(id);
+                changed++;
+            }
+
+            foreach (var (fileName, bytes) in models)
+            {
+                // Ids are file names without extension, the same shape a scanned model gets, so a bundled model and
+                // a folder model are named by the same rule and a user folder can shadow one by id.
+                var id = Path.GetFileNameWithoutExtension(fileName);
+                if (_entries.ContainsKey(id))
+                    continue;
+
+                if (Open(id, fileName, bytes) is { } entry)
+                {
+                    _entries[id] = entry;
+                    changed++;
+                }
+            }
+        }
+
+        if (changed > 0)
+            Changed?.Invoke();
+
+        return _entries.Count(e => e.Value.IsEmbedded);
     }
 
     /// <summary>The loaded entry for an id, name or path; null when nothing matches.</summary>
@@ -173,6 +226,27 @@ internal sealed class OnnxModelStore : IDisposable
 
     private OnnxModelEntry? Load(string id, string path, DateTime stamp)
     {
+        try
+        {
+            var bytes = File.ReadAllBytes(path);
+            return Open(id, path, bytes, stamp);
+        }
+        catch (Exception ex)
+        {
+            lock (_gate)
+                _failed[path] = ex.Message;
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Opens one model and reads its signature. The single place a session is created, so a file model and a
+    /// bundled model are described by exactly the same code path.
+    /// </summary>
+    /// <param name="source">What to record as the model's origin - a file path, or the bundled resource name.</param>
+    /// <param name="stamp">File timestamp for a scanned model; <c>default</c> for a bundled one.</param>
+    private OnnxModelEntry? Open(string id, string source, byte[] bytes, DateTime stamp = default)
+    {
         InferenceSession? session = null;
         try
         {
@@ -188,7 +262,7 @@ internal sealed class OnnxModelStore : IDisposable
             // user's behalf.
             options.AppendExecutionProvider_CPU();
 
-            session = new InferenceSession(path, options);
+            session = new InferenceSession(bytes, options);
 
             var inputs = session.InputMetadata
                 .Select(pair => OnnxTensorAdapter.ToSpec(pair.Key, pair.Value))
@@ -197,26 +271,28 @@ internal sealed class OnnxModelStore : IDisposable
                 .Select(pair => OnnxTensorAdapter.ToSpec(pair.Key, pair.Value))
                 .ToList();
 
+            var embedded = stamp == default;
             var info = new OnnxModelInfo
             {
                 Id = id,
                 Name = ReadName(session) ?? id,
                 Description = session.ModelMetadata?.Description,
-                Path = path,
+                Path = source,
+                IsEmbedded = embedded,
                 Inputs = inputs,
                 Outputs = outputs,
                 Providers = ReadProviders(session),
-                SizeBytes = new FileInfo(path).Length,
+                SizeBytes = bytes.LongLength,
                 SpatialExtent = OnnxTensorAdapter.InferSpatialExtent(inputs.FirstOrDefault())
             };
 
-            return new OnnxModelEntry(path, session, info, stamp);
+            return new OnnxModelEntry(source, session, info, stamp);
         }
         catch (Exception ex)
         {
             session?.Dispose();
             lock (_gate)
-                _failed[path] = ex.Message;
+                _failed[source] = ex.Message;
             return null;
         }
     }

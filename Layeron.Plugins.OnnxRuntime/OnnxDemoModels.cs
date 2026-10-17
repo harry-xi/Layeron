@@ -3,19 +3,19 @@ using System.Reflection;
 namespace Layeron.Plugins.Onnx.Runtime;
 
 /// <summary>
-/// Writes the bundled demo models into the model folder on first use.
+/// The bundled demo models, as bytes.
 /// <para>
-/// Embedded resources rather than loose files in the output, so they travel with the assembly that installs them
-/// and cannot drift from the code that reads them. Deployed only when the file is absent, so a user who replaced
-/// or deleted a demo model keeps that decision - an update that silently brought it back would be a bug, not a
-/// feature.
+/// Embedded resources rather than loose files in the output, so they travel with the assembly that carries them
+/// and cannot drift from the code that reads them. They are handed over in memory and loaded straight into an
+/// ONNX session: nothing is written to disk, so there is no model folder to own, no file for a rescan to find or
+/// lose, and no "bring back what the user deleted" decision to get right.
 /// </para>
 /// </summary>
 internal static class OnnxDemoModels
 {
     /// <summary>
-    /// Logical resource names. Spelled out rather than derived from a file path so renaming the file on disk
-    /// cannot silently change what the plugin looks for inside its own assembly.
+    /// Logical resource names. Spelled out rather than derived from a file path so renaming a file on disk cannot
+    /// silently change what the plugin looks for inside its own assembly.
     /// </summary>
     private static readonly (string ResourceName, string FileName)[] Models =
     [
@@ -24,53 +24,36 @@ internal static class OnnxDemoModels
     ];
 
     /// <summary>
-    /// Deploys any missing demo model into <paramref name="folder"/> and returns the file names it wrote. A
-    /// failure is reported instead of thrown: a read-only data folder should degrade to "no demo model", not stop
-    /// the plugin from loading.
+    /// Reads every bundled model. A resource that cannot be read is reported and skipped instead of thrown: a
+    /// build whose resources went missing should cost the user the demo models, not the plugin.
     /// </summary>
-    public static IReadOnlyList<string> Deploy(string folder, Action<string>? onError = null)
+    public static IReadOnlyList<(string FileName, byte[] Bytes)> Read(Action<string>? onError = null)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(folder);
-
-        var written = new List<string>();
         var assembly = typeof(OnnxDemoModels).Assembly;
-
-        try
-        {
-            Directory.CreateDirectory(folder);
-        }
-        catch (Exception ex)
-        {
-            onError?.Invoke(ex.Message);
-            return written;
-        }
+        var models = new List<(string, byte[])>(Models.Length);
 
         foreach (var (resourceName, fileName) in Models)
         {
-            var target = Path.Combine(folder, fileName);
-            if (File.Exists(target))
-                continue;
-
             try
             {
-                using var source = assembly.GetManifestResourceStream(resourceName);
-                if (source is null)
+                using var stream = assembly.GetManifestResourceStream(resourceName);
+                if (stream is null)
                 {
                     // A missing resource is a build problem, not a user problem, so it is worth saying out loud.
                     onError?.Invoke($"内置模型资源缺失：{resourceName}");
                     continue;
                 }
 
-                using var file = File.Create(target);
-                source.CopyTo(file);
-                written.Add(fileName);
+                using var buffer = new MemoryStream();
+                stream.CopyTo(buffer);
+                models.Add((fileName, buffer.ToArray()));
             }
             catch (Exception ex)
             {
-                onError?.Invoke($"写入 {fileName} 失败：{ex.Message}");
+                onError?.Invoke($"读取 {fileName} 失败：{ex.Message}");
             }
         }
 
-        return written;
+        return models;
     }
 }

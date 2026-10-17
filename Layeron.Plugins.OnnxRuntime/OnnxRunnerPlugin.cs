@@ -16,6 +16,11 @@ namespace Layeron.Plugins.Onnx;
 /// Nothing is loaded at activation. Opening a model costs a native session and the host activates plugins on the
 /// UI thread, so the first scan happens when the panel is opened - never before, and never on the startup path.
 /// </para>
+/// <para>
+/// The two bundled demo models are embedded resources loaded straight into a session, so a first run has something
+/// to run without deployment, without a file on disk, and without the plugin owning a folder it would then have to
+/// keep in sync.
+/// </para>
 /// </summary>
 [Plugin("layeron.onnxruntime")]
 public sealed class OnnxRunnerPlugin : IPlugin
@@ -32,21 +37,18 @@ public sealed class OnnxRunnerPlugin : IPlugin
         var store = new OnnxModelStore();
         context.Registry.Track(store);
 
+        // Any model files the plugin itself ships. Nothing is deployed anywhere: the folder is just another source
+        // on the same scan path as the user's own folders, and the bundled demos come from memory instead.
+        settings.PluginModelsFolder = Path.Combine(
+            context.PluginDirectory ?? dataDirectory,
+            OnnxModelStore.ModelsFolderName);
+
         var runner = new OnnxRunnerService(store, settings, services.Volumes)
         {
             PluginDataDirectory = dataDirectory,
             WorkspaceRoot = host?.WorkspaceRoot
         };
         context.Registry.Track(runner);
-
-        // The demo models make a first run show something instead of an empty list, and they are two sub-kilobyte
-        // files - so unlike the Python runner's interpreter, this does not have to be deferred work.
-        if (settings.DeployDemoModels)
-        {
-            OnnxDemoModels.Deploy(
-                Path.Combine(dataDirectory, OnnxModelStore.DemoFolderName),
-                message => services.Log.Warn("部署内置 ONNX 模型失败：{Message}", message));
-        }
 
         // A workspace switch changes which models are in scope, so the folders are re-derived and the list
         // refreshed. The subscription is tracked, so unload unhooks it like everything else.
@@ -97,14 +99,6 @@ public sealed class OnnxRunnerPlugin : IPlugin
                     Description = "以分号分隔。排在最前的目录优先，可用它覆盖某个内置示例模型。",
                     Kind = SettingKind.Text,
                     DefaultValue = string.Empty
-                },
-                new SettingItem
-                {
-                    Key = OnnxSettings.Keys.DeployDemoModels,
-                    Title = "部署内置示例模型",
-                    Description = "启动时把随插件发布的两个示例模型写入模型目录（仅在文件不存在时）。",
-                    Kind = SettingKind.Boolean,
-                    DefaultValue = true
                 }
             ]
         }));

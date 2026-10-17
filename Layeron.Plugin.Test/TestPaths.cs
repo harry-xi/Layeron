@@ -36,6 +36,14 @@ internal static class TestPaths
         Path.Combine(RepositoryRoot, "Layeron.Plugins.OnnxRuntime", "bin", Configuration, "net10.0",
             "Layeron.Plugins.OnnxRuntime.dll");
 
+    /// <summary>
+    /// The agent plugin. Referenced for its option store, and loaded by path so activation itself is covered:
+    /// activation is where the data directory is read, which is the one part of the plugin that is not UI-bound.
+    /// </summary>
+    public static string AgentPluginAssembly { get; } =
+        Path.Combine(RepositoryRoot, "Layeron.Plugins.Agent", "bin", Configuration, "net10.0",
+            "Layeron.Plugins.Agent.dll");
+
     /// <summary>Creates a throwaway plugin directory for sources that scan folders.</summary>
     public static string CreateTemporaryPluginDirectory()
     {
