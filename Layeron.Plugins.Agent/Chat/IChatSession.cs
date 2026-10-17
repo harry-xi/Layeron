@@ -12,9 +12,9 @@ namespace Layeron.Plugins.Agent;
 /// </para>
 /// <para>
 /// The reply is an event stream rather than a string, and this is the whole reason the contract is worth
-/// more than one method. Today it carries prose and reasoning; the same stream is where a tool call, its
-/// arguments and its result will arrive, and where the user's approval of one will have to go back. A
-/// <c>Task&lt;string&gt;</c> would have to be replaced to say any of that.
+/// more than one method: it already carries prose, reasoning, and the tool calls with their results, and
+/// it is where the user's approval of a call will have to go back. A <c>Task&lt;string&gt;</c> would have
+/// had to be replaced to say any of that.
 /// </para>
 /// <para>
 /// Nothing here mentions a provider, a model id or an HTTP shape - an OpenAI-compatible client, a local

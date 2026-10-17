@@ -27,6 +27,16 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
     /// </summary>
     private const int TranscriptLimit = 500;
 
+    /// <summary>
+    /// The style key the panel's foldable parts - reasoning and tool calls - are tagged with.
+    /// <para>
+    /// Publishing it is what lets a test check that the folds the panel declares and the style that gives
+    /// them a readable header have not drifted apart. The markup still has to spell the name literally:
+    /// <c>Classes</c> takes a string, not a binding, so this constant cannot be referenced from XAML.
+    /// </para>
+    /// </summary>
+    public const string FoldStyleKey = "chatFold";
+
     private readonly IPluginServices _services;
     private readonly IScriptHostService? _host;
     private readonly AgentOptions _options;
@@ -155,7 +165,7 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
         if (text.Length == 0 && turn.Count == 0)
             return;
 
-        Append(new ChatMessage { Role = ChatRole.User, Text = text, Attachments = turn });
+        Append(new ChatMessage { Role = ChatRole.User, Body = text, Attachments = turn });
         Draft = "";
 
         if (!_options.KeepAttachments)
@@ -174,7 +184,9 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
                 ? $"完成 · {DateTimeOffset.Now:HH:mm:ss}"
                 : reply.HadReasoning
                     ? "只收到思考内容，没有回复文本"
-                    : "完成（回复为空）";
+                    : reply.ToolCalls > 0
+                        ? $"完成 · 调用了 {reply.ToolCalls} 次工具，没有回复文本"
+                        : "完成（回复为空）";
         }
         catch (OperationCanceledException)
         {
@@ -199,7 +211,8 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
     /// <para>
     /// The transcript is a log and a reply arrives in pieces, so a bubble has to be appended on the first
     /// piece and then grown in place - which is why <see cref="ChatMessage.Text"/> is a notifying property
-    /// rather than an init-only one.
+    /// rather than an init-only one. A tool call is a piece like any other: it arrives after the bubble it
+    /// belongs to may already exist, and before the text that answers the question it was made to answer.
     /// </para>
     /// <para>
     /// Reasoning is folded into the same bubble as a named section. It is not the answer, but hiding it
@@ -217,6 +230,7 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
         var answer = new StringBuilder();
         var reasoning = new StringBuilder();
         ChatMessage? bubble = null;
+        var toolCalls = 0;
 
         await foreach (var delta in session.StreamAsync(turn, ct).ConfigureAwait(true))
         {
@@ -231,33 +245,52 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
                 _ => ""
             };
 
-            if (text.Length == 0)
+            // A tool call is not text and must not be treated as one, but it is still a reason for the
+            // bubble to exist: the call belongs to this turn, so it appears in the same bubble as the answer
+            // it was made for rather than as a message from nowhere.
+            if (text.Length == 0 && delta is not (ChatToolCallDelta or ChatToolResultDelta))
                 continue;
 
-            if (bubble is null)
-            {
-                // Appended on the first piece so the rest of the reply is visibly the same turn, and so a
-                // cancellation mid-answer leaves what already arrived on screen.
-                bubble = new ChatMessage { Role = ChatRole.Assistant };
-                Append(bubble);
-            }
+            bubble ??= AppendBubble();
 
-            if (delta is ChatTextDelta)
+            switch (delta)
             {
-                answer.Append(text);
-                bubble.Append(text);
-            }
-            else
-            {
-                reasoning.Append(text);
-                bubble.AppendReasoning(text);
+                case ChatTextDelta:
+                    answer.Append(text);
+                    bubble.AppendText(text);
+                    break;
+
+                case ChatReasoningDelta:
+                    reasoning.Append(text);
+                    bubble.AppendReasoning(text);
+                    break;
+
+                case ChatToolCallDelta call:
+                    toolCalls++;
+                    bubble.AddToolCall(call.CallId, call.Name, call.Arguments);
+                    StatusText = $"调用工具 {call.Name}…";
+                    break;
+
+                case ChatToolResultDelta result:
+                    bubble.CompleteToolCall(result.CallId, result.Result, result.Failed);
+                    StatusText = "思考中…";
+                    break;
             }
         }
 
-        return new TurnResult(answer.ToString(), reasoning.Length > 0);
+        return new TurnResult(answer.ToString(), reasoning.Length > 0, toolCalls);
+
+        // Appended on the first piece so the rest of the reply is visibly the same turn, and so a
+        // cancellation mid-answer leaves what already arrived on screen.
+        ChatMessage AppendBubble()
+        {
+            var message = new ChatMessage { Role = ChatRole.Assistant };
+            Append(message);
+            return message;
+        }
     }
 
-    private readonly record struct TurnResult(string Text, bool HadReasoning);
+    private readonly record struct TurnResult(string Text, bool HadReasoning, int ToolCalls);
 
     private void Cancel()
     {

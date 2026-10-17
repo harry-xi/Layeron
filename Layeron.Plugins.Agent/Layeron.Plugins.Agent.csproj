@@ -57,4 +57,12 @@
     <PackageReference Include="ReactiveUI.Avalonia" Version="12.1.2" ExcludeAssets="runtime" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!--
+      从流更新到面板事件的映射是内部实现，不是契约；测试直接驱动它，而不是把这段逻辑公开出来。
+      这里只覆盖不依赖 Avalonia 的那一半——面板那一半需要真正的 UI 栈。
+    -->
+    <InternalsVisibleTo Include="Layeron.Plugin.Test" />
+  </ItemGroup>
+
 </Project>

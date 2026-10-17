@@ -6,6 +6,41 @@
              mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="640"
              x:Class="Layeron.Plugins.Agent.AgentChatView"
              x:DataType="local:AgentChatViewModel">
+  <UserControl.Resources>
+    <!--
+      颜色在这里声明一次，而不是让控件去继承：气泡是深色的，主题的前景色对它一无所知，
+      任何没写颜色的控件都会拿到主题的黑字，在深色气泡上等于看不见。
+    -->
+    <SolidColorBrush x:Key="ChatAnswerBrush" Color="#E8E8E8"/>
+    <SolidColorBrush x:Key="ChatMutedBrush" Color="#A8A8A8"/>
+    <SolidColorBrush x:Key="ChatFailedBrush" Color="#E08A8A"/>
+    <SolidColorBrush x:Key="ChatRaisedBrush" Color="#1C1C1C"/>
+    <FontFamily x:Key="ChatMonoFont">Cascadia Code, Consolas, Menlo, Monospace</FontFamily>
+  </UserControl.Resources>
+
+  <UserControl.Styles>
+    <!--
+      折叠头（思考 / 调用工具）必须自己定色：Expander 的模板既不设 Foreground 也不给展开箭头定色，
+      两者都走主题的 ThemeForegroundBrush——在深色气泡上就是黑字配黑箭头，等于没有折叠头。
+      这些样式限定在 chatFold 上，别的 Expander 不受影响。
+    -->
+    <Style Selector="Expander.chatFold">
+      <Setter Property="Foreground" Value="{StaticResource ChatMutedBrush}"/>
+      <Setter Property="Background" Value="{StaticResource ChatRaisedBrush}"/>
+      <Setter Property="CornerRadius" Value="6"/>
+      <Setter Property="Padding" Value="6,2"/>
+      <Setter Property="MinHeight" Value="0"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+    </Style>
+    <Style Selector="Expander.chatFold /template/ Path">
+      <Setter Property="Fill" Value="{StaticResource ChatMutedBrush}"/>
+    </Style>
+    <Style Selector="Expander.chatFold:pointerover /template/ Border">
+      <Setter Property="BorderBrush" Value="{StaticResource ChatMutedBrush}"/>
+    </Style>
+  </UserControl.Styles>
+
   <DockPanel>
     <!--
       工具栏。发送与取消都放在这里而不是塞进输入区：输入区只回答"写什么"，
@@ -90,24 +125,93 @@
               <Border Background="{Binding BubbleBrush}" CornerRadius="10" Padding="10,6" MaxWidth="320">
                 <StackPanel Spacing="4">
                   <!--
-                    思考内容与回答分开：它不是回答本身，不能和答案混成一段，但隐藏掉更糟——
-                    模型只返回思考时，面板会显示成空回复，看起来像坏了。
+                    用户的正文与 Agent 的回复只会有其中一种，所以这里是二选一而不是并列：
+                    用户消息是一段普通正文，Agent 回复则是一串按产生顺序排列的部分
+                    （思考、工具调用、回答），顺序本身就是它要表达的东西。
                   -->
-                  <Expander Header="思考" IsVisible="{Binding HasReasoning}" FontSize="11"
-                            HorizontalAlignment="Stretch" Padding="0">
-                    <TextBlock Text="{Binding Reasoning}" TextWrapping="Wrap" FontSize="11" Opacity="0.75"/>
-                  </Expander>
-                  <TextBlock Text="{Binding Text}" TextWrapping="Wrap"
-                             Foreground="{Binding TextBrush}"
-                             IsVisible="{Binding HasText}"/>
+                  <TextBlock Text="{Binding Body}" TextWrapping="Wrap"
+                             Foreground="{Binding BodyBrush}"
+                             IsVisible="{Binding HasBody}"/>
+                  <ItemsControl ItemsSource="{Binding Parts}" IsVisible="{Binding HasParts}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel Spacing="4"/>
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.DataTemplates>
+                      <DataTemplate DataType="local:ChatTextPart">
+                        <TextBlock Text="{Binding Body}" TextWrapping="Wrap"
+                                   Foreground="{Binding BodyBrush}"/>
+                      </DataTemplate>
+
+                      <!--
+                        思考块默认折叠：思考很长，展开会把对话挤没，而它只是回答的来路，不是回答。
+                        折叠头保留在气泡内，所以"模型想过"这件事仍然看得见；底色比气泡更深，
+                        折起来时它就是一条可以点开的横条。
+                      -->
+                      <DataTemplate DataType="local:ChatReasoningPart">
+                        <Expander Classes="chatFold" Header="思考" IsExpanded="False">
+                          <TextBlock Text="{Binding Body}" TextWrapping="Wrap" FontSize="11"
+                                     Margin="0,2,0,0"
+                                     Foreground="{Binding BodyBrush}"/>
+                        </Expander>
+                      </DataTemplate>
+
+                      <!--
+                        一次工具调用：工具名 + 参数 + 结果。调用与结果合成一行，是因为它们本来就是
+                        一回事：没有结果的调用就是"还在跑"，拆成两行反而看不出配对关系。
+                        默认折叠，所以折叠头必须自己说清状态（调用中／已返回／有失败），
+                        否则用户要点开才知道刚才发生了什么。
+                      -->
+                      <DataTemplate DataType="local:ChatToolCallPart">
+                        <Expander Classes="chatFold" IsExpanded="False">
+                          <Expander.Header>
+                            <DockPanel>
+                              <TextBlock DockPanel.Dock="Right" Text="{Binding StatusText}"
+                                         Foreground="{Binding StatusBrush}" FontSize="10"
+                                         Margin="6,0,0,0"/>
+                              <TextBlock Text="{Binding Header}" FontSize="11"
+                                         Foreground="{StaticResource ChatMutedBrush}"/>
+                            </DockPanel>
+                          </Expander.Header>
+                          <ItemsControl ItemsSource="{Binding Calls}" Margin="0,2,0,0">
+                            <ItemsControl.ItemTemplate>
+                              <DataTemplate DataType="local:ChatToolCall">
+                                <StackPanel Spacing="1" Margin="0,0,0,4">
+                                  <DockPanel>
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding StatusText}"
+                                               Foreground="{Binding StatusBrush}" FontSize="10"/>
+                                    <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{StaticResource ChatAnswerBrush}"
+                                               TextTrimming="CharacterEllipsis"/>
+                                  </DockPanel>
+                                  <TextBlock Text="{Binding ArgumentsText}" FontSize="11"
+                                             TextWrapping="Wrap"
+                                             Foreground="{StaticResource ChatMutedBrush}"
+                                             FontFamily="{StaticResource ChatMonoFont}"/>
+                                  <!-- 结果只在真的到了之后才占一行，未返回的调用就是这样一眼可辨的。 -->
+                                  <TextBlock Text="{Binding ResultText}" IsVisible="{Binding HasResult}"
+                                             FontSize="11" TextWrapping="Wrap"
+                                             Foreground="{Binding ResultBrush}"
+                                             FontFamily="{StaticResource ChatMonoFont}"/>
+                                </StackPanel>
+                              </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                          </ItemsControl>
+                        </Expander>
+                      </DataTemplate>
+                    </ItemsControl.DataTemplates>
+                  </ItemsControl>
                   <ItemsControl ItemsSource="{Binding Attachments}" IsVisible="{Binding HasAttachments}">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate DataType="local:AgentAttachment">
                         <!--
                           附件行只说明"引用了什么"：气泡背景已经区分了角色，这里再挑颜色只会让一条
-                          消息里的两段文字看起来属于不同的人。
+                          消息里的两段文字看起来属于不同的人。颜色仍然跟着消息走，而不是留给主题——
+                          在深色气泡里继承到的黑字和看不见没有区别。
                         -->
-                        <TextBlock Text="{Binding TranscriptText}" FontSize="11" Opacity="0.85"
+                        <TextBlock Text="{Binding TranscriptText}" FontSize="11"
+                                   Foreground="{Binding $parent[ItemsControl].DataContext.BodyBrush}"
                                    TextWrapping="Wrap"/>
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>

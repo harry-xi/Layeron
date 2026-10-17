@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using Layeron.Plugin.Abstractions;
 using Layeron.Plugins.Agent.Chat;
 using Layeron.Scripting.Abstractions;
@@ -153,14 +155,15 @@ internal sealed class ChatSession(AgentOptions options, IPluginServices services
     }
 
     /// <summary>
-    /// Turns one framework update into panel deltas. Reasoning travels as its own kind so the panel can
-    /// show it apart from the answer instead of concatenating the two into one confusing paragraph.
+    /// Turns one framework update into panel deltas. Reasoning, prose and tool traffic each travel as their
+    /// own kind so the panel can render them apart instead of concatenating everything into one paragraph.
     /// </summary>
-    private static IEnumerable<ChatDelta> Translate(AgentResponseUpdate update,IPluginLog logger)
+    internal static IEnumerable<ChatDelta> Translate(AgentResponseUpdate update, IPluginLog logger)
     {
         foreach (var content in update.Contents)
         {
-            logger.Debug("Agent update: {ContentType} {Content}", content.GetType().Name, content.RawRepresentation);
+            logger.Debug("Agent update: {Content}", Describe(content));
+
             switch (content)
             {
                 case TextReasoningContent { Text.Length: > 0 } reasoning:
@@ -170,7 +173,66 @@ internal sealed class ChatSession(AgentOptions options, IPluginServices services
                 case TextContent { Text.Length: > 0 } text:
                     yield return new ChatTextDelta(text.Text);
                     break;
+
+                // The call and its result are two events, not one, because they happen at different moments: a
+                // call that has no result yet is a call still running, which the panel can show and a single
+                // combined event could not. The id is the only thing that joins the two.
+                case FunctionCallContent call:
+                    yield return new ChatToolCallDelta(call.CallId, call.Name, DescribeArguments(call.Arguments));
+                    break;
+
+                case FunctionResultContent result:
+                    yield return new ChatToolResultDelta(
+                        result.CallId,
+                        DescribeResult(result.Result),
+                        result.Exception is not null);
+                    break;
             }
         }
     }
+
+    /// <summary>
+    /// One content, as a line worth logging: an <see cref="AIContent"/>'s type name says nothing about what
+    /// the model asked for, which is the one thing a tool call needs to be diagnosable.
+    /// </summary>
+    private static string Describe(AIContent content) => content switch
+    {
+        FunctionCallContent call => $"{nameof(FunctionCallContent)} {call.Name}({DescribeArguments(call.Arguments)})",
+        FunctionResultContent result => $"{nameof(FunctionResultContent)} {DescribeResult(result.Result)}",
+        _ => content.GetType().Name
+    };
+
+    /// <summary>
+    /// Renders a call's arguments to text. Values are whatever the provider decoded - a
+    /// <see cref="JsonElement"/> for an OpenAI-shaped call, a CLR value for a locally built one - so raw JSON
+    /// is preferred where there is one and anything else is rendered as-is.
+    /// </summary>
+    private static string DescribeArguments(IDictionary<string, object?>? arguments)
+    {
+        if (arguments is null || arguments.Count == 0)
+            return "";
+
+        return string.Join(", ", arguments.Select(pair => $"{pair.Key}={DescribeValue(pair.Value)}"));
+    }
+
+    private static string DescribeResult(object? result) => result switch
+    {
+        null => "",
+        string text => Truncate(text),
+        _ => DescribeValue(result)
+    };
+
+    private static string DescribeValue(object? value) => value switch
+    {
+        null => "null",
+        JsonElement element => Truncate(element.GetRawText()),
+        IFormattable formattable => Truncate(formattable.ToString(null, CultureInfo.InvariantCulture)),
+        _ => Truncate(value.ToString() ?? "")
+    };
+
+    /// <summary>
+    /// Both the transcript row and the log line carry argument and result text, and neither should be able to
+    /// grow a chat bubble to the size of a file because a tool returned one.
+    /// </summary>
+    private static string Truncate(string text) => text.Length <= 400 ? text : text[..400] + "…";
 }
