@@ -8,20 +8,6 @@ using Python.Runtime;
 
 namespace Layeron.Plugins.PythonRunner;
 
-/// <summary>Reported by a running script to say what it is doing.</summary>
-/// <param name="Stream">"stdout" or "stderr".</param>
-/// <param name="Text">One line, without its newline.</param>
-public sealed record PythonOutput(string Stream, string Text)
-{
-    public const string StandardOutput = "stdout";
-    public const string StandardError = "stderr";
-}
-
-/// <summary>
-/// One installed package, as pip reports it. Public because the settings page's list binds to it from XAML.
-/// </summary>
-public sealed record PythonPackage(string Name, string Version);
-
 /// <summary>
 /// The embedded interpreter: deploying it, keeping it importable, running pip against it, and running code
 /// in one session.
@@ -115,8 +101,11 @@ internal sealed class PythonSession : IDisposable
     /// <summary>True once the runtime is up and a session exists.</summary>
     public bool IsReady { get; private set; }
 
-    /// <summary>Interpreter version, once known.</summary>
-    public string? Version { get; private set; }
+    /// <summary>
+    /// Interpreter version, once known. Set by the engine when the runtime starts, and read by the
+    /// environment page and by the published service.
+    /// </summary>
+    public string? Version { get; internal set; }
 
     /// <summary>
     /// The folder the editor's files live in, put first on <c>sys.path</c> so a script can import a helper
