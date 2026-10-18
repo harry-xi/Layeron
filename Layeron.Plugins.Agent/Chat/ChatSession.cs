@@ -2,13 +2,12 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Layeron.Plugin.Abstractions;
-using Layeron.Plugins.Agent.Chat;
 using Layeron.Scripting.Abstractions;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using OpenAI.Chat;
 
-namespace Layeron.Plugins.Agent;
+namespace Layeron.Plugins.Agent.Chat;
 
 /// <summary>
 /// The real conversation backend: a Microsoft Agent Framework agent over an OpenAI-compatible endpoint.

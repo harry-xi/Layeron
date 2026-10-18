@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
+using System.Net.Mime;
 using System.Text;
 using System.Windows.Input;
 using Layeron.Plugin.Abstractions;
+using Layeron.Plugins.Agent.Chat;
 using Layeron.Scripting.Abstractions;
 using ReactiveUI;
 
@@ -210,7 +212,7 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
     /// Drains one turn's deltas into the transcript.
     /// <para>
     /// The transcript is a log and a reply arrives in pieces, so a bubble has to be appended on the first
-    /// piece and then grown in place - which is why <see cref="ChatMessage.Text"/> is a notifying property
+    /// piece and then grown in place - which is why <see cref="MediaTypeNames.Text"/> is a notifying property
     /// rather than an init-only one. A tool call is a piece like any other: it arrives after the bubble it
     /// belongs to may already exist, and before the text that answers the question it was made to answer.
     /// </para>

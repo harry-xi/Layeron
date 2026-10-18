@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Layeron.Plugins.Agent;
+using Layeron.Plugins.Agent.Chat;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 

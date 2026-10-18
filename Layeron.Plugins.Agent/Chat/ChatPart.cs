@@ -24,12 +24,34 @@ namespace Layeron.Plugins.Agent;
 public abstract class ChatPart : ReactiveObject
 {
     private string _body = "";
+    private bool _isExpanded;
 
     /// <summary>
     /// Caption for the part. Only the foldable kinds - reasoning and tool calls - carry one, because the
     /// caption is what a collapsed fold shows.
+    /// <para>
+    /// A caption may depend on <see cref="IsExpanded"/>: what it summarises is visible once the fold is open,
+    /// and a summary of something already on screen is just noise.
+    /// </para>
     /// </summary>
     public virtual string Header => "";
+
+    /// <summary>
+    /// Whether the fold is open, and therefore whether its content is on screen.
+    /// <para>
+    /// The state lives here rather than in the control because the caption is derived from it: a fold that
+    /// drew its caption itself would still be describing something the user can already read.
+    /// </para>
+    /// </summary>
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _isExpanded, value);
+            this.RaisePropertyChanged(nameof(Header));
+        }
+    }
 
     /// <summary>The part's text, for the kinds that are nothing but text.</summary>
     public virtual string Body => _body;
@@ -42,6 +64,21 @@ public abstract class ChatPart : ReactiveObject
     {
         _body += text;
         this.RaisePropertyChanged(nameof(Body));
+
+        // The caption of a part that summarises its own text has to move with it, or a collapsed fold would
+        // keep describing the first few characters it ever saw.
+        this.RaisePropertyChanged(nameof(Header));
+    }
+
+    /// <summary>
+    /// The first few characters of a piece of text, for use as a caption. Whitespace is collapsed first so a
+    /// fold caption stays one short line, and the ellipsis is only added when something was really cut.
+    /// </summary>
+    protected static string Summarize(string text, int length = 5)
+    {
+        var flat = string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+        return flat.Length <= length ? flat : flat[..length] + "…";
     }
 }
 
@@ -51,10 +88,20 @@ public sealed class ChatTextPart : ChatPart;
 /// <summary>
 /// The model's reasoning, where the provider exposes it. Its own part because it is not the answer - and
 /// because dropping it is worse: a model that returns only reasoning would otherwise look like a failure.
+/// <para>
+/// The fold is collapsed by default and reasoning is long, so the caption carries the start of it: enough to
+/// tell two trains of thought apart without opening either.
+/// </para>
 /// </summary>
 public sealed class ChatReasoningPart : ChatPart
 {
-    public override string Header => "思考";
+    /// <summary>
+    /// Just the label while the fold is open: the reasoning itself is on screen, so summarising it would be
+    /// repeating what the user is looking at.
+    /// </summary>
+    public override string Header => Body.Length == 0 || IsExpanded
+        ? "思考"
+        : $"思考 · {Summarize(Body)}";
 
     public override IBrush BodyBrush => ChatPalette.Muted;
 }
@@ -78,10 +125,34 @@ public sealed class ChatReasoningPart : ChatPart
 /// </summary>
 public sealed class ChatToolCallPart : ChatPart
 {
-    /// <summary>The calls in this run, in the order the model asked for them.</summary>
+    /// <summary>
+    /// The calls in this run, in the order the model asked for them.
+    /// </summary>
     public ObservableCollection<ChatToolCall> Calls { get; } = [];
 
-    public override string Header => Calls.Count > 1 ? $"调用工具 ×{Calls.Count}" : "调用工具";
+    /// <summary>
+    /// The caption, which names the tools: a collapsed fold that only said "调用工具" would leave the user
+    /// opening it to find out what was called. Several calls are named together up to the point where the
+    /// caption stops being readable, then counted instead.
+    /// <para>
+    /// While the fold is open the names are dropped: every call below is already headed by its own tool name.
+    /// </para>
+    /// </summary>
+    public override string Header
+    {
+        get
+        {
+            if (Calls.Count == 0 || IsExpanded)
+                return "调用工具";
+
+            var names = string.Join(" + ", Calls.Select(call => call.Name));
+
+            return Calls.Count > NamedCallLimit ? $"调用工具 ×{Calls.Count}" : $"调用工具 · {names}";
+        }
+    }
+
+    /// <summary>How many tool names a caption holds before it says how many there were instead.</summary>
+    private const int NamedCallLimit = 3;
 
     /// <summary>State of the whole run: any call still running, any call that failed, or all done.</summary>
     public string StatusText => Calls.Any(call => !call.Completed)

@@ -16,6 +16,8 @@
     <SolidColorBrush x:Key="ChatFailedBrush" Color="#E08A8A"/>
     <SolidColorBrush x:Key="ChatRaisedBrush" Color="#1C1C1C"/>
     <FontFamily x:Key="ChatMonoFont">Cascadia Code, Consolas, Menlo, Monospace</FontFamily>
+    <!-- 气泡最大宽度按面板宽度算，见 BubbleWidthConverter。 -->
+    <local:BubbleWidthConverter x:Key="BubbleWidth"/>
   </UserControl.Resources>
 
   <UserControl.Styles>
@@ -43,22 +45,16 @@
 
   <DockPanel>
     <!--
-      工具栏。发送与取消都放在这里而不是塞进输入区：输入区只回答"写什么"，
-      这两个动作改变的是整轮对话的状态。
+      顶部工具栏只留对话级操作（取消、清空）：发送按钮已经下移到输入框旁边，和常见聊天软件一致，
+      这两个动作改变的是整轮对话的状态，所以留在上面而不是挤在发送旁边。
     -->
     <Border DockPanel.Dock="Top" Background="LightGray" Padding="6,4">
       <StackPanel Orientation="Horizontal" Spacing="6">
-        <Button Content="发送" Command="{Binding SendCommand}" IsEnabled="{Binding CanSend}"/>
         <Button Content="取消" Command="{Binding CancelCommand}" IsEnabled="{Binding IsBusy}"/>
         <Button Content="清空对话" Command="{Binding ClearCommand}" IsEnabled="{Binding HasMessages}"/>
         <ProgressBar Width="80" Height="4" VerticalAlignment="Center"
                      IsIndeterminate="True" IsVisible="{Binding IsBusy}"/>
       </StackPanel>
-    </Border>
-
-    <Border DockPanel.Dock="Bottom" Padding="6,3" Background="LightGray">
-      <TextBlock Text="{Binding StatusText}" FontSize="11" Opacity="0.7"
-                 TextTrimming="CharacterEllipsis"/>
     </Border>
 
     <Border DockPanel.Dock="Bottom" Padding="6">
@@ -98,6 +94,17 @@
                  PlaceholderText="输入消息后点发送"/>
 
         <!--
+          发送按钮在输入框正下方、右对齐：写完就往下按，是聊天软件的常规动线。
+          状态文字与它同一行左端，因为"现在在干什么"正是按下按钮前后要看的东西。
+        -->
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+          <TextBlock Grid.Column="0" Text="{Binding StatusText}" FontSize="11" Opacity="0.7"
+                     VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+          <Button Grid.Column="1" Content="发送" MinWidth="72"
+                  Command="{Binding SendCommand}" IsEnabled="{Binding CanSend}"/>
+        </Grid>
+
+        <!--
           添加附件只有两条不依赖插件类型的入口：从磁盘选，或手填路径。具体路径怎么来
           （拖放、历史记录、某种外部对象）由调用方决定，面板只负责把它变成一条附件。
         -->
@@ -122,7 +129,12 @@
             <StackPanel HorizontalAlignment="{Binding BubbleAlignment}" Margin="0,0,0,10">
               <TextBlock Text="{Binding Header}" FontSize="10" Opacity="0.55" Margin="4,0,4,2"
                          HorizontalAlignment="{Binding BubbleAlignment}"/>
-              <Border Background="{Binding BubbleBrush}" CornerRadius="10" Padding="10,6" MaxWidth="320">
+              <!--
+                宽度按面板宽度的 80% 走：窗口拉宽时气泡跟着变宽，但仍留出一条明显的空白，
+                左右对齐的气泡才仍然分得清是谁说的。
+              -->
+              <Border Background="{Binding BubbleBrush}" CornerRadius="10" Padding="10,6"
+                      MaxWidth="{Binding $parent[ScrollViewer].Bounds.Width, Converter={StaticResource BubbleWidth}}">
                 <StackPanel Spacing="4">
                   <!--
                     用户的正文与 Agent 的回复只会有其中一种，所以这里是二选一而不是并列：
@@ -146,11 +158,12 @@
 
                       <!--
                         思考块默认折叠：思考很长，展开会把对话挤没，而它只是回答的来路，不是回答。
-                        折叠头保留在气泡内，所以"模型想过"这件事仍然看得见；底色比气泡更深，
+                        折叠头带上前五个字的摘要，所以两条思路不用展开也分得清；底色比气泡更深，
                         折起来时它就是一条可以点开的横条。
                       -->
                       <DataTemplate DataType="local:ChatReasoningPart">
-                        <Expander Classes="chatFold" Header="思考" IsExpanded="False">
+                        <Expander Classes="chatFold" Header="{Binding Header}"
+                                  IsExpanded="{Binding IsExpanded, Mode=TwoWay}">
                           <TextBlock Text="{Binding Body}" TextWrapping="Wrap" FontSize="11"
                                      Margin="0,2,0,0"
                                      Foreground="{Binding BodyBrush}"/>
@@ -164,7 +177,7 @@
                         否则用户要点开才知道刚才发生了什么。
                       -->
                       <DataTemplate DataType="local:ChatToolCallPart">
-                        <Expander Classes="chatFold" IsExpanded="False">
+                        <Expander Classes="chatFold" IsExpanded="{Binding IsExpanded, Mode=TwoWay}">
                           <Expander.Header>
                             <DockPanel>
                               <TextBlock DockPanel.Dock="Right" Text="{Binding StatusText}"
