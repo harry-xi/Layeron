@@ -224,21 +224,37 @@ internal sealed partial class PythonSettingsView : UserControl, IDisposable, ISe
         }
     }
 
-    private void OnBootstrapPip() => _ = RunAsync(
-        ct => _engine!.BootstrapPipAsync(Progress(), ct),
-        "初始化 pip");
+    // The input text and the progress sink are read on the UI thread here, before the work is handed to
+    // Task.Run. Reading the package box inside the lambda instead would touch a UI control from the worker
+    // thread, which Avalonia refuses with "the calling thread cannot access this object because a different
+    // thread owns it" - thrown before pip is ever reached, so the install silently did nothing.
+    private void OnBootstrapPip()
+    {
+        var progress = Progress();
+        _ = RunAsync(ct => _engine!.BootstrapPipAsync(progress, ct), "初始化 pip");
+    }
 
-    private void OnUpgradePip() => _ = RunAsync(
-        ct => _engine!.UpgradePipAsync(Progress(), ct),
-        "升级 pip");
+    private void OnUpgradePip()
+    {
+        var progress = Progress();
+        _ = RunAsync(ct => _engine!.UpgradePipAsync(progress, ct), "升级 pip");
+    }
 
-    private void OnInstall() => _ = RunAsync(
-        ct => _engine!.RunPipAsync(["install", .. Specs()], Progress(), ct),
-        "安装");
+    private void OnInstall()
+    {
+        var arguments = new List<string> { "install" };
+        arguments.AddRange(Specs());
+        var progress = Progress();
+        _ = RunAsync(ct => _engine!.RunPipAsync(arguments, progress, ct), "安装");
+    }
 
-    private void OnUninstall() => _ = RunAsync(
-        ct => _engine!.RunPipAsync(["uninstall", "-y", .. Specs()], Progress(), ct),
-        "卸载");
+    private void OnUninstall()
+    {
+        var arguments = new List<string> { "uninstall", "-y" };
+        arguments.AddRange(Specs());
+        var progress = Progress();
+        _ = RunAsync(ct => _engine!.RunPipAsync(arguments, progress, ct), "卸载");
+    }
 
     private void OnRefresh()
     {
