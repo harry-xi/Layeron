@@ -25,7 +25,7 @@ namespace Layeron.Plugins.Agent.Chat;
 /// This is the only type in the plugin that references the framework, and it never mentions Avalonia.
 /// </para>
 /// </summary>
-internal sealed class ChatSession(AgentOptions options, IPluginServices services, IScriptHostService seciptHost) : IChatSession
+internal sealed class ChatSession(IPluginContext context,AgentOptions options, IPluginServices services, IScriptHostService seciptHost) : IChatSession
 {
     /// <summary>
     /// Cancelled when the session is disposed, so a turn still in flight when the panel closes is torn
@@ -118,7 +118,7 @@ internal sealed class ChatSession(AgentOptions options, IPluginServices services
             Instructions = options.SystemPrompt,
             Temperature = (float)options.Temperature,
             MaxOutputTokens = (int)options.MaxTokens,
-            Tools = new ChatTools(services,seciptHost).BuildTools()
+            Tools = new ChatTools(context,services,seciptHost).BuildTools(),
         };
 
         var agentOptions = new ChatClientAgentOptions
@@ -127,6 +127,7 @@ internal sealed class ChatSession(AgentOptions options, IPluginServices services
             Name = "Layeron Agent",
             ChatOptions = chatOptions,
             ChatHistoryProvider = new InMemoryChatHistoryProvider(),
+            AIContextProviders = [ChatSkills.BuildInSkills],
         };
 
         _log.Info("Agent 已连接 {Endpoint}，模型 {Model}。", options.Endpoint, options.Model);

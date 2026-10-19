@@ -50,6 +50,7 @@ public sealed class AgentPlugin : IPlugin
             // host's only UI-facing service. Absent it, the panel still works with path and text
             // attachments instead of failing to construct.
             ContentFactory = () => new AgentChatView(
+                context,
                 services,
                 services.GetService<Scripting.Abstractions.IScriptHostService>(),
                 options)

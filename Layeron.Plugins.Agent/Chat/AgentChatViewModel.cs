@@ -51,11 +51,15 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
     private string _externalPath = "";
     private string _statusText = "就绪";
 
+    private IPluginContext _context;
+
     public AgentChatViewModel(
+        IPluginContext context,
         IPluginServices services,
         IScriptHostService? host,
         AgentOptions options)
     {
+        _context = context;
         _services = services;
         _host = host;
         _options = options;
@@ -227,7 +231,7 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
         // Resolved once per conversation, not per turn: rebuilding the agent mid-conversation would take
         // the history with it. A turn that fails therefore keeps the session it failed on, and that
         // session is let go the next time the transcript is cleared.
-        var session = _session ??= new ChatSession(_options, _services, _host);
+        var session = _session ??= new ChatSession(_context, _options, _services, _host);
 
         var answer = new StringBuilder();
         var reasoning = new StringBuilder();

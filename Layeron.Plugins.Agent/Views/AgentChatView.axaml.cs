@@ -13,9 +13,9 @@ public sealed partial class AgentChatView : UserControl, IDisposable
 {
     private readonly AgentChatViewModel? _viewModel;
 
-    public AgentChatView(IPluginServices services, IScriptHostService? host, AgentOptions options)
+    public AgentChatView(IPluginContext context, IPluginServices services, IScriptHostService? host, AgentOptions options)
     {
-        _viewModel = new AgentChatViewModel(services, host, options);
+        _viewModel = new AgentChatViewModel(context, services, host, options);
         DataContext = _viewModel;
         InitializeComponent();
 
