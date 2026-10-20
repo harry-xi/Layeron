@@ -71,9 +71,16 @@ public sealed class ChatMessage : ReactiveObject
 
     public bool HasAttachments => Attachments.Count > 0;
 
+    /// <summary>
+    /// True for a message the user sent into a turn that was already running. It is still the user's
+    /// voice, but it is not a new turn, and the transcript has to say which one it was.
+    /// </summary>
+    public bool IsGuidance { get; init; }
+
     /// <summary>Caption above the body, e.g. "你 · 14:03".</summary>
     public string Header => Role switch
     {
+        ChatRole.User when IsGuidance => $"你（指导） · {Timestamp:HH:mm}",
         ChatRole.User => $"你 · {Timestamp:HH:mm}",
         ChatRole.Assistant => $"Agent · {Timestamp:HH:mm}",
         _ => Timestamp.ToString("HH:mm")
@@ -81,6 +88,7 @@ public sealed class ChatMessage : ReactiveObject
 
     public IBrush BubbleBrush => Role switch
     {
+        ChatRole.User when IsGuidance => ChatPalette.GuidanceBubble,
         ChatRole.User => ChatPalette.UserBubble,
         ChatRole.Assistant => ChatPalette.Bubble,
         _ => Brushes.Transparent
@@ -109,16 +117,38 @@ public sealed class ChatMessage : ReactiveObject
     /// Records that the reply asked for a tool. Calls that arrive together share one part, which is how the
     /// model produced them: asking for several tools in one step is one step.
     /// </summary>
-    public ChatToolCall AddToolCall(string callId, string name, string arguments)
-    {
-        if (Parts.Count == 0 || Parts[^1] is not ChatToolCallPart part)
-        {
-            part = new ChatToolCallPart();
-            Parts.Add(part);
-            this.RaisePropertyChanged(nameof(HasParts));
-        }
+    public ChatToolCall AddToolCall(string callId, string name, string arguments) =>
+        EnsureToolCallPart().Add(callId, name, arguments);
 
-        return part.Add(callId, name, arguments);
+    /// <summary>
+    /// Records a call that is waiting for the user, and opens the fold that holds it: a confirmation the
+    /// user cannot see is the same as no confirmation at all.
+    /// </summary>
+    public ChatToolCall AddToolApproval(
+        string callId,
+        string name,
+        string arguments,
+        Action<bool> decide)
+    {
+        var part = EnsureToolCallPart();
+        var call = part.Add(callId, name, arguments);
+
+        call.RequireApproval(decide);
+        part.IsExpanded = true;
+
+        return call;
+    }
+
+    private ChatToolCallPart EnsureToolCallPart()
+    {
+        if (Parts.Count > 0 && Parts[^1] is ChatToolCallPart trailing)
+            return trailing;
+
+        var part = new ChatToolCallPart();
+        Parts.Add(part);
+        this.RaisePropertyChanged(nameof(HasParts));
+
+        return part;
     }
 
     /// <summary>

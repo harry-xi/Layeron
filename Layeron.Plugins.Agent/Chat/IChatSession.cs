@@ -1,4 +1,6 @@
-using Layeron.Plugin.Abstractions;
+using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
+using AIChatRole = Microsoft.Extensions.AI.ChatRole;
 
 namespace Layeron.Plugins.Agent;
 
@@ -11,14 +13,14 @@ namespace Layeron.Plugins.Agent;
 /// load context for the life of the process.
 /// </para>
 /// <para>
-/// The reply is an event stream rather than a string, and this is the whole reason the contract is worth
-/// more than one method: it already carries prose, reasoning, and the tool calls with their results, and
-/// it is where the user's approval of a call will have to go back. A <c>Task&lt;string&gt;</c> would have
-/// had to be replaced to say any of that.
+/// The reply is a stream of the framework's own updates rather than a string or a panel-specific event
+/// type. Those updates already carry prose, reasoning, tool calls and their results - and the approval
+/// requests a human-in-the-loop tool call produces - so the panel can render exactly what happened, in the
+/// order it happened, without a second vocabulary to maintain.
 /// </para>
 /// <para>
-/// Nothing here mentions a provider, a model id or an HTTP shape - an OpenAI-compatible client, a local
-/// runtime and a scripted fake all implement this one method, and the panel cannot tell them apart.
+/// Nothing here mentions a provider or an HTTP shape - an OpenAI-compatible client, a local runtime and a
+/// scripted fake all implement these methods, and the panel cannot tell them apart.
 /// </para>
 /// </summary>
 public interface IChatSession : IAsyncDisposable
@@ -31,7 +33,34 @@ public interface IChatSession : IAsyncDisposable
     /// and a provider call that ignores cancellation keeps a socket (and the plugin's load context) alive.
     /// </para>
     /// </summary>
-    IAsyncEnumerable<ChatDelta> StreamAsync(ChatTurn turn, CancellationToken ct);
+    IAsyncEnumerable<AgentResponseUpdate> StreamAsync(ChatTurn turn, CancellationToken ct);
+
+    /// <summary>
+    /// Continues the conversation after the user answered one or more approval requests.
+    /// <para>
+    /// The responses must belong to requests surfaced by the same session: the agent binds them to the
+    /// requests it recorded, and an unbound response is ignored rather than allowed to approve a call
+    /// nobody was asked about.
+    /// </para>
+    /// </summary>
+    IAsyncEnumerable<AgentResponseUpdate> StreamApprovalsAsync(
+        IReadOnlyList<ToolApprovalResponseContent> responses,
+        CancellationToken ct);
+
+    /// <summary>
+    /// Sends guidance into a run that is already in progress.
+    /// <para>
+    /// The message is queued for the agent's next service call rather than starting a new turn: that is
+    /// what lets the user correct a direction, add a constraint or stop a bad tool call while the model is
+    /// working. It must be called while a run is active; the queue belongs to the session, so a guidance
+    /// sent during an approval wait is picked up when the run resumes.
+    /// </para>
+    /// <para>
+    /// A turn is accepted here too, not just text, so an attachment queued while the agent is working is
+    /// described to the model by the same rules as an ordinary turn.
+    /// </para>
+    /// </summary>
+    Task GuideAsync(ChatTurn turn, CancellationToken ct);
 }
 
 /// <summary>
@@ -40,7 +69,7 @@ public interface IChatSession : IAsyncDisposable
 /// </summary>
 internal sealed class EchoChatSession : IChatSession
 {
-    public async IAsyncEnumerable<ChatDelta> StreamAsync(
+    public async IAsyncEnumerable<AgentResponseUpdate> StreamAsync(
         ChatTurn turn,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
@@ -55,10 +84,28 @@ internal sealed class EchoChatSession : IChatSession
         foreach (var attachment in turn.Attachments)
             parts.Add($"（{attachment.DisplayText}）");
 
-        yield return new ChatTextDelta(parts.Count == 0
-            ? "（空消息）"
-            : $"已收到：{string.Join(" ", parts)}");
+        yield return new AgentResponseUpdate
+        {
+            Contents =
+            [
+                new TextContent(parts.Count == 0
+                    ? "（空消息）"
+                    : $"已收到：{string.Join(" ", parts)}")
+            ],
+            Role = AIChatRole.Assistant
+        };
     }
+
+    public async IAsyncEnumerable<AgentResponseUpdate> StreamApprovalsAsync(
+        IReadOnlyList<ToolApprovalResponseContent> responses,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        // The echo backend has no tools, so it can never have produced a request to answer.
+        await Task.CompletedTask.ConfigureAwait(false);
+        yield break;
+    }
+
+    public Task GuideAsync(ChatTurn turn, CancellationToken ct) => Task.CompletedTask;
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

@@ -6,7 +6,7 @@ namespace Layeron.Plugins.Agent;
 /// A turn is an object rather than a parameter list because it is what a backend actually receives, and
 /// what belongs to a turn will keep growing - an image, a region of interest, the result of a tool this
 /// plugin called - without every one of those becoming another parameter on
-/// <see cref="IChatSession.StreamAsync"/>.
+/// <see cref="IChatSession.StreamAsync"/> or <see cref="IChatSession.GuideAsync"/>.
 /// </para>
 /// </summary>
 public sealed record ChatTurn

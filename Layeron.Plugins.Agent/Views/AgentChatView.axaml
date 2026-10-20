@@ -91,16 +91,17 @@
                  AcceptsReturn="True"
                  TextWrapping="Wrap"
                  MinHeight="56" MaxHeight="140"
-                 PlaceholderText="输入消息后点发送"/>
+                 PlaceholderText="{Binding InputHint}"/>
 
         <!--
           发送按钮在输入框正下方、右对齐：写完就往下按，是聊天软件的常规动线。
+          AI 工作时同一个按钮变成「指导」，把输入送进正在运行的一轮，而不是另起一轮。
           状态文字与它同一行左端，因为"现在在干什么"正是按下按钮前后要看的东西。
         -->
         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
           <TextBlock Grid.Column="0" Text="{Binding StatusText}" FontSize="11" Opacity="0.7"
                      VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-          <Button Grid.Column="1" Content="发送" MinWidth="72"
+          <Button Grid.Column="1" Content="{Binding SendLabel}" MinWidth="72"
                   Command="{Binding SendCommand}" IsEnabled="{Binding CanSend}"/>
         </Grid>
 
@@ -202,6 +203,19 @@
                                              TextWrapping="Wrap"
                                              Foreground="{StaticResource ChatMutedBrush}"
                                              FontFamily="{StaticResource ChatMonoFont}"/>
+                                  <!--
+                                    需要确认的调用在这里给出决定：确认按钮就在参数下方，用户不必先看懂
+                                    工具名再去找另一个地方回答。决定之后这两个按钮消失，状态行改说结果。
+                                  -->
+                                  <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,0,0"
+                                              IsVisible="{Binding NeedsApproval}">
+                                    <Button Content="允许" Command="{Binding ApproveCommand}"
+                                            FontSize="11" Padding="8,1"
+                                            ToolTip.Tip="批准后执行这个工具"/>
+                                    <Button Content="拒绝" Command="{Binding RejectCommand}"
+                                            FontSize="11" Padding="8,1"
+                                            ToolTip.Tip="拒绝后不会执行这个工具"/>
+                                  </StackPanel>
                                   <!-- 结果只在真的到了之后才占一行，未返回的调用就是这样一眼可辨的。 -->
                                   <TextBlock Text="{Binding ResultText}" IsVisible="{Binding HasResult}"
                                              FontSize="11" TextWrapping="Wrap"

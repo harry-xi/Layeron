@@ -12,133 +12,21 @@ using ChatRole = Layeron.Plugins.Agent.ChatRole;
 namespace Layeron.Plugin.Test;
 
 /// <summary>
-/// Covers the agent plugin's chat model: how framework content becomes deltas, and how deltas become the
-/// ordered parts a reply is drawn from.
+/// Covers the chat model the panel draws: the ordered parts a reply becomes, the folds that keep it
+/// readable, and the approval a tool call can wait on.
 /// <para>
-/// Both halves are deliberately free of UI, so they can be driven here without an Avalonia stack. What they
-/// decide is visible to the user, though: a tool call that never becomes a <see cref="ChatToolCallDelta"/> is
-/// a call nobody sees, one that becomes <see cref="ChatTextDelta"/> is shown as something the model said, and
-/// parts that are grouped by kind instead of kept in order show a reply in an order it never happened in.
+/// The model is free of UI controls, so it can be driven here without an Avalonia stack. What it decides
+/// is visible to the user, though: a tool call that never becomes a <see cref="ChatToolCallPart"/> is a
+/// call nobody sees, parts grouped by kind instead of kept in order show a reply in an order it never
+/// happened in, and a call waiting for confirmation that did not say so would look like a call already
+/// running.
 /// </para>
 /// </summary>
 [TestClass]
-public sealed class ChatSessionTranslationTests
+public sealed class ChatModelTests
 {
-    private readonly CollectingLog _log = new();
-
     // -----------------------------------------------------------------------
-    //  Framework content -> deltas
-    // -----------------------------------------------------------------------
-
-    /// <summary>
-    /// Prose and reasoning stay apart, because the panel renders them apart: reasoning is not the answer.
-    /// </summary>
-    [TestMethod]
-    public void TextAndReasoning_TravelAsTheirOwnKinds()
-    {
-        var update = Update(
-            new TextReasoningContent("想一想"),
-            new TextContent("答案是 42"));
-
-        var deltas = ChatSession.Translate(update, _log).ToList();
-
-        Assert.HasCount(2, deltas);
-        Assert.AreEqual("想一想", ((ChatReasoningDelta)deltas[0]).Text);
-        Assert.AreEqual("答案是 42", ((ChatTextDelta)deltas[1]).Text);
-    }
-
-    /// <summary>
-    /// A call must reach the panel with the name and the arguments it was made with - a row that says a tool
-    /// was called but not which one, or with nothing in it, is not a call the user can judge.
-    /// <para>
-    /// The arguments are the provider's own objects: an OpenAI-shaped call hands over <see cref="JsonElement"/>
-    /// values, and the raw JSON is what has to survive, because that is what the model actually sent.
-    /// </para>
-    /// </summary>
-    [TestMethod]
-    public void FunctionCall_BecomesAToolCallDeltaWithItsArguments()
-    {
-        using var arguments = JsonDocument.Parse("""{"city":"Shanghai","days":2}""");
-        var argumentsDictionary = arguments.RootElement
-            .EnumerateObject()
-            .ToDictionary(property => property.Name, property => (object?)property.Value.Clone());
-
-        var update = Update(new FunctionCallContent("call-1", "GetWeather", argumentsDictionary));
-
-        var delta = (ChatToolCallDelta)ChatSession.Translate(update, _log).Single();
-
-        Assert.AreEqual("call-1", delta.CallId, "the id is the only thing a later result can be matched against");
-        Assert.AreEqual("GetWeather", delta.Name);
-        Assert.Contains("city=\"Shanghai\"", delta.Arguments);
-        Assert.Contains("days=2", delta.Arguments);
-    }
-
-    /// <summary>
-    /// A tool that takes no arguments must still read as a call: the empty string is what the view turns into
-    /// "（无参数）", so it must not arrive as something else.
-    /// </summary>
-    [TestMethod]
-    public void FunctionCall_WithoutArguments_HasEmptyArgumentText()
-    {
-        var update = Update(new FunctionCallContent("call-1", "GetTime", arguments: null));
-
-        var delta = (ChatToolCallDelta)ChatSession.Translate(update, _log).Single();
-
-        Assert.AreEqual("", delta.Arguments);
-    }
-
-    /// <summary>
-    /// The result is a separate event carrying the same id, and a failure has to be flagged: the panel draws a
-    /// failed call differently, and a tool that threw would otherwise look like a tool that worked.
-    /// </summary>
-    [TestMethod]
-    public void FunctionResult_BecomesAToolResultDeltaCarryingFailure()
-    {
-        var ok = Update(new FunctionResultContent("call-1", "2026-10-17 21:00:00"));
-        var failed = Update(new FunctionResultContent("call-2", "Error: Function failed.")
-        {
-            Exception = new InvalidOperationException("boom")
-        });
-
-        var success = (ChatToolResultDelta)ChatSession.Translate(ok, _log).Single();
-        Assert.AreEqual("call-1", success.CallId);
-        Assert.AreEqual("2026-10-17 21:00:00", success.Result);
-        Assert.IsFalse(success.Failed);
-
-        var failure = (ChatToolResultDelta)ChatSession.Translate(failed, _log).Single();
-        Assert.AreEqual("call-2", failure.CallId);
-        Assert.IsTrue(failure.Failed);
-    }
-
-    /// <summary>
-    /// Content the panel has no use for must be dropped rather than guessed at: usage accounting arriving as a
-    /// delta would be text the agent never said.
-    /// </summary>
-    [TestMethod]
-    public void UnrelatedContent_ProducesNoDelta()
-    {
-        var update = Update(new UsageContent(), new TextContent(""));
-
-        Assert.IsEmpty(ChatSession.Translate(update, _log).ToList());
-    }
-
-    /// <summary>
-    /// The debug line is what made a tool call visible in the log at all, so it has to name the tool and what
-    /// it was asked - the content type alone was the reason the first version of this was unreadable.
-    /// </summary>
-    [TestMethod]
-    public void ToolCall_IsLoggedWithItsName()
-    {
-        var update = Update(new FunctionCallContent("call-1", "GetTime", arguments: null));
-
-        _ = ChatSession.Translate(update, _log).ToList();
-
-        Assert.IsTrue(_log.Contains("GetTime"),
-            $"the log must name the tool; it had: {string.Join(" | ", _log.Messages)}");
-    }
-
-    // -----------------------------------------------------------------------
-    //  Deltas -> ordered parts
+    //  Reply parts
     // -----------------------------------------------------------------------
 
     /// <summary>
@@ -214,7 +102,12 @@ public sealed class ChatSessionTranslationTests
 
         var part = (ChatToolCallPart)message.Parts[0];
         Assert.HasCount(2, part.Calls);
-        Assert.AreEqual("调用工具 ×2", part.Header, "the caption must say how many calls the run holds");
+        Assert.AreEqual("调用工具 · GetTime + GetCount", part.Header,
+            "a run short enough to name is named by the tools it called");
+
+        message.AddToolCall("call-3", "GetDocs", "");
+        message.AddToolCall("call-4", "GetPythonEnvironment", "");
+        Assert.AreEqual("调用工具 ×4", part.Header, "a longer run is counted instead of named");
     }
 
     /// <summary>
@@ -229,7 +122,7 @@ public sealed class ChatSessionTranslationTests
 
         var calls = new ChatToolCallPart();
 
-        Assert.AreEqual("思考", reasoning.Header);
+        Assert.AreEqual("思考 · 想一想", reasoning.Header, "a collapsed fold names the start of its content");
         Assert.AreEqual("想一想", reasoning.Body);
         Assert.AreEqual("调用工具", calls.Header, "a single call is named by the run, not by a count of one");
         Assert.AreEqual("思考", new ChatReasoningPart().Header, "the caption must not depend on the text");
@@ -307,6 +200,128 @@ public sealed class ChatSessionTranslationTests
     }
 
     // -----------------------------------------------------------------------
+    //  Approval
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// A call that needs confirmation must say so instead of looking like a call already running, and the
+    /// fold that holds it has to open: the buttons are inside a fold that is otherwise collapsed by default.
+    /// </summary>
+    [TestMethod]
+    public void AnApprovalRequest_OpensItsFoldAndOffersBothAnswers()
+    {
+        var message = new ChatMessage { Role = ChatRole.Assistant };
+        var answers = new List<bool>();
+
+        var call = message.AddToolApproval(
+            "call-1",
+            "EvalPythonCode",
+            "code=print(1)",
+            answers.Add);
+
+        Assert.AreEqual(ChatToolApprovalState.Pending, call.Approval);
+        Assert.IsTrue(call.NeedsApproval);
+        Assert.AreEqual("等待确认", call.StatusText);
+        Assert.IsNotNull(call.ApproveCommand);
+        Assert.IsNotNull(call.RejectCommand);
+
+        var part = (ChatToolCallPart)message.Parts[0];
+        Assert.IsTrue(part.IsExpanded, "a confirmation the user cannot see is the same as no confirmation");
+        Assert.AreEqual("等待确认", part.StatusText);
+    }
+
+    /// <summary>
+    /// Either answer has to reach the conversation that asked, and the row has to stop asking afterwards.
+    /// An approval is not a finished call yet; a rejection will never produce a result.
+    /// </summary>
+    [TestMethod]
+    public void AnApprovalAnswer_IsRecordedAndReported()
+    {
+        var message = new ChatMessage { Role = ChatRole.Assistant };
+        var answers = new List<bool>();
+
+        var approved = message.AddToolApproval("call-1", "EvalPythonCode", "", answers.Add);
+        approved.ApproveCommand!.Execute(null);
+
+        Assert.IsFalse(approved.NeedsApproval);
+        Assert.AreEqual(ChatToolApprovalState.Approved, approved.Approval);
+        Assert.AreEqual("已批准", approved.StatusText, "the tool still has to run before it has returned");
+        CollectionAssert.AreEqual(new[] { true }, answers);
+
+        var rejected = message.AddToolApproval("call-2", "DeleteFile", "", answers.Add);
+        rejected.RejectCommand!.Execute(null);
+
+        Assert.IsFalse(rejected.NeedsApproval);
+        Assert.AreEqual(ChatToolApprovalState.Rejected, rejected.Approval);
+        Assert.AreEqual("已拒绝", rejected.StatusText);
+        CollectionAssert.AreEqual(new[] { true, false }, answers);
+
+        var part = (ChatToolCallPart)message.Parts[0];
+        Assert.AreEqual("已拒绝", part.StatusText, "a rejection is visible without opening the fold");
+    }
+
+    /// <summary>
+    /// The approval required tools are the ones that change something outside the conversation. A read-only
+    /// lookup that started asking the user would make the panel noisy, not safer.
+    /// </summary>
+    [TestMethod]
+    public void OnlySideEffectTools_RequireApproval()
+    {
+        var tools = new ChatTools(null!, null!, null!).BuildTools();
+
+        var approvalNames = tools
+            .OfType<ApprovalRequiredAIFunction>()
+            .Select(tool => tool.Name)
+            .ToList();
+
+        CollectionAssert.Contains(approvalNames, "EvalPythonCode");
+
+        var readOnly = tools.Single(tool => tool.Name == "GetTime");
+        Assert.IsFalse(readOnly is ApprovalRequiredAIFunction, "a read-only lookup must not ask for confirmation");
+    }
+
+    /// <summary>
+    /// Message injection is what makes mid-run guidance possible, and the injector is only reachable when
+    /// the agent pipeline was built with it.
+    /// </summary>
+    [TestMethod]
+    public void MessageInjector_IsReachableFromAnAgentThatEnablesIt()
+    {
+        var client = new OpenAI.Chat.ChatClient(
+            "test",
+            new System.ClientModel.ApiKeyCredential("-"),
+            new OpenAI.OpenAIClientOptions { Endpoint = new Uri("http://localhost/v1") });
+
+        var agent = client.AsIChatClient()
+            .AsAIAgent(new ChatClientAgentOptions { EnableMessageInjection = true });
+
+        Assert.IsNotNull(agent.GetService<MessageInjectingChatClient>());
+    }
+
+    // -----------------------------------------------------------------------
+    //  Guidance
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Guidance is still the user speaking, but it belongs to a turn that is already running. The caption
+    /// has to say so, or a reader of the transcript would take it for a new request.
+    /// </summary>
+    [TestMethod]
+    public void Guidance_IsMarkedInTheTranscript()
+    {
+        var guidance = new ChatMessage
+        {
+            Role = ChatRole.User,
+            Body = "先别运行那段代码，改成分两步。",
+            IsGuidance = true
+        };
+        var ordinary = new ChatMessage { Role = ChatRole.User, Body = "你好" };
+
+        StringAssert.Contains(guidance.Header, "指导");
+        Assert.DoesNotContain("指导", ordinary.Header);
+    }
+
+    // -----------------------------------------------------------------------
     //  Folding
     // -----------------------------------------------------------------------
 
@@ -350,14 +365,44 @@ public sealed class ChatSessionTranslationTests
         var folds = markup.Split("Classes=\"" + AgentChatViewModel.FoldStyleKey + "\"").Length - 1;
 
         Assert.AreEqual(2, folds, "the reasoning fold and the tool-call fold must both carry the style");
-        Assert.Contains("IsExpanded=\"False\"", markup, "and both must start collapsed");
+        Assert.Contains("IsExpanded=\"{Binding IsExpanded, Mode=TwoWay}\"", markup,
+            "both folds must take their expanded state from the model");
+        Assert.IsFalse(new ChatReasoningPart().IsExpanded, "the reasoning fold starts collapsed");
+        Assert.IsFalse(new ChatToolCallPart().IsExpanded, "the tool-call fold starts collapsed");
         Assert.Contains("Selector=\"Expander." + AgentChatViewModel.FoldStyleKey + "\"", markup,
             "the style the folds rely on must be declared for that class");
     }
 
-    private static AgentResponseUpdate Update(params AIContent[] contents) => new()
+    // -----------------------------------------------------------------------
+    //  Formatting
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// The arguments are the provider's own objects: an OpenAI-shaped call hands over <see cref="JsonElement"/>
+    /// values, and the raw JSON is what has to survive, because that is what the model actually sent.
+    /// </summary>
+    [TestMethod]
+    public void ToolArguments_KeepTheRawJsonTheyWereSentWith()
     {
-        Contents = contents,
-        Role = Microsoft.Extensions.AI.ChatRole.Assistant
-    };
+        using var arguments = JsonDocument.Parse("""{"city":"Shanghai","days":2}""");
+        var dictionary = arguments.RootElement
+            .EnumerateObject()
+            .ToDictionary(property => property.Name, property => (object?)property.Value.Clone());
+
+        var text = ChatFormat.Arguments(dictionary);
+
+        Assert.Contains("city=\"Shanghai\"", text);
+        Assert.Contains("days=2", text);
+    }
+
+    /// <summary>
+    /// A tool that takes no arguments must still read as a call: the empty string is what the view turns into
+    /// "（无参数）", so it must not arrive as something else.
+    /// </summary>
+    [TestMethod]
+    public void ToolArguments_WithoutArguments_AreEmpty()
+    {
+        Assert.AreEqual("", ChatFormat.Arguments(null));
+        Assert.AreEqual("", ChatFormat.Arguments(new Dictionary<string, object?>()));
+    }
 }

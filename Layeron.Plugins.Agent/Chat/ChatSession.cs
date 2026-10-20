@@ -1,11 +1,11 @@
-using System.Globalization;
 using System.Runtime.CompilerServices;
-using System.Text.Json;
 using Layeron.Plugin.Abstractions;
 using Layeron.Scripting.Abstractions;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using OpenAI.Chat;
+using AgentChatMessage = Microsoft.Extensions.AI.ChatMessage;
+using AgentChatRole = Microsoft.Extensions.AI.ChatRole;
 
 namespace Layeron.Plugins.Agent.Chat;
 
@@ -22,7 +22,9 @@ namespace Layeron.Plugins.Agent.Chat;
 /// therefore apply from the next session, which is why clearing the transcript also drops the session.
 /// </para>
 /// <para>
-/// This is the only type in the plugin that references the framework, and it never mentions Avalonia.
+/// The stream is the framework's own <see cref="AgentResponseUpdate"/> rather than a panel-shaped event
+/// type. Tool approvals are part of that shape and have to travel back through the same session, so a
+/// private translation vocabulary would only be another set of events to keep in step.
 /// </para>
 /// </summary>
 internal sealed class ChatSession(IPluginContext context,AgentOptions options, IPluginServices services, IScriptHostService seciptHost) : IChatSession
@@ -36,20 +38,81 @@ internal sealed class ChatSession(IPluginContext context,AgentOptions options, I
     
     private AIAgent? _agent;
     private AgentSession? _conversation;
+    private MessageInjectingChatClient? _injector;
     private bool _disposed;
 
     private readonly IPluginLog _log = services.Log;
     
-    public async IAsyncEnumerable<ChatDelta> StreamAsync(
-        ChatTurn turn,
-        [EnumeratorCancellation] CancellationToken ct)
+    public IAsyncEnumerable<AgentResponseUpdate> StreamAsync(ChatTurn turn, CancellationToken ct)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(turn);
 
         if (turn.Text.Length == 0 && turn.Attachments.Count == 0)
-            yield break;
+            return Empty();
 
+        // The framework rejects an empty message, so a turn that is only attachments is described as
+        // text. Until attachments can be uploaded, this is also the only honest thing to send.
+        return RunAsync(new AgentChatMessage(AgentChatRole.User, Compose(turn)), ct);
+    }
+
+    public IAsyncEnumerable<AgentResponseUpdate> StreamApprovalsAsync(
+        IReadOnlyList<ToolApprovalResponseContent> responses,
+        CancellationToken ct)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(responses);
+
+        if (responses.Count == 0)
+            return Empty();
+
+        // An approval is a user message carrying the decisions, not a new turn in the transcript: the
+        // framework binds each response to the request it recorded in the same session and continues the
+        // run that stopped to ask.
+        var message = new AgentChatMessage(
+            AgentChatRole.User,
+            responses.Cast<AIContent>().ToList());
+
+        return RunAsync(message, ct);
+    }
+
+    public async Task GuideAsync(ChatTurn turn, CancellationToken ct)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(turn);
+
+        if (turn.Text.Length == 0 && turn.Attachments.Count == 0)
+            return;
+
+        var injector = _injector;
+        var conversation = _conversation;
+
+        // The queue lives in the session, so guidance only means something while a conversation is
+        // established. The panel only offers it while busy, which is the same window.
+        if (injector is null || conversation is null)
+            throw new InvalidOperationException("AI 尚未开始工作，暂时无法发送指导。");
+
+        var message = new AgentChatMessage(
+            AgentChatRole.User,
+            $"{GuidancePrefix}{Compose(turn)}");
+
+        await injector.EnqueueMessagesAsync(conversation, [message], ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The prefix that tells the model this is a mid-task correction rather than a new request. It is not
+    /// shown in the transcript, which keeps the user's own words intact.
+    /// </summary>
+    internal const string GuidancePrefix = "用户在任务执行中的补充指导：";
+
+    /// <summary>
+    /// Runs one conversation step and yields its updates. A step is either a user turn or the continuation
+    /// of one after an approval; both go through the same gate because both append to the same session.
+    /// </summary>
+    private async IAsyncEnumerable<AgentResponseUpdate> RunAsync(
+        AgentChatMessage message,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
         using var run = CancellationTokenSource.CreateLinkedTokenSource(ct, _lifetime.Token);
         var token = run.Token;
 
@@ -65,15 +128,14 @@ internal sealed class ChatSession(IPluginContext context,AgentOptions options, I
             // the call would be empty and the model would meet every message as the first.
             _conversation ??= await agent.CreateSessionAsync(token).ConfigureAwait(false);
 
-            // The framework rejects an empty message, so a turn that is only attachments is described as
-            // text. Until attachments can be uploaded, this is also the only honest thing to send.
-            var message = Compose(turn);
-
-            await foreach (var update in agent.RunStreamingAsync(message, _conversation, options: null, token)
+            await foreach (var update in agent
+                           .RunStreamingAsync(message, _conversation, options: null, token)
                            .ConfigureAwait(false))
             {
-                foreach (var delta in Translate(update,services.Log))
-                    yield return delta;
+                foreach (var content in update.Contents)
+                    _log.Debug("Agent update: {Content}", ChatFormat.Describe(content));
+
+                yield return update;
             }
         }
         finally
@@ -99,6 +161,7 @@ internal sealed class ChatSession(IPluginContext context,AgentOptions options, I
         // still reachable from a live conversation; the transcript is the one such reference.
         _conversation = null;
         _agent = null;
+        _injector = null;
 
         _gate.Dispose();
         _lifetime.Dispose();
@@ -128,11 +191,22 @@ internal sealed class ChatSession(IPluginContext context,AgentOptions options, I
             ChatOptions = chatOptions,
             ChatHistoryProvider = new InMemoryChatHistoryProvider(),
             AIContextProviders = [ChatSkills.BuildInSkills],
+            // Guidance sent while a turn is running is queued in the session and picked up at the next
+            // service call. Per-service-call persistence is the framework's recommendation for injection:
+            // the injected message then survives from the service call that consumed it to the next one.
+            EnableMessageInjection = true,
+            RequirePerServiceCallChatHistoryPersistence = true,
         };
 
         _log.Info("Agent 已连接 {Endpoint}，模型 {Model}。", options.Endpoint, options.Model);
 
-        return client.AsAIAgent(agentOptions);
+        var agent = client.AsAIAgent(agentOptions);
+        _injector = agent.GetService<MessageInjectingChatClient>();
+
+        if (_injector is null)
+            _log.Warn("Agent 未提供消息注入客户端，执行中的指导将不可用。");
+
+        return agent;
     }
 
     /// <summary>
@@ -154,85 +228,9 @@ internal sealed class ChatSession(IPluginContext context,AgentOptions options, I
         return string.Join('\n', lines);
     }
 
-    /// <summary>
-    /// Turns one framework update into panel deltas. Reasoning, prose and tool traffic each travel as their
-    /// own kind so the panel can render them apart instead of concatenating everything into one paragraph.
-    /// </summary>
-    internal static IEnumerable<ChatDelta> Translate(AgentResponseUpdate update, IPluginLog logger)
+    private static async IAsyncEnumerable<AgentResponseUpdate> Empty()
     {
-        foreach (var content in update.Contents)
-        {
-            logger.Debug("Agent update: {Content}", Describe(content));
-
-            switch (content)
-            {
-                case TextReasoningContent { Text.Length: > 0 } reasoning:
-                    yield return new ChatReasoningDelta(reasoning.Text);
-                    break;
-
-                case TextContent { Text.Length: > 0 } text:
-                    yield return new ChatTextDelta(text.Text);
-                    break;
-
-                // The call and its result are two events, not one, because they happen at different moments: a
-                // call that has no result yet is a call still running, which the panel can show and a single
-                // combined event could not. The id is the only thing that joins the two.
-                case FunctionCallContent call:
-                    yield return new ChatToolCallDelta(call.CallId, call.Name, DescribeArguments(call.Arguments));
-                    break;
-
-                case FunctionResultContent result:
-                    yield return new ChatToolResultDelta(
-                        result.CallId,
-                        DescribeResult(result.Result),
-                        result.Exception is not null);
-                    break;
-            }
-        }
+        await Task.CompletedTask.ConfigureAwait(false);
+        yield break;
     }
-
-    /// <summary>
-    /// One content, as a line worth logging: an <see cref="AIContent"/>'s type name says nothing about what
-    /// the model asked for, which is the one thing a tool call needs to be diagnosable.
-    /// </summary>
-    private static string Describe(AIContent content) => content switch
-    {
-        FunctionCallContent call => $"{nameof(FunctionCallContent)} {call.Name}({DescribeArguments(call.Arguments)})",
-        FunctionResultContent result => $"{nameof(FunctionResultContent)} {DescribeResult(result.Result)}",
-        _ => content.GetType().Name
-    };
-
-    /// <summary>
-    /// Renders a call's arguments to text. Values are whatever the provider decoded - a
-    /// <see cref="JsonElement"/> for an OpenAI-shaped call, a CLR value for a locally built one - so raw JSON
-    /// is preferred where there is one and anything else is rendered as-is.
-    /// </summary>
-    private static string DescribeArguments(IDictionary<string, object?>? arguments)
-    {
-        if (arguments is null || arguments.Count == 0)
-            return "";
-
-        return string.Join(", ", arguments.Select(pair => $"{pair.Key}={DescribeValue(pair.Value)}"));
-    }
-
-    private static string DescribeResult(object? result) => result switch
-    {
-        null => "",
-        string text => Truncate(text),
-        _ => DescribeValue(result)
-    };
-
-    private static string DescribeValue(object? value) => value switch
-    {
-        null => "null",
-        JsonElement element => Truncate(element.GetRawText()),
-        IFormattable formattable => Truncate(formattable.ToString(null, CultureInfo.InvariantCulture)),
-        _ => Truncate(value.ToString() ?? "")
-    };
-
-    /// <summary>
-    /// Both the transcript row and the log line carry argument and result text, and neither should be able to
-    /// grow a chat bubble to the size of a file because a tool returned one.
-    /// </summary>
-    private static string Truncate(string text) => text.Length <= 400 ? text : text[..400] + "…";
 }

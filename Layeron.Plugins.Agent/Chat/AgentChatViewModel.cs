@@ -1,10 +1,11 @@
 using System.Collections.ObjectModel;
-using System.Net.Mime;
 using System.Text;
 using System.Windows.Input;
 using Layeron.Plugin.Abstractions;
 using Layeron.Plugins.Agent.Chat;
 using Layeron.Scripting.Abstractions;
+using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
 using ReactiveUI;
 
 namespace Layeron.Plugins.Agent;
@@ -46,6 +47,8 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
     private IChatSession? _session;
     private CancellationTokenSource? _workCts;
     private bool _busy;
+    private bool _guiding;
+    private bool _splitReply;
     private bool _disposed;
     private string _draft = "";
     private string _externalPath = "";
@@ -64,7 +67,10 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
         _host = host;
         _options = options;
 
-        SendCommand = ReactiveCommand.CreateFromTask(SendAsync);
+        // Started rather than awaited: a turn can run for minutes, and a command that stayed executing
+        // for its whole length would also keep the same button disabled when the user needs it to send
+        // guidance into that turn.
+        SendCommand = ReactiveCommand.Create(StartSend);
         CancelCommand = ReactiveCommand.Create(Cancel);
         ClearCommand = ReactiveCommand.Create(Clear);
         BrowseAttachmentCommand = ReactiveCommand.CreateFromTask(BrowseAttachmentAsync);
@@ -118,10 +124,19 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
     public bool HasAttachments => Attachments.Count > 0;
 
     /// <summary>
-    /// Send is allowed with either text or attachments: a user who attaches a file and presses send has said
-    /// something even without typing, and refusing that turn would be the panel inventing a rule.
+    /// Send is allowed whenever there is something to send: text or an attachment. While the agent is
+    /// working the same button carries that content as guidance, so being busy is not a reason to disable
+    /// it - the only disabled state is an empty input with nothing attached.
     /// </summary>
-    public bool CanSend => !_busy && (_draft.Length > 0 || Attachments.Count > 0);
+    public bool CanSend => _draft.Length > 0 || Attachments.Count > 0;
+
+    /// <summary>The send button's caption: a click during a run is guidance, not a new message.</summary>
+    public string SendLabel => _busy ? "指导" : "发送";
+
+    /// <summary>The input box's placeholder, which says what pressing the button will do.</summary>
+    public string InputHint => _busy
+        ? "AI 正在工作；输入补充指导后点「指导」"
+        : "输入消息后点发送";
 
     public bool IsBusy
     {
@@ -130,6 +145,8 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
         {
             this.RaiseAndSetIfChanged(ref _busy, value);
             this.RaisePropertyChanged(nameof(CanSend));
+            this.RaisePropertyChanged(nameof(SendLabel));
+            this.RaisePropertyChanged(nameof(InputHint));
         }
     }
 
@@ -160,10 +177,22 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
     //  Sending
     // -----------------------------------------------------------------------
 
+    /// <summary>
+    /// Hands the turn to <see cref="SendAsync"/> and returns immediately. The task owns its exceptions,
+    /// and the command must not stay in an executing state while the turn runs.
+    /// </summary>
+    private void StartSend() => _ = SendAsync();
+
     private async Task SendAsync()
     {
+        // While the agent is working, the same button carries guidance into the running turn instead of
+        // starting a second one. The panel already has the input, so this is the least surprising place
+        // for "interrupt with a correction".
         if (_busy)
+        {
+            await GuideAsync().ConfigureAwait(true);
             return;
+        }
 
         var text = _draft.Trim();
         var turn = new List<AgentAttachment>(Attachments);
@@ -171,11 +200,15 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
         if (text.Length == 0 && turn.Count == 0)
             return;
 
+        _splitReply = false;
         Append(new ChatMessage { Role = ChatRole.User, Body = text, Attachments = turn });
         Draft = "";
 
         if (!_options.KeepAttachments)
+        {
             Attachments.Clear();
+            RaiseAttachmentState();
+        }
 
         var ct = ResetWork();
 
@@ -213,12 +246,80 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
     }
 
     /// <summary>
-    /// Drains one turn's deltas into the transcript.
+    /// Queues the draft as guidance for the turn that is already running. The transcript shows what the
+    /// user said, while the agent receives it at its next service call; clearing the box only happens once
+    /// the queue accepted it, so a failed send does not lose the text.
+    /// </summary>
+    private async Task GuideAsync()
+    {
+        // The button is still clickable while the turn runs, and a double click must not enqueue the
+        // same draft twice before it is cleared.
+        if (_guiding)
+            return;
+
+        var text = _draft.Trim();
+        var turn = new List<AgentAttachment>(Attachments);
+
+        if (text.Length == 0 && turn.Count == 0)
+            return;
+
+        if (_session is not { } session)
+        {
+            StatusText = "AI 尚未开始工作，无法发送指导";
+            return;
+        }
+
+        _guiding = true;
+        try
+        {
+            var token = _workCts?.Token ?? CancellationToken.None;
+            await session.GuideAsync(new ChatTurn { Text = text, Attachments = turn }, token).ConfigureAwait(true);
+
+            Draft = "";
+            if (!_options.KeepAttachments)
+            {
+                Attachments.Clear();
+                RaiseAttachmentState();
+            }
+
+            Append(new ChatMessage
+            {
+                Role = ChatRole.User,
+                Body = text,
+                Attachments = turn,
+                IsGuidance = true
+            });
+
+            // The next assistant content belongs after the guidance, not above it: closing the current
+            // bubble is what keeps the transcript's order the order things were said in.
+            _splitReply = true;
+
+            StatusText = "已发送指导，AI 会在下一次模型调用时采纳";
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText = "已取消";
+        }
+        catch (Exception ex)
+        {
+            _services.Log.Error("发送指导失败", ex, "Agent guidance failed");
+            Append(ChatMessage.Notice($"指导发送失败：{ex.Message}"));
+            StatusText = "指导发送失败";
+        }
+        finally
+        {
+            _guiding = false;
+        }
+    }
+
+    /// <summary>
+    /// Drains one turn into the transcript, including the approval round-trips it needs.
     /// <para>
     /// The transcript is a log and a reply arrives in pieces, so a bubble has to be appended on the first
-    /// piece and then grown in place - which is why <see cref="MediaTypeNames.Text"/> is a notifying property
-    /// rather than an init-only one. A tool call is a piece like any other: it arrives after the bubble it
-    /// belongs to may already exist, and before the text that answers the question it was made to answer.
+    /// piece and then grown in place. A tool call is a piece like any other, and an approval request is a
+    /// call that has stopped to ask: it becomes a row with a decision, and the run resumes only once every
+    /// pending call has an answer - the framework binds all of them to the session and auto-rejects any
+    /// request left unanswered.
     /// </para>
     /// <para>
     /// Reasoning is folded into the same bubble as a named section. It is not the answer, but hiding it
@@ -236,51 +337,118 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
         var answer = new StringBuilder();
         var reasoning = new StringBuilder();
         ChatMessage? bubble = null;
+        var callOwners = new Dictionary<string, ChatMessage>();
         var toolCalls = 0;
+        var pending = new List<PendingApproval>();
 
-        await foreach (var delta in session.StreamAsync(turn, ct).ConfigureAwait(true))
+        // Guidance closes the reply that was on screen. The next piece of prose opens a new bubble below
+        // the guidance message, while a tool result still belongs to the bubble that made the call.
+        ChatMessage CurrentBubble()
         {
-            // Cancellation can arrive between two deltas, and the session cannot observe it until it asks
-            // the provider for the next one.
+            if (_splitReply)
+            {
+                _splitReply = false;
+                bubble = null;
+            }
+
+            return bubble ??= AppendBubble();
+        }
+
+        void Consume(AgentResponseUpdate update)
+        {
+            foreach (var content in update.Contents)
+            {
+                switch (content)
+                {
+                    case TextReasoningContent { Text.Length: > 0 } reasoningChunk:
+                        var reasoningBubble = CurrentBubble();
+                        reasoning.Append(reasoningChunk.Text);
+                        reasoningBubble.AppendReasoning(reasoningChunk.Text);
+                        break;
+
+                    case TextContent { Text.Length: > 0 } text:
+                        var textBubble = CurrentBubble();
+                        answer.Append(text.Text);
+                        textBubble.AppendText(text.Text);
+                        break;
+
+                    // The call and its result are two events, not one, because they happen at different
+                    // moments: a call that has no result yet is a call still running, which the panel can
+                    // show and a single combined event could not. The id is the only thing that joins them.
+                    case FunctionCallContent call:
+                        var knownCall = callOwners.TryGetValue(call.CallId, out var existing);
+                        var callBubble = knownCall ? existing! : CurrentBubble();
+                        callOwners[call.CallId] = callBubble;
+                        if (!knownCall)
+                            toolCalls++;
+                        callBubble.AddToolCall(call.CallId, call.Name, ChatFormat.Arguments(call.Arguments));
+                        StatusText = $"调用工具 {call.Name}…";
+                        break;
+
+                    case FunctionResultContent result:
+                        // A result belongs to the bubble that made the call, wherever a guidance message
+                        // has moved the current bubble to.
+                        var resultBubble = callOwners.TryGetValue(result.CallId, out var owner)
+                            ? owner
+                            : CurrentBubble();
+                        resultBubble.CompleteToolCall(
+                            result.CallId,
+                            ChatFormat.Result(result.Result),
+                            result.Exception is not null);
+                        StatusText = "思考中…";
+                        break;
+
+                    case ToolApprovalRequestContent approval:
+                        RequestApproval(approval);
+                        break;
+                }
+            }
+        }
+
+        void RequestApproval(ToolApprovalRequestContent approval)
+        {
+            var call = approval.ToolCall;
+            var name = call is FunctionCallContent function ? function.Name : call.GetType().Name;
+            var arguments = call is FunctionCallContent functionCall
+                ? ChatFormat.Arguments(functionCall.Arguments)
+                : "";
+
+            // An approval for a call that is already on screen stays with that call's row, even if a
+            // guidance message has since moved the reply on.
+            var knownApproval = callOwners.TryGetValue(call.CallId, out var owner);
+            var approvalBubble = knownApproval ? owner! : CurrentBubble();
+            callOwners[call.CallId] = approvalBubble;
+            if (!knownApproval)
+                toolCalls++;
+
+            var decision = new PendingApproval(approval);
+            pending.Add(decision);
+
+            decision.Call = approvalBubble.AddToolApproval(call.CallId, name, arguments, decision.Complete);
+
+            StatusText = $"等待确认：{name}";
+            _services.Log.Info("工具 {Tool} 需要确认，调用 {CallId}。", name, call.CallId);
+        }
+
+        // Cancellation can arrive between two updates, and the session cannot observe it until it asks
+        // the provider for the next one.
+        await foreach (var update in session.StreamAsync(turn, ct).ConfigureAwait(true))
+        {
             ct.ThrowIfCancellationRequested();
+            Consume(update);
+        }
 
-            var text = delta switch
+        while (pending.Count > 0)
+        {
+            var responses = await AwaitApprovalsAsync(pending, ct).ConfigureAwait(true);
+
+            pending.Clear();
+            StatusText = "已确认，继续执行…";
+
+            await foreach (var update in session.StreamApprovalsAsync(responses, ct).ConfigureAwait(true))
             {
-                ChatTextDelta t => t.Text,
-                ChatReasoningDelta r => r.Text,
-                _ => ""
-            };
-
-            // A tool call is not text and must not be treated as one, but it is still a reason for the
-            // bubble to exist: the call belongs to this turn, so it appears in the same bubble as the answer
-            // it was made for rather than as a message from nowhere.
-            if (text.Length == 0 && delta is not (ChatToolCallDelta or ChatToolResultDelta))
-                continue;
-
-            bubble ??= AppendBubble();
-
-            switch (delta)
-            {
-                case ChatTextDelta:
-                    answer.Append(text);
-                    bubble.AppendText(text);
-                    break;
-
-                case ChatReasoningDelta:
-                    reasoning.Append(text);
-                    bubble.AppendReasoning(text);
-                    break;
-
-                case ChatToolCallDelta call:
-                    toolCalls++;
-                    bubble.AddToolCall(call.CallId, call.Name, call.Arguments);
-                    StatusText = $"调用工具 {call.Name}…";
-                    break;
-
-                case ChatToolResultDelta result:
-                    bubble.CompleteToolCall(result.CallId, result.Result, result.Failed);
-                    StatusText = "思考中…";
-                    break;
+                ct.ThrowIfCancellationRequested();
+                Consume(update);
             }
         }
 
@@ -296,6 +464,53 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// Waits until every row in <paramref name="pending"/> has an answer, then turns the answers into the
+    /// responses the framework expects. All requests from one run are answered together: sending one at a
+    /// time would make the framework reject the ones still waiting.
+    /// </summary>
+    private static async Task<IReadOnlyList<ToolApprovalResponseContent>> AwaitApprovalsAsync(
+        List<PendingApproval> pending,
+        CancellationToken ct)
+    {
+        using var registration = ct.Register(() =>
+        {
+            foreach (var item in pending)
+                item.Decision.TrySetCanceled(ct);
+        });
+
+        var decisions = await Task
+            .WhenAll(pending.Select(item => item.Decision.Task))
+            .ConfigureAwait(true);
+
+        var responses = new List<ToolApprovalResponseContent>(pending.Count);
+        for (var i = 0; i < pending.Count; i++)
+            responses.Add(pending[i].Request.CreateResponse(decisions[i]));
+
+        return responses;
+    }
+
+    /// <summary>
+    /// One surfaced approval request and the row that asks for its answer. The task completes when the
+    /// user decides, which is what releases the run after the stream has ended.
+    /// </summary>
+    private sealed class PendingApproval(ToolApprovalRequestContent request)
+    {
+        public ToolApprovalRequestContent Request { get; } = request;
+
+        /// <summary>The transcript row, set once the row has been added to the bubble.</summary>
+        public ChatToolCall? Call { get; set; }
+
+        public TaskCompletionSource<bool> Decision { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void Complete(bool approved)
+        {
+            Call?.ResolveApproval(approved);
+            Decision.TrySetResult(approved);
+        }
+    }
+
     private readonly record struct TurnResult(string Text, bool HadReasoning, int ToolCalls);
 
     private void Cancel()
@@ -308,6 +523,11 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
 
     private void Clear()
     {
+        // A turn may be waiting for a tool approval, which is not tied to the session's socket: cancel the
+        // work so that wait is released instead of outliving the transcript it belonged to.
+        _workCts?.Cancel();
+        _splitReply = false;
+
         Messages.Clear();
         this.RaisePropertyChanged(nameof(HasMessages));
 
@@ -458,6 +678,7 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
         _workCts?.Cancel();
         _workCts?.Dispose();
         _workCts = null;
+        _splitReply = false;
 
         DropSession();
         Attachments.Clear();
