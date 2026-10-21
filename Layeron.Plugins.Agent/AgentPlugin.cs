@@ -52,7 +52,7 @@ public sealed class AgentPlugin : IPlugin
             ContentFactory = () => new AgentChatView(
                 context,
                 services,
-                services.GetService<Scripting.Abstractions.IScriptHostService>(),
+                services.GetService<Scripting.Abstractions.IScriptHostService>() ?? throw new InvalidOperationException("The host does not provide a scripting service, so the agent panel cannot be constructed."),
                 options)
         });
     }

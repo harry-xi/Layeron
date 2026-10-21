@@ -41,7 +41,7 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
     public const string FoldStyleKey = "chatFold";
 
     private readonly IPluginServices _services;
-    private readonly IScriptHostService? _host;
+    private readonly IScriptHostService _host;
     private readonly AgentOptions _options;
 
     private IChatSession? _session;
@@ -54,12 +54,12 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
     private string _externalPath = "";
     private string _statusText = "就绪";
 
-    private IPluginContext _context;
+    private readonly IPluginContext _context;
 
     public AgentChatViewModel(
         IPluginContext context,
         IPluginServices services,
-        IScriptHostService? host,
+        IScriptHostService host,
         AgentOptions options)
     {
         _context = context;
@@ -77,10 +77,6 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
         AddPathAttachmentCommand = ReactiveCommand.Create(AddPathAttachment);
         AddTextAttachmentCommand = ReactiveCommand.Create(AddTextAttachment);
         RemoveAllAttachmentsCommand = ReactiveCommand.Create(RemoveAllAttachments);
-
-        Append(ChatMessage.Notice(_host is null
-            ? "宿主未提供文件对话框，可用「路径」或「文本」手动添加附件。"
-            : "就绪。输入消息后发送，或先添加附件。"));
     }
 
 

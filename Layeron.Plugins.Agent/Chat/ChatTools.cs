@@ -17,11 +17,18 @@ public partial class ChatTools(IPluginContext context,IPluginServices services, 
         var tools = new List<AITool>
         {
             AIFunctionFactory.Create(GetTime),
-            AIFunctionFactory.Create(GetCount),
             AIFunctionFactory.Create(GetPythonEnvironment),
             AIFunctionFactory.Create(GetInstalledPipPackages),
+
+            AIFunctionFactory.Create(GetDocs),
+
+            AIFunctionFactory.Create(ListFiles),
+            AIFunctionFactory.Create(ReadFile),
+            ApprovalRequired(AIFunctionFactory.Create(SaveFile)),
+            ApprovalRequired(AIFunctionFactory.Create(DeleteFile)),
+
             ApprovalRequired(AIFunctionFactory.Create(EvalPythonCode)),
-            AIFunctionFactory.Create(GetDocs)
+            ApprovalRequired(AIFunctionFactory.Create(RunPythonScript)),
         };
 
         return tools;
@@ -36,16 +43,9 @@ public partial class ChatTools(IPluginContext context,IPluginServices services, 
 
 
     [Description("Get the current time.")]
-    public string GetTime()
+    public static string GetTime()
     {
         return DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-    }
-
-    [Description("A test tool returning a counter that increments with each call.")]
-    public string GetCount()
-    {
-        counter++;
-        return counter.ToString();
     }
 
     [Description("Get the infomation about the current python environment.")]
@@ -78,6 +78,23 @@ public partial class ChatTools(IPluginContext context,IPluginServices services, 
         var builder = new StringBuilder();
         builder.AppendLine("executing result:");
         var result = await pyService.ExecuteAsync(code,
+            output: output => builder.AppendLine($"out-> {output}"),
+            error: error => builder.AppendLine($"err-> {error}"));
+        builder.AppendLine($"executing {(result.Ok ? "successful" : $"failed: {result.Error}")}, elapsed {result.ElapsedMs} ms");
+        return builder.ToString();
+    }
+
+    [Description("Run a Python script in the current python environment. return the result after finished executing.")]
+    public async Task<string> RunPythonScript(string scriptPath)
+    {
+        var pyService = context.Registry.GetPoint<IPythonRunnerService>(IPythonRunnerService.PointId)?.Items[0];
+        if (pyService == null)
+        {
+            return "Python service is not available.";
+        }
+        var builder = new StringBuilder();
+        builder.AppendLine("executing result:");
+        var result = await pyService.RunFileAsync(scriptPath,
             output: output => builder.AppendLine($"out-> {output}"),
             error: error => builder.AppendLine($"err-> {error}"));
         builder.AppendLine($"executing {(result.Ok ? "successful" : $"failed: {result.Error}")}, elapsed {result.ElapsedMs} ms");
