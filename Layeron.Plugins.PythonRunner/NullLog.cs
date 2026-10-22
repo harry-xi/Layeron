@@ -12,6 +12,8 @@ internal sealed class NullLog : Layeron.Plugin.Abstractions.IPluginLog
 {
     public static NullLog Instance { get; } = new();
 
+    public void Verbose(string template, params object?[] args) { }
+
     public void Debug(string template, params object?[] args) { }
 
     public void Info(string template, params object?[] args) { }

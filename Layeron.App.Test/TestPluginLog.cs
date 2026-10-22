@@ -13,6 +13,7 @@ internal sealed class TestPluginLog : IPluginLog
 {
     public ConcurrentQueue<string> Messages { get; } = new();
 
+    public void Verbose(string template, params object?[] args) => Add("TRC", template, args);
     public void Debug(string template, params object?[] args) => Add("DBG", template, args);
     public void Info(string template, params object?[] args) => Add("INF", template, args);
     public void Warn(string template, params object?[] args) => Add("WRN", template, args);

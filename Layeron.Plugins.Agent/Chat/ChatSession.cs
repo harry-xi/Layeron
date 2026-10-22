@@ -133,7 +133,7 @@ internal sealed class ChatSession(IPluginContext context,AgentOptions options, I
                            .ConfigureAwait(false))
             {
                 foreach (var content in update.Contents)
-                    _log.Debug("Agent update: {Content}", ChatFormat.Describe(content));
+                    _log.Verbose("Agent update: {Content}", ChatFormat.Describe(content));
 
                 yield return update;
             }

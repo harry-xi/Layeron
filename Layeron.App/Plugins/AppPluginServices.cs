@@ -298,6 +298,7 @@ internal sealed class ConsolePluginLog(Serilog.ILogger logger) : IPluginLog
         : this(Log.ForCategory("Plugin"))
     {
     }
+    public void Verbose(string template, params object?[] args) => logger.Verbose(template, args);
 
     public void Debug(string template, params object?[] args) => logger.Debug(template, args);
 

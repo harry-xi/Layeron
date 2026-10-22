@@ -259,6 +259,9 @@ internal sealed class CollectingLog : IPluginLog
 
     public ConcurrentQueue<string> Messages { get; }
 
+    public void Verbose(string template, params object?[] args)
+        => Messages.Enqueue($"TRC {_prefix}{Flatten(template, args)}");
+
     public void Debug(string template, params object?[] args)
         => Messages.Enqueue($"DBG {_prefix}{Flatten(template, args)}");
 

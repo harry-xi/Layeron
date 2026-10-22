@@ -54,7 +54,8 @@ internal static class ChatFormat
     private static string Value(object? value) => value switch
     {
         null => "null",
-        JsonElement element => Truncate(element.GetRawText()),
+        // JsonElement element => Truncate(element.GetRawText()),
+        JsonElement element => Truncate(element.GetString() ?? element.GetRawText()),
         IFormattable formattable => Truncate(formattable.ToString(null, CultureInfo.InvariantCulture)),
         _ => Truncate(value.ToString() ?? "")
     };
