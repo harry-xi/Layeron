@@ -5,7 +5,7 @@
              xmlns:plugins="using:Layeron.App.Plugins"
              xmlns:vm="using:Layeron.App.ViewModels"
              xmlns:views="using:Layeron.App.Views"
-             RequestedThemeVariant="Default">
+             RequestedThemeVariant="Dark">
 
     <Application.DataTemplates>
         <!--

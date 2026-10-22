@@ -174,14 +174,14 @@ internal sealed class ChatSession(IPluginContext context,AgentOptions options, I
     /// </summary>
     private AIAgent BuildAgent()
     {
-        var client = ChatClientFactory.Create(options);
+        var client = ChatClientFactory.Create(options).AsIChatClient();
 
         var chatOptions = new ChatOptions
         {
             Instructions = options.SystemPrompt,
             Temperature = (float)options.Temperature,
             MaxOutputTokens = (int)options.MaxTokens,
-            Tools = new ChatTools(context,services,seciptHost).BuildTools(),
+            Tools = new ChatTools(context, services, seciptHost).BuildTools(),
         };
 
         var agentOptions = new ChatClientAgentOptions
@@ -200,7 +200,10 @@ internal sealed class ChatSession(IPluginContext context,AgentOptions options, I
 
         _log.Info("Agent 已连接 {Endpoint}，模型 {Model}。", options.Endpoint, options.Model);
 
-        var agent = client.AsAIAgent(agentOptions);
+        // The decorator sits below the function-invoking client, so a tool's ImageToolResult is still an
+        // object when it reaches this point and can be turned into real image content. See
+        // ToolImageChatClient for why the provider cannot be handed the result as it is.
+        var agent = new ToolImageChatClient(client).AsAIAgent(agentOptions);
         _injector = agent.GetService<MessageInjectingChatClient>();
 
         if (_injector is null)

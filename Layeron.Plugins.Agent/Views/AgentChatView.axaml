@@ -48,7 +48,7 @@
       顶部工具栏只留对话级操作（取消、清空）：发送按钮已经下移到输入框旁边，和常见聊天软件一致，
       这两个动作改变的是整轮对话的状态，所以留在上面而不是挤在发送旁边。
     -->
-    <Border DockPanel.Dock="Top" Background="LightGray" Padding="6,4">
+    <Border DockPanel.Dock="Top" Background="{DynamicResource ThemeControlMidBrush}" Padding="6,4">
       <StackPanel Orientation="Horizontal" Spacing="6">
         <Button Content="取消" Command="{Binding CancelCommand}" IsEnabled="{Binding IsBusy}"/>
         <Button Content="清空对话" Command="{Binding ClearCommand}" IsEnabled="{Binding HasMessages}"/>

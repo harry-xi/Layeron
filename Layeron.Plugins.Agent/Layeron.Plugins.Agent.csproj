@@ -14,6 +14,8 @@
       HostCarriedAssemblies。
     -->
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <!-- ImageSharp 的构建目标需要与宿主相同的许可证文件；变量由开发环境提供。 -->
+    <SixLaborsLicenseFile>$(SIXLABORS_LICENSE_FILE)</SixLaborsLicenseFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -31,6 +33,11 @@
     -->
     <PackageReference Include="Microsoft.Agents.AI" Version="1.25.0" />
     <PackageReference Include="Microsoft.Agents.AI.OpenAI" Version="1.25.0" />
+    <!--
+      ImageSharp 只用于把视觉模型不接受的位图格式（BMP、TIFF 等）转换成 PNG。
+      宿主也引用同一版本；插件保留运行资产，使测试宿主和独立加载都不依赖宿主是否携带它。
+    -->
+    <PackageReference Include="SixLabors.ImageSharp" Version="4.1.2" />
   </ItemGroup>
 
   <ItemGroup>
@@ -63,6 +70,16 @@
       这里只覆盖不依赖 Avalonia 的那一半——面板那一半需要真正的 UI 栈。
     -->
     <InternalsVisibleTo Include="Layeron.Plugin.Test" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      GetDocs 通过清单资源名读取 Markdown。SDK 默认只嵌入 .resx，普通文件必须显式声明；
+      LogicalName 把文件放到 ChatSkills 约定的前缀下，而不是默认的 Resource.Docs.xxx 路径。
+    -->
+    <EmbeddedResource Include="Resource\Docs\**\*.md">
+      <LogicalName>Layeron.Plugins.Agent.Docs.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
 </Project>
