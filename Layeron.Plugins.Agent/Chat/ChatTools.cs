@@ -11,8 +11,6 @@ namespace Layeron.Plugins.Agent.Chat;
 public partial class ChatTools(IPluginContext context,IPluginServices services, IScriptHostService scriptHost)
 {
 
-    private long counter = 0;
-
     public IList<AITool> BuildTools()
     {
         // Image tools are still ordinary functions; only their result needs different marshalling, so the
