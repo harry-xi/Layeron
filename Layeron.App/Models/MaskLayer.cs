@@ -11,8 +11,7 @@ namespace Layeron.App.Models;
 public class MaskLayer : INotifyPropertyChanged, IMaskLayer
 {
     private string _name = "Mask";
-    private Color _color = Colors.Red;
-    private double _opacity = 0.4;
+    private Color _color = Color.FromArgb(102, 255, 0, 0);
     private bool _isVisible = true;
     private Big3DBitMap? _bitmap;
 
@@ -24,23 +23,21 @@ public class MaskLayer : INotifyPropertyChanged, IMaskLayer
         set => Set(ref _name, value);
     }
 
+    /// <summary>Layer colour; the alpha channel is the overlay opacity.</summary>
     public Color Color
     {
         get => _color;
-        set => Set(ref _color, value);
-    }
-
-    public double Opacity
-    {
-        get => _opacity;
         set
         {
-            if (Set(ref _opacity, Math.Clamp(value, 0, 1)))
-                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OpacityPercent)));
+            if (_color == value) return;
+            _color = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Color)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AlphaPercent)));
         }
     }
 
-    public string OpacityPercent => $"{Opacity * 100:0}%";
+    /// <summary>Read-only view of <see cref="Color"/>'s alpha, for the manager panel.</summary>
+    public string AlphaPercent => $"{_color.A * 100 / 255.0:0}%";
 
     public bool IsVisible
     {
@@ -63,8 +60,8 @@ public class MaskLayer : INotifyPropertyChanged, IMaskLayer
     /// </summary>
     MaskColor IMaskLayer.Color
     {
-        get => new(_color.R, _color.G, _color.B);
-        set => Color = Avalonia.Media.Color.FromRgb(value.R, value.G, value.B);
+        get => new(_color.R, _color.G, _color.B, _color.A);
+        set => Color = Avalonia.Media.Color.FromArgb(value.A, value.R, value.G, value.B);
     }
 
     /// <summary>Read-only bitmap view for plugins; the mutable instance is <see cref="Bitmap"/>.</summary>
@@ -77,7 +74,7 @@ public class MaskLayer : INotifyPropertyChanged, IMaskLayer
         writer.Write((byte)Color.R);
         writer.Write((byte)Color.G);
         writer.Write((byte)Color.B);
-        writer.Write(Opacity);
+        writer.Write((byte)Color.A);
         writer.Write(IsVisible);
         _bitmap?.SaveStream(stream);
     }
@@ -89,7 +86,7 @@ public class MaskLayer : INotifyPropertyChanged, IMaskLayer
         var r = reader.ReadByte();
         var g = reader.ReadByte();
         var b = reader.ReadByte();
-        var opacity = reader.ReadDouble();
+        var a = reader.ReadByte();
         var isVisible = reader.ReadBoolean();
         var bitmap = Big3DBitMap.LoadStream(stream);
 
@@ -99,8 +96,7 @@ public class MaskLayer : INotifyPropertyChanged, IMaskLayer
         return new MaskLayer
         {
             Name = name,
-            Color = Color.FromRgb(r, g, b),
-            Opacity = opacity,
+            Color = Color.FromArgb(a, r, g, b),
             IsVisible = isVisible,
             Bitmap = bitmap
         };

@@ -82,6 +82,12 @@ public class SharedDataSourceViewModel : ViewModelBase
 
     public MaskManagerViewModel? MaskManager { get; set; }
 
+    /// <summary>
+    /// Session annotation manager. It is stored here as well as on the session so a view that already
+    /// holds the data source (the slice views do) can reach the interaction state with no extra lookup.
+    /// </summary>
+    public AnnotationManagerViewModel? AnnotationManager { get; set; }
+
     public bool HasData => _array != null;
 
     public int MaxX => _array?.X - 1 ?? 0;

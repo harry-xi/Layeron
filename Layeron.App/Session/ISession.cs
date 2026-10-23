@@ -17,6 +17,9 @@ public interface ISession
     /// <summary>Mask overlay layers bound to the current main volume.</summary>
     MaskManagerViewModel MaskManager { get; }
 
+    /// <summary>Annotation layers and the interaction state for drawing them.</summary>
+    AnnotationManagerViewModel AnnotationManager { get; }
+
     /// <summary>Shared window/level lookup applied by every slice view.</summary>
     WindowLevelViewModel WindowLevel { get; }
 

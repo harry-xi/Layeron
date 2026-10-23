@@ -31,7 +31,7 @@ MIN_EDGE_SIZE = 4
 MASK_NAME = "edges"
 
 #: Mask colour.
-MASK_COLOR = (255, 80, 80)
+MASK_COLOR = (255, 80, 80, 102)
 
 
 def edge_of_slice(plane):

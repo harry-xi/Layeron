@@ -95,12 +95,15 @@ internal sealed class TestServices : IPluginServices
     {
         Volumes = new TestVolumeService(volume);
         Masks = new TestMaskService(Volumes);
+        Annotations = new TestAnnotationService();
         Preview = new TestPreviewChannel();
     }
 
     public IVolumeService Volumes { get; }
 
     public IMaskService Masks { get; }
+
+    public IAnnotationService Annotations { get; }
 
     public IPreviewChannel Preview { get; }
 
@@ -182,12 +185,12 @@ internal sealed class TestMaskService : IMaskService
         NotifyCount = 0;
     }
 
-    public IMaskLayer Add(string name, Big3DBitMap bitmap, MaskColor color, double opacity = 0.4)
+    public IMaskLayer Add(string name, Big3DBitMap bitmap, MaskColor color)
     {
         if (Volumes.Current is { } volume && !bitmap.MatchesDimensions(volume.X, volume.Y, volume.Z))
             throw new ArgumentException("Mask dimensions do not match the volume.", nameof(bitmap));
 
-        var layer = new TestMaskLayer(name, bitmap, color, opacity);
+        var layer = new TestMaskLayer(name, bitmap, color);
         _layers.Add(layer);
         Changed?.Invoke();
         return layer;
@@ -206,13 +209,95 @@ internal sealed class TestMaskService : IMaskService
     }
 }
 
-internal sealed class TestMaskLayer(string name, Big3DBitMap bitmap, MaskColor color, double opacity) : IMaskLayer
+internal sealed class TestMaskLayer(string name, Big3DBitMap bitmap, MaskColor color) : IMaskLayer
 {
     public string Name { get; set; } = name;
     public MaskColor Color { get; set; } = color;
-    public double Opacity { get; set; } = opacity;
     public bool IsVisible { get; set; } = true;
     public Big3DBitMap Bitmap { get; } = bitmap;
+}
+
+internal sealed class TestAnnotationService : IAnnotationService
+{
+    private readonly List<IAnnotationLayer> _layers = [];
+
+    public IReadOnlyList<IAnnotationLayer> Layers => _layers;
+
+    public IAnnotationLayer? ActiveLayer { get; set; }
+
+    public event Action? Changed;
+
+    public event Action? ContentChanged;
+
+    public IAnnotationLayer AddLayer(string name, MaskColor color)
+    {
+        var layer = new TestAnnotationLayer(name, color);
+        _layers.Add(layer);
+        ActiveLayer = layer;
+        Changed?.Invoke();
+        return layer;
+    }
+
+    public void RemoveLayer(IAnnotationLayer layer)
+    {
+        if (!_layers.Remove(layer)) return;
+        if (ReferenceEquals(ActiveLayer, layer))
+            ActiveLayer = _layers.LastOrDefault();
+        Changed?.Invoke();
+    }
+
+    public IAnnotation AddPoint(IAnnotationLayer layer, SlicePlane plane, int sliceIndex, AnnotationVertex position, string? label = null)
+        => Add(layer, new PointAnnotationShape(plane, sliceIndex, position), label);
+
+    public IAnnotation AddLine(IAnnotationLayer layer, SlicePlane plane, int sliceIndex, AnnotationVertex start, AnnotationVertex end, string? label = null)
+        => Add(layer, new LineAnnotationShape(plane, sliceIndex, start, end), label);
+
+    public IAnnotation AddPolygon(IAnnotationLayer layer, SlicePlane plane, int sliceIndex, IReadOnlyList<AnnotationVertex> vertices, string? label = null)
+        => Add(layer, new PolygonAnnotationShape(plane, sliceIndex, vertices), label);
+
+    public IAnnotation Add(IAnnotationLayer layer, AnnotationShape shape, string? label = null)
+    {
+        if (layer is not TestAnnotationLayer typed)
+            throw new ArgumentException("The layer does not belong to this host.", nameof(layer));
+
+        var annotation = new TestAnnotation { Shape = shape, Label = label };
+        typed.Add(annotation);
+        Changed?.Invoke();
+        return annotation;
+    }
+
+    public void Remove(IAnnotation annotation)
+    {
+        foreach (var layer in _layers.OfType<TestAnnotationLayer>())
+        {
+            if (!layer.Remove(annotation)) continue;
+            Changed?.Invoke();
+            return;
+        }
+    }
+
+    public void NotifyContentChanged() => ContentChanged?.Invoke();
+}
+
+internal sealed class TestAnnotationLayer(string name, MaskColor color) : IAnnotationLayer
+{
+    private readonly List<IAnnotation> _annotations = [];
+
+    public string Name { get; set; } = name;
+    public MaskColor Color { get; set; } = color;
+    public bool IsVisible { get; set; } = true;
+    public IReadOnlyList<IAnnotation> Annotations => _annotations;
+
+    public void Add(IAnnotation annotation) => _annotations.Add(annotation);
+
+    public bool Remove(IAnnotation annotation) => _annotations.Remove(annotation);
+}
+
+internal sealed class TestAnnotation : IAnnotation
+{
+    public required AnnotationShape Shape { get; init; }
+
+    public string? Label { get; set; }
 }
 
 internal sealed class TestPreviewChannel : IPreviewChannel

@@ -185,8 +185,7 @@ internal sealed class PythonBridge
 
                 item.SetItem("handle", handle.ToPython());
                 item.SetItem("name", layer.Name.ToPython());
-                item.SetItem("color", Shapes.AsTuple([layer.Color.R, layer.Color.G, layer.Color.B]));
-                item.SetItem("opacity", layer.Opacity.ToPython());
+                item.SetItem("color", Shapes.AsTuple([layer.Color.R, layer.Color.G, layer.Color.B, layer.Color.A]));
                 item.SetItem("visible", layer.IsVisible.ToPython());
                 item.SetItem("shape", Shapes.AsTuple([layer.Bitmap.SizeZ, layer.Bitmap.SizeY, layer.Bitmap.SizeX]));
                 item.SetItem("occupied_blocks", layer.Bitmap.OccupiedBlockCount.ToPython());
@@ -236,10 +235,10 @@ internal sealed class PythonBridge
     /// is never shown.
     /// </para>
     /// </summary>
-    public int MaskCreate(string name, int r, int g, int b)
+    public int MaskCreate(string name, int r, int g, int b, int a)
     {
         var volume = RequireVolume();
-        var layer = NewLayer(name, new Big3DBitMap(volume.X, volume.Y, volume.Z), new MaskColor((byte)r, (byte)g, (byte)b));
+        var layer = NewLayer(name, new Big3DBitMap(volume.X, volume.Y, volume.Z), new MaskColor((byte)r, (byte)g, (byte)b, (byte)a));
 
         return HandleOf(layer);
     }
@@ -252,7 +251,7 @@ internal sealed class PythonBridge
     /// <see cref="MaskCreate"/>: this path allocates the whole mask at once.
     /// </para>
     /// </summary>
-    public int MaskAdd(string name, PyObject? source, int r, int g, int b)
+    public int MaskAdd(string name, PyObject? source, int r, int g, int b, int a)
     {
         using (Py.GIL())
         {
@@ -261,7 +260,7 @@ internal sealed class PythonBridge
 
             FillMask(mask, source, volume);
 
-            return HandleOf(NewLayer(name, mask, new MaskColor((byte)r, (byte)g, (byte)b)));
+            return HandleOf(NewLayer(name, mask, new MaskColor((byte)r, (byte)g, (byte)b, (byte)a)));
         }
     }
 

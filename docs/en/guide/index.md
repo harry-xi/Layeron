@@ -11,6 +11,7 @@ Layeron is extensible: data formats, tool panels, menus and volume processing ca
 | Multi-planar viewing | Axial (XY), coronal (XZ) and sagittal (YZ) slice views sharing a crosshair and zoom |
 | Gray-level display | Window/level adjustment, gray-level histogram, per-slice value readout |
 | Mask annotation | Sparse bitmap mask layers with overlay, colour, opacity and visibility |
+| Vector annotations | Points, line segments and closed regions on one slice, layered and zoom-stable |
 | Data loading | Built-in DICOM series reader, 8-bit and 16-bit volumes; plugins add more formats |
 | 3D preview | Generate an interactive 3D model from a mask |
 | Scripting | Use C# scripts for one-off computation on the current data, and install them as plugins |

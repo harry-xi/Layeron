@@ -42,6 +42,7 @@ public class DockViewModel : ViewModelBase
         ResetLayoutCommand = ReactiveCommand.Create(ResetLayout);
 
         OpenMaskManagerCommand = ReactiveCommand.Create(OpenMaskManager);
+        OpenAnnotationManagerCommand = ReactiveCommand.Create(OpenAnnotationManager);
         OpenWindowLevelCommand = ReactiveCommand.Create(OpenWindowLevel);
         OpenLogCommand = ReactiveCommand.Create(OpenLog);
     }
@@ -72,6 +73,7 @@ public class DockViewModel : ViewModelBase
     public ReactiveCommand<RxVoid, RxVoid> ResetLayoutCommand { get; }
 
     public ReactiveCommand<RxVoid, RxVoid> OpenMaskManagerCommand { get; }
+    public ReactiveCommand<RxVoid, RxVoid> OpenAnnotationManagerCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> OpenWindowLevelCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> OpenLogCommand { get; }
 
@@ -135,7 +137,10 @@ public class DockViewModel : ViewModelBase
     
     private void OpenMaskManager()
         => OpenSessionTool(DockableIds.MaskManager, _sessionManager.Current?.MaskManager);
-    
+
+    private void OpenAnnotationManager()
+        => OpenSessionTool(DockableIds.AnnotationManager, _sessionManager.Current?.AnnotationManager);
+
     private void OpenWindowLevel()
         => OpenSessionTool(DockableIds.WindowLevel, _sessionManager.Current?.WindowLevel);
 

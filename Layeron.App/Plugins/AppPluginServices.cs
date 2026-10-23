@@ -21,6 +21,7 @@ public sealed class AppPluginServices : IPluginServices, IDisposable
 {
     private readonly AppVolumeService _volumes;
     private readonly AppMaskService _masks;
+    private readonly AppAnnotationService _annotations;
     private readonly AppPreviewChannel _preview;
 
     public AppPluginServices(ISessionManager sessions, IPluginLog log)
@@ -28,12 +29,15 @@ public sealed class AppPluginServices : IPluginServices, IDisposable
         Log = log;
         _volumes = new AppVolumeService(sessions);
         _masks = new AppMaskService(sessions, _volumes);
+        _annotations = new AppAnnotationService(sessions);
         _preview = new AppPreviewChannel();
     }
 
     public IVolumeService Volumes => _volumes;
 
     public IMaskService Masks => _masks;
+
+    public IAnnotationService Annotations => _annotations;
 
     public IPreviewChannel Preview => _preview;
 
@@ -55,6 +59,7 @@ public sealed class AppPluginServices : IPluginServices, IDisposable
 
         _volumes.Dispose();
         _masks.Dispose();
+        _annotations.Dispose();
     }
 }
 
@@ -169,7 +174,7 @@ internal sealed class AppMaskService : IMaskService, IDisposable
 
     public event Action? ContentChanged;
 
-    public IMaskLayer Add(string name, Big3DBitMap bitmap, MaskColor color, double opacity = 0.4)
+    public IMaskLayer Add(string name, Big3DBitMap bitmap, MaskColor color)
     {
         var manager = _sessions.Current?.MaskManager
             ?? throw new InvalidOperationException("No active session.");
@@ -185,8 +190,7 @@ internal sealed class AppMaskService : IMaskService, IDisposable
         var layer = new MaskLayer
         {
             Name = name,
-            Color = Avalonia.Media.Color.FromRgb(color.R, color.G, color.B),
-            Opacity = opacity,
+            Color = Avalonia.Media.Color.FromArgb(color.A, color.R, color.G, color.B),
             IsVisible = true,
             Bitmap = bitmap
         };
@@ -231,6 +235,157 @@ internal sealed class AppMaskService : IMaskService, IDisposable
     {
         _sessionSubscription?.Dispose();
         _layers.Clear();
+    }
+}
+
+/// <summary>
+/// Adapter over the session's annotation manager. Every created annotation is an ordinary app model,
+/// so it persists after the plugin unloads exactly like a mask produced by a plugin; the manager also
+/// raises the same events for UI-created annotations, which keeps <see cref="Layers"/> live.
+/// </summary>
+internal sealed class AppAnnotationService : IAnnotationService, IDisposable
+{
+    private readonly ISessionManager _sessions;
+    private readonly IDisposable? _sessionSubscription;
+    private AnnotationManagerViewModel? _manager;
+
+    public AppAnnotationService(ISessionManager sessions)
+    {
+        _sessions = sessions;
+        _sessionSubscription = sessions.CurrentSession.Subscribe(Attach);
+    }
+
+    public IReadOnlyList<IAnnotationLayer> Layers =>
+        _manager is { } manager ? [.. manager.Layers.Cast<IAnnotationLayer>()] : [];
+
+    public IAnnotationLayer? ActiveLayer
+    {
+        get => _manager?.ActiveLayer;
+        set
+        {
+            if (_manager == null)
+                return;
+
+            if (value is not AnnotationLayer typed)
+                throw new ArgumentException("The layer is not an annotation layer of this session.", nameof(value));
+
+            if (!_manager.Layers.Contains(typed))
+                throw new ArgumentException("The layer does not belong to the current session.", nameof(value));
+
+            _manager.ActiveLayer = typed;
+        }
+    }
+
+    public event Action? Changed;
+
+    public event Action? ContentChanged;
+
+    public IAnnotationLayer AddLayer(string name, MaskColor color)
+    {
+        var manager = RequireManager();
+        var layer = new AnnotationLayer
+        {
+            Name = name,
+            Color = Avalonia.Media.Color.FromArgb(color.A, color.R, color.G, color.B),
+            IsVisible = true
+        };
+
+        manager.AddLayer(layer);
+        return layer;
+    }
+
+    public void RemoveLayer(IAnnotationLayer layer)
+    {
+        if (layer is AnnotationLayer typed)
+            _manager?.RemoveLayer(typed);
+    }
+
+    public IAnnotation AddPoint(
+        IAnnotationLayer layer,
+        SlicePlane plane,
+        int sliceIndex,
+        AnnotationVertex position,
+        string? label = null)
+        => Add(layer, new PointAnnotationShape(plane, sliceIndex, position), label);
+
+    public IAnnotation AddLine(
+        IAnnotationLayer layer,
+        SlicePlane plane,
+        int sliceIndex,
+        AnnotationVertex start,
+        AnnotationVertex end,
+        string? label = null)
+        => Add(layer, new LineAnnotationShape(plane, sliceIndex, start, end), label);
+
+    public IAnnotation AddPolygon(
+        IAnnotationLayer layer,
+        SlicePlane plane,
+        int sliceIndex,
+        IReadOnlyList<AnnotationVertex> vertices,
+        string? label = null)
+    {
+        ArgumentNullException.ThrowIfNull(vertices);
+        return Add(layer, new PolygonAnnotationShape(plane, sliceIndex, vertices), label);
+    }
+
+    public IAnnotation Add(IAnnotationLayer layer, AnnotationShape shape, string? label = null)
+    {
+        ArgumentNullException.ThrowIfNull(layer);
+        ArgumentNullException.ThrowIfNull(shape);
+
+        var manager = RequireManager();
+        if (layer is not AnnotationLayer typed || !manager.Layers.Contains(typed))
+            throw new ArgumentException("The layer does not belong to the current session.", nameof(layer));
+
+        return manager.AddAnnotation(typed, shape, label);
+    }
+
+    public void Remove(IAnnotation annotation)
+    {
+        if (annotation is Annotation typed)
+            _manager?.RemoveAnnotation(typed);
+    }
+
+    public void NotifyContentChanged() => _manager?.RaiseContentChanged();
+
+    private AnnotationManagerViewModel RequireManager()
+        => _sessions.Current?.AnnotationManager
+           ?? throw new InvalidOperationException("No active session.");
+
+    private void Attach(ISession? session)
+    {
+        if (_manager != null)
+        {
+            _manager.LayersChanged -= OnLayersChanged;
+            _manager.ContentChanged -= OnContentChanged;
+        }
+
+        _manager = session?.AnnotationManager;
+
+        if (_manager != null)
+        {
+            _manager.LayersChanged += OnLayersChanged;
+            _manager.ContentChanged += OnContentChanged;
+        }
+
+        // Layers are session-owned: a new session starts with none of them.
+        Changed?.Invoke();
+    }
+
+    private void OnLayersChanged() => Changed?.Invoke();
+
+    private void OnContentChanged() => ContentChanged?.Invoke();
+
+    public void Dispose()
+    {
+        _sessionSubscription?.Dispose();
+
+        if (_manager != null)
+        {
+            _manager.LayersChanged -= OnLayersChanged;
+            _manager.ContentChanged -= OnContentChanged;
+            _manager = null;
+        }
     }
 }
 

@@ -7,6 +7,7 @@ public interface IPluginServices
 {
     IVolumeService Volumes { get; }
     IMaskService Masks { get; }
+    IAnnotationService Annotations { get; }
     IPreviewChannel Preview { get; }
     IPluginLog Log { get; }
 
@@ -95,7 +96,7 @@ public interface IMaskService
     event Action? Changed;                 // 图层增删
     event Action? ContentChanged;          // 像素变化
 
-    IMaskLayer Add(string name, Big3DBitMap bitmap, MaskColor color, double opacity = 0.4);
+    IMaskLayer Add(string name, Big3DBitMap bitmap, MaskColor color);
     void Remove(IMaskLayer layer);
     void NotifyContentChanged();
 }
@@ -103,8 +104,7 @@ public interface IMaskService
 public interface IMaskLayer
 {
     string Name { get; set; }
-    MaskColor Color { get; set; }
-    double Opacity { get; set; }
+    MaskColor Color { get; set; }   // Alpha 即叠加透明度
     bool IsVisible { get; set; }
     Big3DBitMap Bitmap { get; }
 }
@@ -118,8 +118,8 @@ var buffer = new bool[ReadonlyBig3DArray.BlockVolumeElements];
 // ...填充 buffer...
 bitmap.SetBlock(bx, by, bz, buffer);
 
-// 掩膜是用户数据：不随插件卸载而消失
-var layer = services.Masks.Add("My Segmentation", bitmap, MaskColor.Yellow, opacity: 0.4);
+// 掩膜是用户数据：不随插件卸载而消失；颜色 Alpha 控制透明度
+var layer = services.Masks.Add("My Segmentation", bitmap, MaskColor.Yellow.WithAlpha(102));
 
 // 直接写像素之后必须显式通知，UI 才会刷新
 services.Masks.NotifyContentChanged();
@@ -131,8 +131,83 @@ services.Masks.NotifyContentChanged();
 |---|---|
 | 掩膜维度必须与主卷一致 | `Add` 会校验；不一致直接拒绝 |
 | 写像素后要 `NotifyContentChanged()` | 块级 API 刻意不抛逐体素事件——一次遍历上亿次通知是不可接受的 |
-| 颜色是 `MaskColor`，不是 Avalonia 的 `Color` | 契约程序集不含任何 UI 框架 |
+| 颜色是 RGBA 的 `MaskColor`，不是 Avalonia 的 `Color` | 契约程序集不含任何 UI 框架；Alpha 就是图层透明度 |
 | 掩膜是会话数据，不随插件卸载消失 | 它是用户的产物，不是插件的临时状态 |
+
+## 标注：IAnnotationService
+
+标注是掩膜的矢量对应物：图层、颜色（Alpha 即透明度）、可见性与掩膜一致，但每个标注只保存它所在切片上的几个顶点。
+
+```csharp
+public enum AnnotationKind { Point, Line, Polygon }
+
+public readonly record struct AnnotationVertex(int U, int V);
+
+public abstract class AnnotationShape
+{
+    public SlicePlane Plane { get; }
+    public int Index { get; }
+    public IReadOnlyList<AnnotationVertex> Vertices { get; }
+    public abstract AnnotationKind Kind { get; }
+}
+
+public sealed class PointAnnotationShape : AnnotationShape { ... }
+public sealed class LineAnnotationShape : AnnotationShape { ... }
+public sealed class PolygonAnnotationShape : AnnotationShape { ... }
+
+public interface IAnnotationService
+{
+    IReadOnlyList<IAnnotationLayer> Layers { get; }
+    IAnnotationLayer? ActiveLayer { get; set; }
+    event Action? Changed;          // 图层或标注增删
+    event Action? ContentChanged;   // 几何、标签、颜色等变化
+
+    IAnnotationLayer AddLayer(string name, MaskColor color);
+    void RemoveLayer(IAnnotationLayer layer);
+
+    IAnnotation AddPoint(IAnnotationLayer layer, SlicePlane plane, int sliceIndex,
+                         AnnotationVertex position, string? label = null);
+    IAnnotation AddLine(IAnnotationLayer layer, SlicePlane plane, int sliceIndex,
+                        AnnotationVertex start, AnnotationVertex end, string? label = null);
+    IAnnotation AddPolygon(IAnnotationLayer layer, SlicePlane plane, int sliceIndex,
+                           IReadOnlyList<AnnotationVertex> vertices, string? label = null);
+
+    // 扩展入口：未来新增的 AnnotationShape 子类通过它注册
+    IAnnotation Add(IAnnotationLayer layer, AnnotationShape shape, string? label = null);
+    void Remove(IAnnotation annotation);
+    void NotifyContentChanged();
+}
+```
+
+```csharp
+var layer = services.Annotations.AddLayer("ROI", MaskColor.Yellow.WithAlpha(204));
+
+var point = services.Annotations.AddPoint(
+    layer, SlicePlane.XY, services.Volumes.CurrentZ,
+    new AnnotationVertex(services.Volumes.CurrentX, services.Volumes.CurrentY),
+    label: "landmark");
+
+var line = services.Annotations.AddLine(
+    layer, SlicePlane.XY, services.Volumes.CurrentZ,
+    new AnnotationVertex(10, 20), new AnnotationVertex(80, 20));
+
+var polygon = services.Annotations.AddPolygon(
+    layer, SlicePlane.XY, services.Volumes.CurrentZ,
+    [new AnnotationVertex(10, 10), new AnnotationVertex(90, 10), new AnnotationVertex(50, 70)]);
+
+// 修改标签等属性后通知 UI
+services.Annotations.NotifyContentChanged();
+```
+
+要点：
+
+| 规则 | 原因 |
+|---|---|
+| 顶点坐标是切片像素坐标 | `U` 是图像水平轴，`V` 是垂直轴；平面决定它们对应哪个世界轴 |
+| 每个标注只属于一个切片 | 标注是平面几何，渲染与查询都只针对当前层 |
+| 多边形至少三个顶点、线段恰好两个、点恰好一个 | 三个专用 `Add*` 方法会校验；`Add(shape)` 是未来形状的扩展入口 |
+| 图层必须属于当前会话 | 与掩膜一样，换会话后旧图层失效 |
+| 标注是会话数据，不随插件卸载消失 | 它是用户的产物 |
 
 ## 预览通道：IPreviewChannel
 
@@ -150,8 +225,7 @@ public interface IPreviewChannel
 public sealed class PreviewOverlay
 {
     public required string OwnerId { get; init; }   // 通常就是插件 id
-    public MaskColor Color { get; init; } = MaskColor.Red;
-    public double Opacity { get; init; } = 0.5;
+    public MaskColor Color { get; init; } = MaskColor.Red;  // Alpha 即透明度
     public SlicePlane Plane { get; init; }
     public int Index { get; init; }                 // 该平面内的层号
     public bool[,]? Mask { get; init; }             // 该层的二值叠加；null 表示"这层不显示"
@@ -176,8 +250,7 @@ services.Preview.Publish(new PreviewOverlay
     OwnerId = context.PluginId,
     Plane = SlicePlane.XY,
     Index = z,
-    Color = MaskColor.Green,
-    Opacity = 0.35,
+    Color = MaskColor.Green.WithAlpha(89),
     Mask = previewMask,             // bool[y, x]
     Caption = "阈值 100-200"
 });
@@ -235,7 +308,7 @@ if (scriptHost is not null)
 ## MaskColor
 
 ```csharp
-public readonly record struct MaskColor(byte R, byte G, byte B);
+public readonly record struct MaskColor(byte R, byte G, byte B, byte A = 255);
 ```
 
-预置值：`MaskColor.Red`、`Green`、`Blue`、`Yellow`。自定义：`new MaskColor(120, 80, 200)`。
+预置值：`MaskColor.Red`、`Green`、`Blue`、`Yellow`，默认不透明。自定义：`new MaskColor(120, 80, 200, 102)` 或 `MaskColor.Yellow.WithAlpha(102)`；**Alpha 就是图层/预览的透明度，没有第二个 opacity 字段**。

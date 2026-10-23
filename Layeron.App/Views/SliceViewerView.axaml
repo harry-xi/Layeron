@@ -13,6 +13,8 @@
                                  Source="{Binding SliceImage}"
                                  ClickCommand="{Binding ClickCommand}"
                                  PaintCommand="{Binding PaintCommand}"
+                                 AnnotationCommand="{Binding AnnotationClickCommand}"
+                                 IsAnnotationMode="{Binding IsAnnotationMode}"
                                  BackgroundBrush="#FF1E1E1E" />
     </Border>
 </UserControl>

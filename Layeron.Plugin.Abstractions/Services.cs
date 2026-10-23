@@ -2,13 +2,23 @@ using Layeron.Big3DArray;
 
 namespace Layeron.Plugin.Abstractions;
 
-/// <summary>Straight RGB colour used for mask and preview layers, kept free of any UI type.</summary>
-public readonly record struct MaskColor(byte R, byte G, byte B)
+/// <summary>
+/// Straight RGBA colour used for mask and annotation layers, kept free of any UI type. The alpha
+/// channel is the layer opacity: there is deliberately no second opacity value, so the colour a user
+/// picks is exactly the colour that is rendered.
+/// </summary>
+public readonly record struct MaskColor(byte R, byte G, byte B, byte A = 255)
 {
     public static MaskColor Red => new(255, 0, 0);
     public static MaskColor Green => new(0, 200, 0);
     public static MaskColor Blue => new(0, 120, 255);
     public static MaskColor Yellow => new(255, 200, 0);
+
+    /// <summary>Same RGB colour with a different alpha.</summary>
+    public MaskColor WithAlpha(byte alpha) => this with { A = alpha };
+
+    /// <summary>Builds an RGBA colour; the parameter order matches CSS/ARGB conventions.</summary>
+    public static MaskColor FromArgb(byte a, byte r, byte g, byte b) => new(r, g, b, a);
 }
 
 /// <summary>
@@ -72,9 +82,8 @@ public interface IMaskLayer
 {
     string Name { get; set; }
 
+    /// <summary>Layer colour; the alpha channel controls overlay opacity.</summary>
     MaskColor Color { get; set; }
-
-    double Opacity { get; set; }
 
     bool IsVisible { get; set; }
 
@@ -98,8 +107,11 @@ public interface IMaskService
     /// </summary>
     event Action? ContentChanged;
 
-    /// <summary>Adds a new layer. The bitmap dimensions must match the current main volume.</summary>
-    IMaskLayer Add(string name, Big3DBitMap bitmap, MaskColor color, double opacity = 0.4);
+    /// <summary>
+    /// Adds a new layer. The bitmap dimensions must match the current main volume; the colour's alpha
+    /// is the layer opacity.
+    /// </summary>
+    IMaskLayer Add(string name, Big3DBitMap bitmap, MaskColor color);
 
     /// <summary>Removes a layer previously returned by <see cref="Add"/>.</summary>
     void Remove(IMaskLayer layer);
@@ -131,11 +143,8 @@ public sealed class PreviewOverlay
     /// <summary>Owner key; normally the plugin id. One owner holds at most one overlay per plane/index.</summary>
     public required string OwnerId { get; init; }
 
-    /// <summary>Overlay colour.</summary>
+    /// <summary>Overlay colour; its alpha channel controls opacity.</summary>
     public MaskColor Color { get; init; } = MaskColor.Red;
-
-    /// <summary>Overlay opacity in [0, 1].</summary>
-    public double Opacity { get; init; } = 0.5;
 
     /// <summary>Plane this overlay belongs to.</summary>
     public SlicePlane Plane { get; init; }
@@ -204,6 +213,12 @@ public interface IPluginServices
     IVolumeService Volumes { get; }
 
     IMaskService Masks { get; }
+
+    /// <summary>
+    /// Annotation layers and their shape factories. Annotations are the vector counterpart of masks:
+    /// points, segments and closed regions confined to one slice, grouped into visible layers.
+    /// </summary>
+    IAnnotationService Annotations { get; }
 
     IPreviewChannel Preview { get; }
 

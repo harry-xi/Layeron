@@ -158,11 +158,10 @@ class MaskLayer:
     slice by slice costs one redraw instead of one per slice. Call ``publish()`` when the mask is finished.
     """
 
-    def __init__(self, handle, name, color, opacity, shape, occupied_blocks):
+    def __init__(self, handle, name, color, shape, occupied_blocks):
         self._handle = handle
         self.name = name
         self.color = color
-        self.opacity = opacity
         self.shape = shape
         self.occupied_blocks = occupied_blocks
 
@@ -227,7 +226,6 @@ def _as_layer(description):
         description["handle"],
         description["name"],
         description["color"],
-        description["opacity"],
         description["shape"],
         description["occupied_blocks"],
     )
@@ -249,6 +247,15 @@ def mask_get(handle):
     return None
 
 
+def _rgba(color, default):
+    if color is None:
+        return default
+    color = tuple(color)
+    if len(color) == 3:
+        return (*color, default[3])
+    return color
+
+
 def mask_create(name, color=None):
     """Creates an empty mask sized to the current volume, and returns it as a :class:`MaskLayer`.
 
@@ -256,12 +263,12 @@ def mask_create(name, color=None):
     slices that matter with :meth:`MaskLayer.set_slice`, then call :meth:`MaskLayer.publish`. The layer appears
     in the mask manager straight away, so its name and colour can be set while it is still being filled.
 
-    ``color`` is an ``(r, g, b)`` tuple; the default is yellow.
+    ``color`` is an ``(r, g, b, a)`` tuple; a three-item tuple uses the default alpha. The default is yellow.
     """
-    r, g, b = color if color is not None else (255, 200, 0)
-    handle = _clr.mask_create(str(name), int(r), int(g), int(b))
+    r, g, b, a = _rgba(color, (255, 200, 0, 102))
+    handle = _clr.mask_create(str(name), int(r), int(g), int(b), int(a))
 
-    return mask_get(handle) or MaskLayer(handle, str(name), (r, g, b), 0.4, (0, 0, 0), 0)
+    return mask_get(handle) or MaskLayer(handle, str(name), (r, g, b, a), (0, 0, 0), 0)
 
 
 def mask_add(name, mask, color=None):
@@ -271,11 +278,13 @@ def mask_add(name, mask, color=None):
     counts as true. Anything else is refused: a float mask is a mistake, and an empty layer shown with no
     explanation is a worse way to find that out. Already published - no :meth:`MaskLayer.publish` needed.
 
+    ``color`` is an ``(r, g, b, a)`` tuple; a three-item tuple uses the default alpha. The default is yellow.
+
     Use this when the data already exists as an array. To build a mask slice by slice, use
     :func:`mask_create`.
     """
-    r, g, b = color if color is not None else (255, 200, 0)
-    handle = _clr.mask_add(str(name), mask, int(r), int(g), int(b))
+    r, g, b, a = _rgba(color, (255, 200, 0, 102))
+    handle = _clr.mask_add(str(name), mask, int(r), int(g), int(b), int(a))
 
     return mask_get(handle) or MaskLayer(handle, str(name), (r, g, b), 0.4, (0, 0, 0), 0)
 

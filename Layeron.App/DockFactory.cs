@@ -264,6 +264,7 @@ public class DockFactory : Factory
         Register(DockableIds.SliceCoronal, d => CreateSliceViewer(d, SliceAxis.Coronal));
         Register(DockableIds.SliceSagittal, d => CreateSliceViewer(d, SliceAxis.Sagittal));
         Register(DockableIds.MaskManager, _ => _sessions.Current!.MaskManager);
+        Register(DockableIds.AnnotationManager, _ => _sessions.Current!.AnnotationManager);
         Register(DockableIds.WindowLevel, _ => _sessions.Current!.WindowLevel);
         Register(DockableIds.Log, _ => new LogViewerViewModel());
     }
@@ -548,6 +549,7 @@ public class DockFactory : Factory
         IDockableIdentity identified => identified.TypeId,
         SliceViewerViewModel svm => DockableIds.ForSliceAxis(svm.Axis),
         MaskManagerViewModel => DockableIds.MaskManager,
+        AnnotationManagerViewModel => DockableIds.AnnotationManager,
         WindowLevelViewModel => DockableIds.WindowLevel,
         LogViewerViewModel => DockableIds.Log,
         // Without this, a plugin panel still open at shutdown is dropped from the saved layout.

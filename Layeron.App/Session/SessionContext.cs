@@ -16,10 +16,12 @@ public sealed class SessionContext : ISession
     public SessionContext(
         SharedDataSourceViewModel sharedData,
         MaskManagerViewModel maskManager,
+        AnnotationManagerViewModel annotationManager,
         WindowLevelViewModel windowLevel)
     {
         SharedData = sharedData;
         MaskManager = maskManager;
+        AnnotationManager = annotationManager;
         WindowLevel = windowLevel;
     }
 
@@ -28,6 +30,9 @@ public sealed class SessionContext : ISession
 
     /// <summary>Mask overlay layers bound to the current main volume.</summary>
     public MaskManagerViewModel MaskManager { get; }
+
+    /// <summary>Annotation layers and the interaction state for drawing them.</summary>
+    public AnnotationManagerViewModel AnnotationManager { get; }
 
     /// <summary>Shared window/level lookup applied by every slice view.</summary>
     public WindowLevelViewModel WindowLevel { get; }

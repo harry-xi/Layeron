@@ -224,7 +224,7 @@ print("listed", any(m.name == "demo" for m in layeron.masks()))
 
         Assert.IsTrue(run.Ok, run.Error);
         Assert.IsTrue(
-            Said($"created ({SizeZ}, {SizeY}, {SizeX}) demo (10, 20, 30)"),
+            Said($"created ({SizeZ}, {SizeY}, {SizeX}) demo (10, 20, 30, 102)"),
             Describe());
         Assert.IsTrue(Said("published blocks True"), Describe());
         Assert.IsTrue(Said("readback bool 16 True False"), Describe());
@@ -234,7 +234,7 @@ print("listed", any(m.name == "demo" for m in layeron.masks()))
         // The layer must be real, sized to the volume, and hold the voxels that were written to it.
         var layer = Masks.Layers.Single(l => l.Name == "demo");
         Assert.IsTrue(layer.Bitmap.MatchesDimensions(SizeX, SizeY, SizeZ));
-        Assert.AreEqual(new MaskColor(10, 20, 30), layer.Color);
+        Assert.AreEqual(new MaskColor(10, 20, 30, 102), layer.Color);
         Assert.IsTrue(layer.Bitmap[7, 6, 0]);
         Assert.IsFalse(layer.Bitmap[0, 0, 0]);
         Assert.IsFalse(layer.Bitmap[7, 6, 1]);

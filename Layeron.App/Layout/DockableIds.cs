@@ -15,6 +15,7 @@ public static class DockableIds
     public const string SliceCoronal = "layeron.slice.coronal";
     public const string SliceSagittal = "layeron.slice.sagittal";
     public const string MaskManager = "layeron.tool.maskManager";
+    public const string AnnotationManager = "layeron.tool.annotationManager";
     public const string WindowLevel = "layeron.tool.windowLevel";
     public const string Log = "layeron.tool.log";
 

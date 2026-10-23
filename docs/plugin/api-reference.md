@@ -201,6 +201,7 @@ public interface IPluginServices
 {
     IVolumeService Volumes { get; }
     IMaskService Masks { get; }
+    IAnnotationService Annotations { get; }
     IPreviewChannel Preview { get; }
     IPluginLog Log { get; }
     T? GetService<T>() where T : class;
@@ -241,7 +242,7 @@ public interface IMaskService
     event Action? Changed;
     event Action? ContentChanged;
 
-    IMaskLayer Add(string name, Big3DBitMap bitmap, MaskColor color, double opacity = 0.4);
+    IMaskLayer Add(string name, Big3DBitMap bitmap, MaskColor color);
     void Remove(IMaskLayer layer);
     void NotifyContentChanged();
 }
@@ -250,10 +251,65 @@ public interface IMaskLayer
 {
     string Name { get; set; }
     MaskColor Color { get; set; }
-    double Opacity { get; set; }
     bool IsVisible { get; set; }
     Big3DBitMap Bitmap { get; }
 }
+```
+
+### IAnnotationService / IAnnotationLayer / AnnotationShape
+
+```csharp
+public interface IAnnotationService
+{
+    IReadOnlyList<IAnnotationLayer> Layers { get; }
+    IAnnotationLayer? ActiveLayer { get; set; }
+    event Action? Changed;
+    event Action? ContentChanged;
+
+    IAnnotationLayer AddLayer(string name, MaskColor color);
+    void RemoveLayer(IAnnotationLayer layer);
+
+    IAnnotation AddPoint(IAnnotationLayer layer, SlicePlane plane, int sliceIndex,
+                         AnnotationVertex position, string? label = null);
+    IAnnotation AddLine(IAnnotationLayer layer, SlicePlane plane, int sliceIndex,
+                        AnnotationVertex start, AnnotationVertex end, string? label = null);
+    IAnnotation AddPolygon(IAnnotationLayer layer, SlicePlane plane, int sliceIndex,
+                           IReadOnlyList<AnnotationVertex> vertices, string? label = null);
+    IAnnotation Add(IAnnotationLayer layer, AnnotationShape shape, string? label = null);
+
+    void Remove(IAnnotation annotation);
+    void NotifyContentChanged();
+}
+
+public interface IAnnotationLayer
+{
+    string Name { get; set; }
+    MaskColor Color { get; set; }
+    bool IsVisible { get; set; }
+    IReadOnlyList<IAnnotation> Annotations { get; }
+}
+
+public interface IAnnotation
+{
+    AnnotationShape Shape { get; }
+    string? Label { get; set; }
+}
+
+public enum AnnotationKind { Point, Line, Polygon }
+
+public readonly record struct AnnotationVertex(int U, int V);
+
+public abstract class AnnotationShape
+{
+    public SlicePlane Plane { get; }
+    public int Index { get; }
+    public IReadOnlyList<AnnotationVertex> Vertices { get; }
+    public abstract AnnotationKind Kind { get; }
+}
+
+public sealed class PointAnnotationShape : AnnotationShape { ... }
+public sealed class LineAnnotationShape : AnnotationShape { ... }
+public sealed class PolygonAnnotationShape : AnnotationShape { ... }
 ```
 
 ### IPreviewChannel / PreviewOverlay / SlicePlane
@@ -271,7 +327,6 @@ public sealed class PreviewOverlay
 {
     public required string OwnerId { get; init; }
     public MaskColor Color { get; init; } = MaskColor.Red;
-    public double Opacity { get; init; } = 0.5;
     public SlicePlane Plane { get; init; }
     public int Index { get; init; }
     public bool[,]? Mask { get; init; }
@@ -299,12 +354,15 @@ public interface IPluginLog
 ### MaskColor
 
 ```csharp
-public readonly record struct MaskColor(byte R, byte G, byte B)
+public readonly record struct MaskColor(byte R, byte G, byte B, byte A = 255)
 {
     public static MaskColor Red { get; }
     public static MaskColor Green { get; }
     public static MaskColor Blue { get; }
     public static MaskColor Yellow { get; }
+
+    public MaskColor WithAlpha(byte alpha);
+    public static MaskColor FromArgb(byte a, byte r, byte g, byte b);
 }
 ```
 
@@ -534,6 +592,7 @@ public sealed class ScriptGlobals
     public string ScriptPath { get; }
     public ScriptRunContext Run { get; }
     public IPluginServices Host { get; }
+    public IAnnotationService Annotations { get; }
 
     // 读取
     public ReadonlyBig3DArray? Volume { get; }

@@ -1043,8 +1043,8 @@ internal sealed class PythonSession : IDisposable
         _bridge.SetAttr("set_volume", new Func<PyObject?, PyObject>(bridge.SetVolume).ToPython());
 
         _bridge.SetAttr("masks", new Func<PyObject>(bridge.Masks).ToPython());
-        _bridge.SetAttr("mask_create", new Func<string, int, int, int, int>(bridge.MaskCreate).ToPython());
-        _bridge.SetAttr("mask_add", new Func<string, PyObject?, int, int, int, int>(bridge.MaskAdd).ToPython());
+        _bridge.SetAttr("mask_create", new Func<string, int, int, int, int, int>(bridge.MaskCreate).ToPython());
+        _bridge.SetAttr("mask_add", new Func<string, PyObject?, int, int, int, int, int>(bridge.MaskAdd).ToPython());
         _bridge.SetAttr("mask_read_slice", new Func<int, string, int, PyObject>(bridge.MaskReadSlice).ToPython());
         _bridge.SetAttr("mask_set_slice", new Func<int, string, int, PyObject?, PyObject>(bridge.MaskSetSlice).ToPython());
         _bridge.SetAttr("mask_publish", new Func<int, PyObject>(bridge.MaskPublish).ToPython());

@@ -11,6 +11,7 @@ const zhGuide = [
       { text: '界面与布局', link: '/guide/interface' },
       { text: '数据的加载与查看', link: '/guide/data' },
       { text: '掩膜图层', link: '/guide/masks' },
+      { text: '标注图层', link: '/guide/annotations' },
       { text: '工作区', link: '/guide/workspace' },
       { text: 'C# 脚本', link: '/guide/scripting' }
     ]
@@ -57,6 +58,7 @@ const enGuide = [
       { text: 'Interface & Layout', link: '/en/guide/interface' },
       { text: 'Loading & Viewing Data', link: '/en/guide/data' },
       { text: 'Mask Layers', link: '/en/guide/masks' },
+      { text: 'Annotation Layers', link: '/en/guide/annotations' },
       { text: 'Workspaces', link: '/en/guide/workspace' },
       { text: 'C# Scripts', link: '/en/guide/scripting' }
     ]
