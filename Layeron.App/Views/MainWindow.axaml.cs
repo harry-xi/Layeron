@@ -23,7 +23,9 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
+        StartupTrace.Mark("main-window-ctor-begin");
         InitializeComponent();
+        StartupTrace.Mark("main-window-xaml-loaded");
 
         // 用名称接线而非 XAML 绑定：菜单项实际宿主在弹出层里，$parent[Window] 祖先
         // 查找可能解析不到窗口，导致命令永远不触发。
@@ -45,8 +47,18 @@ public partial class MainWindow : Window
 
     private async void OnMainWindowOpened(object? sender, EventArgs e)
     {
+        StartupTrace.Mark("window-opened");
         if (DataContext is not MainWindowViewModel vm)
             return;
+
+        var firstLayout = true;
+        LayoutUpdated += (_, _) =>
+        {
+            if (!firstLayout)
+                return;
+            firstLayout = false;
+            StartupTrace.Mark("first-layout-pass");
+        };
 
         // The plugin menu keeps only entries contributed by plugins (tool panels and menu paths);
         // plugin management (reload / unload / rescan / leak check) lives in the settings window.
@@ -60,8 +72,26 @@ public partial class MainWindow : Window
         _workspaces = vm.Workspace;
         _workspaces.Changed += RebuildWorkspaceMenu;
         RebuildWorkspaceMenu();
+        StartupTrace.Mark("menus-built");
 
         await vm.Dock.TryRestoreSavedLayoutAsync();
+        StartupTrace.Mark("layout-restored");
+
+        Avalonia.Threading.Dispatcher.UIThread.Post(
+            () => StartupTrace.Mark("dispatcher-render"),
+            Avalonia.Threading.DispatcherPriority.Render);
+        Avalonia.Threading.Dispatcher.UIThread.Post(
+            () => StartupTrace.Mark("dispatcher-background"),
+            Avalonia.Threading.DispatcherPriority.Background);
+        Avalonia.Threading.Dispatcher.UIThread.Post(
+            () => StartupTrace.Mark("dispatcher-loaded"),
+            Avalonia.Threading.DispatcherPriority.Loaded);
+        Avalonia.Threading.Dispatcher.UIThread.Post(
+            () => StartupTrace.Mark("dispatcher-idle"),
+            Avalonia.Threading.DispatcherPriority.ApplicationIdle);
+        Avalonia.Threading.Dispatcher.UIThread.Post(
+            () => StartupTrace.Mark("dispatcher-system-idle"),
+            Avalonia.Threading.DispatcherPriority.SystemIdle);
     }
 
     private void OnMainWindowClosing(object? sender, WindowClosingEventArgs e)

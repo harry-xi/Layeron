@@ -14,7 +14,9 @@ public partial class SliceViewerView : UserControl
 
     public SliceViewerView()
     {
+        StartupTrace.Mark("view:SliceViewerView:begin");
         InitializeComponent();
+        StartupTrace.Mark("view:SliceViewerView:end");
         if (ImageViewer != null)
         {
             ImageViewer.PointerWheelChanged += OnImageViewerWheel;

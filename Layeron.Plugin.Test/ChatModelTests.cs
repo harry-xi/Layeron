@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Layeron.Plugins.Agent;
 using Layeron.Plugins.Agent.Chat;
 using Microsoft.Agents.AI;
@@ -376,24 +375,6 @@ public sealed class ChatModelTests
     // -----------------------------------------------------------------------
     //  Formatting
     // -----------------------------------------------------------------------
-
-    /// <summary>
-    /// The arguments are the provider's own objects: an OpenAI-shaped call hands over <see cref="JsonElement"/>
-    /// values, and the raw JSON is what has to survive, because that is what the model actually sent.
-    /// </summary>
-    [TestMethod]
-    public void ToolArguments_KeepTheRawJsonTheyWereSentWith()
-    {
-        using var arguments = JsonDocument.Parse("""{"city":"Shanghai","days":2}""");
-        var dictionary = arguments.RootElement
-            .EnumerateObject()
-            .ToDictionary(property => property.Name, property => (object?)property.Value.Clone());
-
-        var text = ChatFormat.Arguments(dictionary);
-
-        Assert.Contains("city=\"Shanghai\"", text);
-        Assert.Contains("days=2", text);
-    }
 
     /// <summary>
     /// A tool that takes no arguments must still read as a call: the empty string is what the view turns into

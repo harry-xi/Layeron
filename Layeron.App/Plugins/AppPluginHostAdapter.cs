@@ -47,10 +47,11 @@ public sealed class AppPluginHostAdapter : IPluginHostAdapter
         var factory = tool.ContentFactory;
 
         _dock.Factory.Register(typeId, descriptor =>
-        {
-            var content = factory?.Invoke() ?? "(plugin tool has no content)";
-            return new PluginToolViewModel(descriptor.Title ?? tool.Title, typeId, content, tool.CanClose);
-        });
+            new PluginToolViewModel(
+                descriptor.Title ?? tool.Title,
+                typeId,
+                () => BuildContent(typeId, factory),
+                tool.CanClose));
 
         var entry = new ContributedTool(pluginId, tool.Title, typeId, tool.PreferredDock.ToString().ToLowerInvariant());
         Tools.Add(entry);
@@ -75,10 +76,11 @@ public sealed class AppPluginHostAdapter : IPluginHostAdapter
         var factory = document.ContentFactory;
 
         _dock.Factory.Register(typeId, descriptor =>
-        {
-            var content = factory?.Invoke() ?? "(plugin document has no content)";
-            return new PluginDocumentViewModel(descriptor.Title ?? document.Title, typeId, content, document.CanClose);
-        });
+            new PluginDocumentViewModel(
+                descriptor.Title ?? document.Title,
+                typeId,
+                () => BuildContent(typeId, factory),
+                document.CanClose));
 
         var entry = new ContributedDocument(pluginId, document.Title, typeId);
         Documents.Add(entry);
@@ -102,6 +104,27 @@ public sealed class AppPluginHostAdapter : IPluginHostAdapter
         var description = new MenuDescription(menu.Path, menu.Header, menu.Execute, menu.CanExecute, menu.Order);
         Menus.Add(description);
         return new Handle(() => Menus.Remove(description));
+    }
+
+    /// <summary>
+    /// Builds a plugin control the first time its panel or tab is shown. The constructor may do real
+    /// work (start an interpreter, open a model), so it is deliberately kept out of layout restore.
+    /// </summary>
+    private static object BuildContent(string typeId, Func<object?>? factory)
+    {
+        if (!StartupTrace.Enabled)
+            return factory?.Invoke() ?? "(plugin content has no factory)";
+
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
+        {
+            return factory?.Invoke() ?? "(plugin content has no factory)";
+        }
+        finally
+        {
+            StartupTrace.Mark(
+                $"plugin-content-built:{typeId}:{System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0}ms");
+        }
     }
 
     private sealed class DockableHandle(Action undo, Action open) : IDockableContribution

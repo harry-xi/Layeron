@@ -90,6 +90,12 @@ public sealed class PluginController : IDisposable
     /// <summary>Development plugin directory (scanned first, so local builds shadow installed ones).</summary>
     public string DevelopmentPluginDirectory => _manager.Options.DevelopmentPluginDirectory;
 
+    /// <summary>App-owned shared-contract directory next to the executable.</summary>
+    public string SharedPluginDirectory => _manager.Options.SharedPluginDirectory;
+
+    /// <summary>User-writable shared-contract directory, additive to the app-owned one.</summary>
+    public string UserSharedPluginDirectory => _manager.Options.UserSharedPluginDirectory;
+
     /// <summary>Loads every plugin from the configured directories.</summary>
     public IReadOnlyList<string> LoadAll()
     {
@@ -183,7 +189,7 @@ public sealed class PluginController : IDisposable
     /// <summary>Creates the plugin directories so a first run has somewhere to drop plugins.</summary>
     public void EnsureDirectories()
     {
-        foreach (var directory in new[] { PluginDirectory, DevelopmentPluginDirectory })
+        foreach (var directory in new[] { PluginDirectory, DevelopmentPluginDirectory, UserSharedPluginDirectory })
         {
             try
             {

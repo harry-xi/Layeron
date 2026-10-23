@@ -19,7 +19,9 @@ public partial class LogViewerView : UserControl
 
     public LogViewerView()
     {
+        StartupTrace.Mark("view:LogViewerView:begin");
         InitializeComponent();
+        StartupTrace.Mark("view:LogViewerView:end");
         DataContextChanged += (_, _) => Attach(DataContext as LogViewerViewModel);
         AttachedToVisualTree += (_, _) => ScrollToEnd();
 

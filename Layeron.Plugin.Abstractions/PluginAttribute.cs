@@ -20,7 +20,7 @@ public sealed class PluginAttribute(string id) : Attribute
 /// <summary>
 /// Well-known assembly metadata keys used by .NET plugins. They are declared in the plugin's
 /// project file as <c>&lt;AssemblyMetadata Include="LayeronPluginId" Value="..." /&gt;</c> and are
-/// readable by the host through <c>MetadataLoadContext</c> without running plugin code.
+/// readable by the host through the assembly's metadata tables without running plugin code.
 /// <para>
 /// Non-.NET plugins (scripts, interpreters) have no assembly metadata, so they declare the
 /// same fields in a <c>manifest.json</c> next to their entry point instead; the host normalises

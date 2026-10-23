@@ -221,7 +221,9 @@ public class DockViewModel : ViewModelBase
 
         // Use BuildOrFallback so ContextLocator/DockableLocator are set up
         // and the factory is fully initialised, just like construction time.
+        StartupTrace.Mark("layout-build-begin");
         Layout = Factory.BuildOrFallback(dockLayout);
+        StartupTrace.Mark("layout-build-end");
 
         this.RaisePropertyChanged(nameof(Unresolved));
         this.RaisePropertyChanged(nameof(HasUnresolved));

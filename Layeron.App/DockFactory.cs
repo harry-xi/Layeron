@@ -361,7 +361,10 @@ public class DockFactory : Factory
         {
             try
             {
+                var started = StartupTrace.Enabled ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
                 var dockable = factory(desc);
+                if (StartupTrace.Enabled)
+                    StartupTrace.Mark($"dockable-built:{desc.TypeId}:{System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds:F0}ms");
 
                 if (dockable == null)
                     return null;

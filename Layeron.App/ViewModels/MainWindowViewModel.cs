@@ -13,7 +13,9 @@ public class MainWindowViewModel : ViewModelBase
 
     public MainWindowViewModel(ISessionManager sessions)
     {
+        StartupTrace.Mark("vm-ctor-begin");
         Session = sessions.CreateSession();
+        StartupTrace.Mark("vm-session-created");
 
         // The services are created first because the dock needs the plugin preview channel: plugins
         // and slice views must share one channel instance. The plugin host is then wired up before the
@@ -37,7 +39,9 @@ public class MainWindowViewModel : ViewModelBase
         Session.SharedData.Loaders = Plugins.Loaders;
 
         Plugins.EnsureDirectories();
+        StartupTrace.Mark("plugins-before-initload");
         Plugins.InitLoad();
+        StartupTrace.Mark("vm-ctor-end");
     }
 
     /// <summary>The live session. Replaced when <see cref="ISessionManager"/> opens a new one.</summary>

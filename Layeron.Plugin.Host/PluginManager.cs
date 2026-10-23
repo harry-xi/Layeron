@@ -29,9 +29,29 @@ public sealed class PluginManagerOptions
     /// in another. Without it each plugin gets its own copy and a published service is unreachable
     /// with no error to explain why. See <see cref="PluginSharedAssemblies"/>.
     /// </para>
+    /// <para>
+    /// This is the app-owned folder next to the executable. It is scanned before
+    /// <see cref="UserSharedPluginDirectory"/>, so a contract shipped with the host keeps winning
+    /// over a same-named file in a user-writable folder.
+    /// </para>
     /// </summary>
     public string SharedPluginDirectory { get; set; } = Path.Combine(
         AppContext.BaseDirectory, "plugins.shared");
+
+    /// <summary>
+    /// Additional folder for contracts installed by the user, scanned after the app-owned
+    /// <see cref="SharedPluginDirectory"/>. Its location is the platform's local application-data
+    /// folder, resolved through the .NET API rather than spelled as a platform-specific path.
+    /// <para>
+    /// This exists so a third-party plugin can ship a contract the host does not know about. A
+    /// contract whose simple name is already present in the app-owned folder is ignored rather than
+    /// allowed to shadow it: the host's copy is the one every other plugin may already have bound to,
+    /// and replacing it with a second identity would make services silently unreachable.
+    /// </para>
+    /// </summary>
+    public string UserSharedPluginDirectory { get; set; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "Layeron", "plugins.shared");
 
     /// <summary>
     /// Reject descriptors whose declared API major version differs from
@@ -101,7 +121,9 @@ public sealed class PluginManager : IDisposable
         Adapter = adapter;
         Options = options ?? new PluginManagerOptions();
         PointRegistry = _points;
-        _shared = new PluginSharedAssemblies(Options.SharedPluginDirectory);
+        _shared = new PluginSharedAssemblies(
+            [Options.SharedPluginDirectory, Options.UserSharedPluginDirectory],
+            message => Adapter.Log.Warn(message));
 
         // Host-owned points: survive any single plugin's unload; only contributions are scoped.
         // Pre-defined here so AddFilter/AddSettingsPage (Contribute sugar) never hit "not defined".

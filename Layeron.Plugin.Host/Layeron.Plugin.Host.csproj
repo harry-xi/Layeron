@@ -7,12 +7,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.Reflection.MetadataLoadContext" Version="10.0.0" />
+    <ProjectReference Include="..\Layeron.Big3DArray\Layeron.Big3DArray.csproj" />
+    <ProjectReference Include="..\Layeron.Plugin.Abstractions\Layeron.Plugin.Abstractions.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Layeron.Big3DArray\Layeron.Big3DArray.csproj" />
-    <ProjectReference Include="..\Layeron.Plugin.Abstractions\Layeron.Plugin.Abstractions.csproj" />
+    <!-- The shared-contract scanner is internal, but its precedence rules are worth testing directly. -->
+    <InternalsVisibleTo Include="Layeron.Plugin.Test" />
   </ItemGroup>
 
 </Project>

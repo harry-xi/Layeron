@@ -14,10 +14,17 @@ namespace Layeron.Plugin.Host;
 /// - the lookup simply finds nothing.
 /// </para>
 /// <para>
-/// This context is the single copy they all resolve to. It is created by the host from a folder of
-/// its own (see <see cref="PluginManagerOptions.SharedPluginDirectory"/>), it is never collectible
+/// This context is the single copy they all resolve to. It is created by the host from the app-owned
+/// folder (see <see cref="PluginManagerOptions.SharedPluginDirectory"/>) plus the user's folder
+/// (see <see cref="PluginManagerOptions.UserSharedPluginDirectory"/>), it is never collectible
 /// because a contract has to outlive every plugin that consumes it, and it is consulted <em>before</em>
 /// a plugin's private folder so that a plugin shipping a copy by accident still binds here.
+/// </para>
+/// <para>
+/// Directories are scanned in precedence order. A simple name already provided by an earlier
+/// directory is not replaced by a later one: the app-owned contract must stay the single identity
+/// every plugin binds to. Later files with a new name are additive, which is how a user-installed
+/// plugin can ship a contract the host does not know about.
 /// </para>
 /// <para>
 /// Names owned by the host itself (the abstractions, the data types, the UI stack) are deliberately
@@ -29,22 +36,63 @@ internal sealed class PluginSharedAssemblies : AssemblyLoadContext
 {
     private readonly Dictionary<string, string> _files = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <param name="directory">The folder scanned for contracts; a missing folder yields an empty context.</param>
-    public PluginSharedAssemblies(string? directory)
+    /// <param name="directories">
+    /// Folders scanned for contracts, in precedence order. Missing folders are skipped.
+    /// </param>
+    /// <param name="warn">
+    /// Optional diagnostic sink for a duplicate or misplaced assembly. Discovery must never throw
+    /// because of one bad file in a user-writable folder.
+    /// </param>
+    public PluginSharedAssemblies(IEnumerable<string?> directories, Action<string>? warn = null)
         : base("LayeronPluginsShared", isCollectible: false)
     {
-        if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
-            return;
+        ArgumentNullException.ThrowIfNull(directories);
 
-        foreach (var file in Directory.EnumerateFiles(directory, "*.dll", SearchOption.TopDirectoryOnly))
+        foreach (var directory in directories)
         {
-            var name = Path.GetFileNameWithoutExtension(file);
-
-            // A host contract dropped in here by mistake must not become a second copy of itself.
-            if (PluginLoadContext.IsHostShared(name))
+            if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
                 continue;
 
-            _files.TryAdd(name, file);
+            IEnumerable<string> files;
+            try
+            {
+                // Sort so two runs over the same folder choose the same file when a folder itself
+                // contains two assemblies with the same simple name.
+                files = Directory.EnumerateFiles(directory, "*.dll", SearchOption.TopDirectoryOnly)
+                    .OrderBy(file => file, StringComparer.OrdinalIgnoreCase);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                warn?.Invoke($"Could not scan shared plugin directory '{directory}': {ex.Message}");
+                continue;
+            }
+
+            foreach (var file in files)
+            {
+                var name = Path.GetFileNameWithoutExtension(file);
+
+                // A host contract dropped in here by mistake must not become a second copy of itself.
+                if (PluginLoadContext.IsHostShared(name))
+                {
+                    warn?.Invoke(
+                        $"Ignoring host assembly '{name}' in shared plugin directory '{directory}'.");
+                    continue;
+                }
+
+                if (_files.TryGetValue(name, out var existing))
+                {
+                    if (!string.Equals(existing, file, StringComparison.Ordinal))
+                    {
+                        warn?.Invoke(
+                            $"Shared contract '{name}' from '{file}' is ignored because " +
+                            $"'{existing}' already provides it.");
+                    }
+
+                    continue;
+                }
+
+                _files.Add(name, file);
+            }
         }
     }
 
