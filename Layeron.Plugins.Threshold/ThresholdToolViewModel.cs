@@ -305,8 +305,7 @@ public sealed class ThresholdToolViewModel : ReactiveObject, IDisposable
             Plane = plane,
             Index = sliceIndex,
             Mask = mask,
-            Color = new MaskColor(0xE8, 0x9E, 0x3C),
-            Opacity = 0.45,
+            Color = new MaskColor(0xE8, 0x9E, 0x3C, 115),
             Caption = $"阈值 [{(long)Low}, {(long)High}]"
         });
     }
@@ -350,7 +349,7 @@ public sealed class ThresholdToolViewModel : ReactiveObject, IDisposable
                     return;
                 }
 
-                var layer = _services.Masks.Add($"阈值 [{low}, {high}]", task.Result, MaskColor.Yellow, 0.4);
+                var layer = _services.Masks.Add($"阈值 [{low}, {high}]", task.Result, MaskColor.Yellow.WithAlpha(102));
                 _services.Masks.NotifyContentChanged();
                 StatusText = $"已添加掩膜 “{layer.Name}”";
                 RefreshPreview();

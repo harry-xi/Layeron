@@ -675,8 +675,7 @@ internal sealed class OnnxToolViewModel : ReactiveObject, IDisposable
                 Plane = ToHostPlane(result.Plane),
                 Index = result.Index,
                 Mask = OnnxMaskBuilder.BuildOverlay(result, binding),
-                Color = new MaskColor(0x3C, 0xC8, 0xE8),
-                Opacity = 0.45,
+                Color = new MaskColor(0x3C, 0xC8, 0xE8, 115),
                 Caption = $"{request.ModelId} ≥ {Threshold * 100:F0}%"
             });
 

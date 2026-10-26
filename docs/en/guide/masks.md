@@ -18,7 +18,7 @@ A mask can be saved and loaded on its own, so an annotation can outlive and trav
 | **Load** | Load a mask layer from a file |
 | **Show** | Whether the layer is visible |
 | **Name** | Layer name (editable) |
-| **Opacity** | Overlay opacity, shown as a percentage |
+| **Color** | Layer colour; the picker's Alpha is the overlay opacity |
 | **Remove** | Delete the layer |
 | **Save** | Save the layer to a file |
 

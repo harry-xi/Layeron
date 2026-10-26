@@ -52,7 +52,7 @@ internal static class OnnxMaskBuilder
         }
 
         var name = $"{modelId} 结构（切片 {result.Index}）";
-        masks.Add(name, bitmap, MaskColor.Yellow, 0.4);
+        masks.Add(name, bitmap, MaskColor.Yellow.WithAlpha(102));
         masks.NotifyContentChanged();
         return name;
     }

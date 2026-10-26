@@ -30,13 +30,13 @@ Save and run exist only on the script window, because they need one specific scr
 - Computation happens in the background, so a long run does not freeze the window.
 - One script runs at a time; press "Cancel" or close the window to stop it.
 - Compile errors and runtime exceptions appear in the log window; the application does not crash.
-- **Masks, volume changes and log entries persist**; menus and panels a script added temporarily disappear when the run ends.
+- **Masks, annotations, volume changes and log entries persist**; menus and panels a script added temporarily disappear when the run ends.
 
 ## What a script can do
 
 - **Read the current data**: the volume, the crosshair position, the gray-level histogram, and values in any region.
 - **Report**: write to the log, show a message on the status line, report progress, publish a result as a log entry.
-- **Write back to the session**: add mask layers, replace the volume.
+- **Write back to the session**: add mask layers, add point/line/polygon annotations, replace the volume.
 - **Extend the application**: add menu entries and dockable panels like a plugin, or contribute buttons to another plugin's extension point.
 
 The full list of available members and signatures is in [API Reference → ScriptGlobals](/en/plugin/api-reference#scriptglobals).

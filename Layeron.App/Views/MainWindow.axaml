@@ -41,6 +41,7 @@
             </MenuItem>
             <MenuItem Header="Tools">
                 <MenuItem Header="遮罩管理器" Command="{Binding Dock.OpenMaskManagerCommand}"/>
+                <MenuItem Header="标注管理器" Command="{Binding Dock.OpenAnnotationManagerCommand}"/>
                 <MenuItem Header="窗宽窗位" Command="{Binding Dock.OpenWindowLevelCommand}"/>
                 <MenuItem Header="日志" Command="{Binding Dock.OpenLogCommand}"/>
             </MenuItem>

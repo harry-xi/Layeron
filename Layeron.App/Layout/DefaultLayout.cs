@@ -101,6 +101,7 @@ public static class DefaultLayout
                             VisibleDockables =
                             [
                                 Dockable(DockableIds.MaskManager, "MaskManager", "Mask Manager"),
+                                Dockable(DockableIds.AnnotationManager, "AnnotationManager", "Annotation Manager"),
                                 Dockable(DockableIds.WindowLevel, "WindowLevel", "Window Level")
                             ]
                         }

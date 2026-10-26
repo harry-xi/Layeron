@@ -25,6 +25,13 @@ public partial class CustomImageViewer : UserControl
     public static readonly StyledProperty<ICommand?> PaintCommandProperty =
         AvaloniaProperty.Register<CustomImageViewer, ICommand?>(nameof(PaintCommand));
 
+    /// <summary>Receives <see cref="SliceClick"/> values while <see cref="IsAnnotationMode"/> is on.</summary>
+    public static readonly StyledProperty<ICommand?> AnnotationCommandProperty =
+        AvaloniaProperty.Register<CustomImageViewer, ICommand?>(nameof(AnnotationCommand));
+
+    public static readonly StyledProperty<bool> IsAnnotationModeProperty =
+        AvaloniaProperty.Register<CustomImageViewer, bool>(nameof(IsAnnotationMode));
+
     public static readonly StyledProperty<IBrush?> BackgroundBrushProperty =
         AvaloniaProperty.Register<CustomImageViewer, IBrush?>(nameof(BackgroundBrush));
 
@@ -70,6 +77,18 @@ public partial class CustomImageViewer : UserControl
     {
         get => GetValue(PaintCommandProperty);
         set => SetValue(PaintCommandProperty, value);
+    }
+
+    public ICommand? AnnotationCommand
+    {
+        get => GetValue(AnnotationCommandProperty);
+        set => SetValue(AnnotationCommandProperty, value);
+    }
+
+    public bool IsAnnotationMode
+    {
+        get => GetValue(IsAnnotationModeProperty);
+        set => SetValue(IsAnnotationModeProperty, value);
     }
 
     public IBrush? BackgroundBrush
@@ -154,8 +173,9 @@ public partial class CustomImageViewer : UserControl
         var pt = e.GetPosition(this);
         var current = e.GetCurrentPoint(this).Properties;
 
-        // Double-click returns to fit-to-window framing.
-        if (current.IsLeftButtonPressed && e.ClickCount >= 2)
+        // Double-click returns to fit-to-window framing, unless the user is drawing: there the same
+        // gesture means "finish the polygon".
+        if (current.IsLeftButtonPressed && e.ClickCount >= 2 && !IsAnnotationMode)
         {
             FitToWindow();
             e.Handled = true;
@@ -167,6 +187,12 @@ public partial class CustomImageViewer : UserControl
             _isPainting = true;
             Cursor = new Cursor(StandardCursorType.Cross);
             ExecutePaint(pt);
+        }
+        else if (current.IsLeftButtonPressed && IsAnnotationMode)
+        {
+            Cursor = new Cursor(StandardCursorType.Cross);
+            ExecuteAnnotation(pt, e.ClickCount);
+            e.Handled = true;
         }
         else if (current.IsLeftButtonPressed)
         {
@@ -238,6 +264,24 @@ public partial class CustomImageViewer : UserControl
         PaintCommand.Execute(new Point(pixelX, pixelY));
     }
 
+    /// <summary>
+    /// Converts a click to a pixel coordinate in the source image. The annotation tools work in image
+    /// space, not control space, so zoom and pan never affect where a shape lands.
+    /// </summary>
+    private void ExecuteAnnotation(Point controlPt, int clickCount)
+    {
+        if (AnnotationCommand == null || Source == null) return;
+        var imgW = Source.PixelSize.Width;
+        var imgH = Source.PixelSize.Height;
+
+        var imgPt = (controlPt - _pan) / _scale;
+        var pixelX = (int)Math.Floor(imgPt.X);
+        var pixelY = (int)Math.Floor(imgPt.Y);
+        if (pixelX < 0 || pixelX >= imgW || pixelY < 0 || pixelY >= imgH) return;
+
+        AnnotationCommand.Execute(new SliceClick(new Point(pixelX, pixelY), clickCount));
+    }
+
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
@@ -257,6 +301,12 @@ public partial class CustomImageViewer : UserControl
         else if (change.Property == BackgroundBrushProperty)
         {
             InvalidateVisual();
+        }
+        else if (change.Property == IsAnnotationModeProperty)
+        {
+            Cursor = change.GetNewValue<bool>()
+                ? new Cursor(StandardCursorType.Cross)
+                : new Cursor(StandardCursorType.Arrow);
         }
     }
 

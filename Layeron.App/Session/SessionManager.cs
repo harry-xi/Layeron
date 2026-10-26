@@ -32,12 +32,15 @@ public sealed class SessionManager : ISessionManager
 
         var sharedData = new SharedDataSourceViewModel();
         var maskManager = new MaskManagerViewModel();
+        var annotationManager = new AnnotationManagerViewModel();
 
         sharedData.MaskManager = maskManager;
+        sharedData.AnnotationManager = annotationManager;
         maskManager.SharedData = sharedData;
+        annotationManager.SharedData = sharedData;
         _windowLevel.SharedData = sharedData;
 
-        var session = new SessionContext(sharedData, maskManager, _windowLevel);
+        var session = new SessionContext(sharedData, maskManager, annotationManager, _windowLevel);
         _current.OnNext(session);
         Log.Debug("Session", "Session {SessionId} created", session.GetHashCode());
         return session;

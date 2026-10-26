@@ -63,5 +63,7 @@ public class MainWindowViewModel : ViewModelBase
 
     public MaskManagerViewModel MaskManager => Session.MaskManager;
 
+    public AnnotationManagerViewModel AnnotationManager => Session.AnnotationManager;
+
     public WindowLevelViewModel WindowLevel => Session.WindowLevel;
 }

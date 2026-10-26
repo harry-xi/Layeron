@@ -7,6 +7,7 @@ public interface IPluginServices
 {
     IVolumeService Volumes { get; }
     IMaskService Masks { get; }
+    IAnnotationService Annotations { get; }
     IPreviewChannel Preview { get; }
     IPluginLog Log { get; }
 
@@ -95,7 +96,7 @@ public interface IMaskService
     event Action? Changed;                 // layers added/removed
     event Action? ContentChanged;          // pixels changed
 
-    IMaskLayer Add(string name, Big3DBitMap bitmap, MaskColor color, double opacity = 0.4);
+    IMaskLayer Add(string name, Big3DBitMap bitmap, MaskColor color);
     void Remove(IMaskLayer layer);
     void NotifyContentChanged();
 }
@@ -103,8 +104,7 @@ public interface IMaskService
 public interface IMaskLayer
 {
     string Name { get; set; }
-    MaskColor Color { get; set; }
-    double Opacity { get; set; }
+    MaskColor Color { get; set; }   // alpha is the overlay opacity
     bool IsVisible { get; set; }
     Big3DBitMap Bitmap { get; }
 }
@@ -118,8 +118,9 @@ var buffer = new bool[ReadonlyBig3DArray.BlockVolumeElements];
 // ...fill the buffer...
 bitmap.SetBlock(bx, by, bz, buffer);
 
-// A mask is user data: it does not disappear when the plugin unloads
-var layer = services.Masks.Add("My Segmentation", bitmap, MaskColor.Yellow, opacity: 0.4);
+// A mask is user data: it does not disappear when the plugin unloads.
+// The colour's alpha controls opacity.
+var layer = services.Masks.Add("My Segmentation", bitmap, MaskColor.Yellow.WithAlpha(102));
 
 // After writing pixels directly, notify explicitly so the UI refreshes
 services.Masks.NotifyContentChanged();
@@ -131,8 +132,83 @@ Points to remember:
 |---|---|
 | Mask dimensions must match the volume | `Add` validates and rejects a mismatch |
 | Call `NotifyContentChanged()` after writing pixels | The block API deliberately raises no per-voxel events — hundreds of millions of notifications in one traversal is unacceptable |
-| The colour is `MaskColor`, not Avalonia's `Color` | The contract assembly contains no UI framework |
+| The colour is RGBA `MaskColor`, not Avalonia's `Color` | The contract assembly contains no UI framework; alpha is the layer opacity |
 | A mask is session data and survives the plugin | It is the user's artefact, not the plugin's temporary state |
+
+## Annotations: IAnnotationService
+
+Annotations are the vector counterpart of masks: layers, colour (alpha is opacity) and visibility work the same way, but each annotation only stores the handful of vertices it occupies on one slice.
+
+```csharp
+public enum AnnotationKind { Point, Line, Polygon }
+
+public readonly record struct AnnotationVertex(int U, int V);
+
+public abstract class AnnotationShape
+{
+    public SlicePlane Plane { get; }
+    public int Index { get; }
+    public IReadOnlyList<AnnotationVertex> Vertices { get; }
+    public abstract AnnotationKind Kind { get; }
+}
+
+public sealed class PointAnnotationShape : AnnotationShape { ... }
+public sealed class LineAnnotationShape : AnnotationShape { ... }
+public sealed class PolygonAnnotationShape : AnnotationShape { ... }
+
+public interface IAnnotationService
+{
+    IReadOnlyList<IAnnotationLayer> Layers { get; }
+    IAnnotationLayer? ActiveLayer { get; set; }
+    event Action? Changed;          // layers or annotations added/removed
+    event Action? ContentChanged;   // geometry, label, colour, opacity...
+
+    IAnnotationLayer AddLayer(string name, MaskColor color);
+    void RemoveLayer(IAnnotationLayer layer);
+
+    IAnnotation AddPoint(IAnnotationLayer layer, SlicePlane plane, int sliceIndex,
+                         AnnotationVertex position, string? label = null);
+    IAnnotation AddLine(IAnnotationLayer layer, SlicePlane plane, int sliceIndex,
+                        AnnotationVertex start, AnnotationVertex end, string? label = null);
+    IAnnotation AddPolygon(IAnnotationLayer layer, SlicePlane plane, int sliceIndex,
+                           IReadOnlyList<AnnotationVertex> vertices, string? label = null);
+
+    // Extension seam: a future AnnotationShape subclass is stored through this method.
+    IAnnotation Add(IAnnotationLayer layer, AnnotationShape shape, string? label = null);
+    void Remove(IAnnotation annotation);
+    void NotifyContentChanged();
+}
+```
+
+```csharp
+var layer = services.Annotations.AddLayer("ROI", MaskColor.Yellow.WithAlpha(204));
+
+var point = services.Annotations.AddPoint(
+    layer, SlicePlane.XY, services.Volumes.CurrentZ,
+    new AnnotationVertex(services.Volumes.CurrentX, services.Volumes.CurrentY),
+    label: "landmark");
+
+var line = services.Annotations.AddLine(
+    layer, SlicePlane.XY, services.Volumes.CurrentZ,
+    new AnnotationVertex(10, 20), new AnnotationVertex(80, 20));
+
+var polygon = services.Annotations.AddPolygon(
+    layer, SlicePlane.XY, services.Volumes.CurrentZ,
+    [new AnnotationVertex(10, 10), new AnnotationVertex(90, 10), new AnnotationVertex(50, 70)]);
+
+// Notify the UI after editing properties such as the label.
+services.Annotations.NotifyContentChanged();
+```
+
+Rules:
+
+| Rule | Why |
+|---|---|
+| Vertices are slice pixel coordinates | `U` is the image's horizontal axis, `V` the vertical one; the plane decides which world axes those are |
+| An annotation belongs to exactly one slice | The geometry is planar, so rendering and lookup only touch the current slice |
+| A polygon needs at least three vertices; a line exactly two; a point exactly one | The dedicated `Add*` methods validate this; `Add(shape)` is the extension seam for future kinds |
+| The layer must belong to the current session | As with masks, layers from a closed session are no longer valid |
+| An annotation is session data and survives the plugin | It is the user's artefact |
 
 ## Preview channel: IPreviewChannel
 
@@ -150,8 +226,7 @@ public interface IPreviewChannel
 public sealed class PreviewOverlay
 {
     public required string OwnerId { get; init; }   // normally the plugin id
-    public MaskColor Color { get; init; } = MaskColor.Red;
-    public double Opacity { get; init; } = 0.5;
+    public MaskColor Color { get; init; } = MaskColor.Red;  // alpha is opacity
     public SlicePlane Plane { get; init; }
     public int Index { get; init; }                 // slice index inside the plane
     public bool[,]? Mask { get; init; }             // binary overlay; null means "nothing on this slice"
@@ -176,8 +251,7 @@ services.Preview.Publish(new PreviewOverlay
     OwnerId = context.PluginId,
     Plane = SlicePlane.XY,
     Index = z,
-    Color = MaskColor.Green,
-    Opacity = 0.35,
+    Color = MaskColor.Green.WithAlpha(89),
     Mask = previewMask,             // bool[y, x]
     Caption = "Threshold 100-200"
 });
@@ -236,7 +310,7 @@ The point is to keep **optional feature types** out of the contract every plugin
 ## MaskColor
 
 ```csharp
-public readonly record struct MaskColor(byte R, byte G, byte B);
+public readonly record struct MaskColor(byte R, byte G, byte B, byte A = 255);
 ```
 
-Presets: `MaskColor.Red`, `Green`, `Blue`, `Yellow`. Custom: `new MaskColor(120, 80, 200)`.
+Presets: `MaskColor.Red`, `Green`, `Blue`, `Yellow`, opaque by default. Custom: `new MaskColor(120, 80, 200, 102)` or `MaskColor.Yellow.WithAlpha(102)`; **alpha is the layer/preview opacity, and there is no second opacity field**.

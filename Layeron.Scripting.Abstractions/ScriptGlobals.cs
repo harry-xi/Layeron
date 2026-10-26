@@ -48,7 +48,7 @@ public sealed class ScriptGlobals
     /// <summary>Per-execution state: cancellation, reporting, UI marshalling.</summary>
     public ScriptRunContext Run { get; }
 
-    /// <summary>Host services (volume, masks, preview, logging).</summary>
+    /// <summary>Host services (volume, masks, annotations, preview, logging).</summary>
     public IPluginServices Host => Plugin.Services;
 
     // ---------------------------------------------------------------------
@@ -162,7 +162,7 @@ public sealed class ScriptGlobals
         IMaskLayer? layer = null;
         Run.Invoke(() =>
         {
-            layer = Host.Masks.Add(name, bitmap, color ?? MaskColor.Yellow);
+            layer = Host.Masks.Add(name, bitmap, color ?? MaskColor.Yellow.WithAlpha(102));
             Host.Masks.NotifyContentChanged();
         });
 
@@ -188,6 +188,13 @@ public sealed class ScriptGlobals
 
     /// <summary>Non-destructive preview overlays, for showing an intermediate result while working.</summary>
     public IPreviewChannel Preview => Host.Preview;
+
+    /// <summary>
+    /// Annotation layers and their point/line/polygon factories. Like masks, annotations are user data
+    /// and survive the script run; use <see cref="ScriptRunContext.Invoke"/> when creating them from a
+    /// background thread.
+    /// </summary>
+    public IAnnotationService Annotations => Host.Annotations;
 
     /// <summary>
     /// Logs a warning - it does not block anything - when the main volume has been replaced since this

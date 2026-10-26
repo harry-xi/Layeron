@@ -43,6 +43,8 @@ public class SliceViewerViewModel : Document
     private readonly HashSet<MaskLayer> _maskLayerSubscriptions = [];
     private CrosshairOverlay? _crosshairOverlay;
     private MaskOverlay? _maskOverlay;
+    private AnnotationOverlay? _annotationOverlay;
+    private AnnotationManagerViewModel? _annotationManager;
     private MaskOverlay? _previewOverlay;
     private WriteableBitmap? _previewImage;
     private PreviewOverlay? _renderedOverlay;
@@ -59,9 +61,13 @@ public class SliceViewerViewModel : Document
         CanClose = true;
         ClickCommand = ReactiveCommand.Create<Point>(OnClick);
         PaintCommand = ReactiveCommand.Create<Point>(PaintMask); // [TEMP-DEMO]
+        AnnotationClickCommand = ReactiveCommand.Create<SliceClick>(OnAnnotationClick);
+        CancelAnnotationCommand = ReactiveCommand.Create(CancelAnnotation);
 
         ClickCommand.ThrownExceptions.Subscribe(HandleInteractiveError);
         PaintCommand.ThrownExceptions.Subscribe(HandleInteractiveError);
+        AnnotationClickCommand.ThrownExceptions.Subscribe(HandleInteractiveError);
+        CancelAnnotationCommand.ThrownExceptions.Subscribe(HandleInteractiveError);
     }
 
     // [TEMP-DEMO] never let an interactive command failure break the app
@@ -93,6 +99,7 @@ public class SliceViewerViewModel : Document
         {
             SharedData = s?.SharedData;
             WindowLevel = s?.WindowLevel;
+            AnnotationManager = s?.AnnotationManager;
         });
 
         if (_previewChannel != null)
@@ -105,6 +112,15 @@ public class SliceViewerViewModel : Document
         _sessionSubscription?.Dispose();
         if (_previewChannel != null)
             _previewChannel.Changed -= OnPreviewChanged;
+
+        if (_annotationManager != null)
+        {
+            _annotationManager.LayersChanged -= OnAnnotationsChanged;
+            _annotationManager.ContentChanged -= OnAnnotationsChanged;
+            _annotationManager.PropertyChanged -= OnAnnotationManagerPropertyChanged;
+            _annotationManager = null;
+        }
+
         _previewImage?.Dispose();
         _previewImage = null;
     }
@@ -112,6 +128,10 @@ public class SliceViewerViewModel : Document
     public ReactiveCommand<Point, RxVoid> ClickCommand { get; }
 
     public ReactiveCommand<Point, RxVoid> PaintCommand { get; } // [TEMP-DEMO]
+
+    public ReactiveCommand<SliceClick, RxVoid> AnnotationClickCommand { get; }
+
+    public ReactiveCommand<RxVoid, RxVoid> CancelAnnotationCommand { get; }
 
     public SharedDataSourceViewModel? SharedData
     {
@@ -132,6 +152,42 @@ public class SliceViewerViewModel : Document
             }
         }
     }
+
+    /// <summary>
+    /// The session's annotation manager. The view binds it from the session stream rather than through
+    /// SharedData: annotations carry interaction state (the active tool and the shape being drawn), so
+    /// a newly created view must pick up the live session instance, not a captured one.
+    /// </summary>
+    public AnnotationManagerViewModel? AnnotationManager
+    {
+        get => _annotationManager;
+        set
+        {
+            if (ReferenceEquals(_annotationManager, value)) return;
+
+            if (_annotationManager != null)
+            {
+                _annotationManager.LayersChanged -= OnAnnotationsChanged;
+                _annotationManager.ContentChanged -= OnAnnotationsChanged;
+                _annotationManager.PropertyChanged -= OnAnnotationManagerPropertyChanged;
+            }
+
+            this.RaiseAndSetIfChanged(ref _annotationManager, value);
+
+            if (value != null)
+            {
+                value.LayersChanged += OnAnnotationsChanged;
+                value.ContentChanged += OnAnnotationsChanged;
+                value.PropertyChanged += OnAnnotationManagerPropertyChanged;
+            }
+
+            this.RaisePropertyChanged(nameof(IsAnnotationMode));
+            RefreshAnnotations();
+        }
+    }
+
+    /// <summary>True while the active tool turns a left click into an annotation vertex.</summary>
+    public bool IsAnnotationMode => _annotationManager is { ActiveTool: not AnnotationTool.None };
 
     private void SubscribeMaskManager(MaskManagerViewModel? manager)
     {
@@ -168,6 +224,7 @@ public class SliceViewerViewModel : Document
             PushOverlayState();
             RefreshSlice();
             RefreshPreviewOverlay();
+            RefreshAnnotations();
         }
     }
 
@@ -187,6 +244,7 @@ public class SliceViewerViewModel : Document
             this.RaisePropertyChanged(nameof(CurrentImageWidth));
             this.RaisePropertyChanged(nameof(CurrentImageHeight));
             PushOverlayState();
+            RefreshAnnotations();
             return;
         }
 
@@ -203,6 +261,7 @@ public class SliceViewerViewModel : Document
         SyncMaskLayerSubscriptions();
         PushOverlayState();
         RefreshSlice();
+        RefreshAnnotations();
     }
 
     public void RegisterImageViewer(CustomImageViewer viewer)
@@ -213,6 +272,7 @@ public class SliceViewerViewModel : Document
         RegisterOverlays(viewer);
         PushOverlayState();
         RefreshSlice();
+        RefreshAnnotations();
     }
 
     private void RegisterOverlays(CustomImageViewer viewer)
@@ -224,6 +284,7 @@ public class SliceViewerViewModel : Document
         };
         _maskOverlay = new MaskOverlay();
         _previewOverlay = new MaskOverlay();
+        _annotationOverlay = new AnnotationOverlay();
         _renderedOverlay = null;
         _imageBorderOverlay = new ImageBorderOverlay
         {
@@ -234,6 +295,7 @@ public class SliceViewerViewModel : Document
         viewer.Overlays.Add(_crosshairOverlay);
         viewer.Overlays.Add(_maskOverlay);
         viewer.Overlays.Add(_previewOverlay);
+        viewer.Overlays.Add(_annotationOverlay);
         viewer.Overlays.Add(_imageBorderOverlay);
 
         RefreshPreviewOverlay();
@@ -245,10 +307,12 @@ public class SliceViewerViewModel : Document
         if (_crosshairOverlay != null) viewer.Overlays.Remove(_crosshairOverlay);
         if (_maskOverlay != null) viewer.Overlays.Remove(_maskOverlay);
         if (_previewOverlay != null) viewer.Overlays.Remove(_previewOverlay);
+        if (_annotationOverlay != null) viewer.Overlays.Remove(_annotationOverlay);
         if (_imageBorderOverlay != null) viewer.Overlays.Remove(_imageBorderOverlay);
         _crosshairOverlay = null;
         _maskOverlay = null;
         _previewOverlay = null;
+        _annotationOverlay = null;
         _imageBorderOverlay = null;
     }
 
@@ -300,10 +364,140 @@ public class SliceViewerViewModel : Document
 
         var old = _previewImage;
         _previewImage = overlay?.Mask is { } mask
-            ? RenderSingleMaskToBitmap(mask, overlay.Color, overlay.Opacity)
+            ? RenderSingleMaskToBitmap(mask, overlay.Color)
             : null;
         _previewOverlay.SliceImage = _previewImage;
         old?.Dispose();
+    }
+
+    // -----------------------------------------------------------------------
+    //  Annotations
+    // -----------------------------------------------------------------------
+
+    private void OnAnnotationClick(SliceClick click)
+    {
+        if (_annotationManager == null || !IsAnnotationMode)
+            return;
+
+        _annotationManager.HandleSliceClick(
+            CurrentPlane,
+            CurrentSlice,
+            (int)click.Pixel.X,
+            (int)click.Pixel.Y,
+            complete: click.ClickCount >= 2);
+    }
+
+    private void CancelAnnotation() => _annotationManager?.CancelPending();
+
+    private void OnAnnotationsChanged()
+    {
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+            RefreshAnnotations();
+        else
+            Avalonia.Threading.Dispatcher.UIThread.Post(RefreshAnnotations);
+    }
+
+    private void OnAnnotationManagerPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(AnnotationManagerViewModel.ActiveTool))
+            this.RaisePropertyChanged(nameof(IsAnnotationMode));
+
+        RefreshAnnotations();
+    }
+
+    /// <summary>
+    /// Rebuilds the vector overlay for the plane and slice on screen. Only the annotations on this
+    /// slice are handed over, so the per-frame cost is proportional to what is visible - not to every
+    /// annotation in the session.
+    /// </summary>
+    private void RefreshAnnotations()
+    {
+        if (_annotationOverlay == null)
+            return;
+
+        var manager = _annotationManager;
+        var width = CurrentImageWidth;
+        var height = CurrentImageHeight;
+
+        if (manager == null || width <= 0 || height <= 0)
+        {
+            _annotationOverlay.Items = [];
+            return;
+        }
+
+        var plane = CurrentPlane;
+        var index = CurrentSlice;
+        var highlighted = manager.HighlightedAnnotation;
+        var highlightOnSlice = highlighted != null
+            && highlighted.Plane == plane
+            && highlighted.Index == index;
+        var visuals = new List<AnnotationVisual>();
+
+        foreach (var layer in manager.Layers)
+        {
+            if (!layer.IsVisible || layer.Color.A == 0)
+                continue;
+
+            foreach (var annotation in layer.Annotations)
+            {
+                var shape = annotation.Shape;
+                if (shape.Plane != plane || shape.Index != index || !IsInsideSlice(shape.Vertices, width, height))
+                    continue;
+
+                var isHighlighted = ReferenceEquals(highlighted, annotation);
+                visuals.Add(new AnnotationVisual
+                {
+                    Kind = shape.Kind,
+                    Points = [.. shape.Vertices.Select(v => new Point(v.U, v.V))],
+                    Color = layer.Color,
+                    Label = layer.ShowLabels ? annotation.Label : null,
+                    IsHighlighted = isHighlighted,
+                    IsDimmed = highlightOnSlice && !isHighlighted
+                });
+            }
+        }
+
+        // A highlighted shape is drawn last so it sits above the others on the same slice. The preview
+        // of a shape being drawn is appended after this and therefore also stays on top.
+        if (highlightOnSlice)
+            visuals = [.. visuals.OrderBy(v => v.IsHighlighted ? 1 : 0)];
+
+        if (manager.ActiveLayer is { } active
+            && manager.HasPending
+            && manager.PendingPlane == plane
+            && manager.PendingIndex == index
+            && active.IsVisible
+            && active.Color.A > 0)
+        {
+            var points = manager.PendingVertices.Select(v => new Point(v.U, v.V)).ToList();
+            if (points.Count > 0)
+            {
+                visuals.Add(new AnnotationVisual
+                {
+                    Kind = manager.ActiveTool == AnnotationTool.Polygon && points.Count >= 3
+                        ? AnnotationKind.Polygon
+                        : AnnotationKind.Line,
+                    Points = points,
+                    Color = active.Color,
+                    IsPreview = true
+                });
+            }
+        }
+
+        _annotationOverlay.ImageWidth = width;
+        _annotationOverlay.ImageHeight = height;
+        _annotationOverlay.Items = visuals;
+    }
+
+    private static bool IsInsideSlice(IReadOnlyList<AnnotationVertex> vertices, int width, int height)
+    {
+        foreach (var vertex in vertices)
+        {
+            if (vertex.U < 0 || vertex.U >= width || vertex.V < 0 || vertex.V >= height)
+                return false;
+        }
+
+        return true;
     }
 
     private SlicePlane CurrentPlane => Axis switch
@@ -313,11 +507,11 @@ public class SliceViewerViewModel : Document
         _ => SlicePlane.YZ
     };
 
-    private static WriteableBitmap? RenderSingleMaskToBitmap(bool[,] data, MaskColor color, double opacity)
+    private static WriteableBitmap? RenderSingleMaskToBitmap(bool[,] data, MaskColor color)
     {
         var height = data.GetLength(0);
         var width = data.GetLength(1);
-        if (height == 0 || width == 0 || opacity <= 0)
+        if (height == 0 || width == 0 || color.A == 0)
             return null;
 
         var fb = new WriteableBitmap(
@@ -326,7 +520,7 @@ public class SliceViewerViewModel : Document
             PixelFormats.Bgra8888,
             AlphaFormat.Premul);
 
-        var alpha = (int)Math.Round(Math.Clamp(opacity, 0, 1) * 255);
+        var alpha = (int)color.A;
         var argb = ((uint)alpha << 24)
                  | (uint)(color.R * alpha / 255) << 16
                  | (uint)(color.G * alpha / 255) << 8
@@ -702,10 +896,10 @@ public class SliceViewerViewModel : Document
                 {
                     var layer = masks[i];
                     var data = slices[i];
-                    // opacity <= 0 means fully invisible, just like hidden layers
-                    if (data == null || !layer.IsVisible || layer.Opacity <= 0) continue;
+                    // alpha 0 means fully invisible, just like hidden layers
+                    if (data == null || !layer.IsVisible || layer.Color.A == 0) continue;
 
-                    var ai = (int)Math.Round(Math.Clamp(layer.Opacity, 0, 1) * 255);
+                    var ai = (int)layer.Color.A;
                     var argb = ((uint)ai << 24)
                              | (uint)(layer.Color.R * ai / 255) << 16
                              | (uint)(layer.Color.G * ai / 255) << 8

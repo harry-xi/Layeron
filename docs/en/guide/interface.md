@@ -8,7 +8,7 @@ The main window is a docking layout: three slice views occupy the centre documen
 |---|---|
 | **文件** (File) | Load data, load from data source (built-in and plugin-provided), save data, generate demo data, generate 16-bit demo data, create from images, workspace |
 | **窗口** (Window) | Axial / coronal / sagittal view, reset layout, settings |
-| **Tools** | Mask Manager, Window Level, Log |
+| **Tools** | Mask Manager, Annotation Manager, Window Level, Log |
 | **插件** (Plugins) | Menu entries added by plugins, each under its own subfolder |
 
 The "load from data source" menu lists every data source currently available (built-in and plugin-provided); the "workspace" menu lists the current workspace and the ways to change it.
@@ -54,6 +54,10 @@ The panel also shows the gray-level histogram of the current data, with the rang
 ### Mask Manager
 
 See [Mask Layers](/en/guide/masks).
+
+### Annotation Manager
+
+See [Annotation Layers](/en/guide/annotations).
 
 ### Log
 

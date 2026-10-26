@@ -1,0 +1,209 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Layeron.App.ViewModels"
+             xmlns:models="using:Layeron.App.Models"
+             mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="500"
+             x:Class="Layeron.App.Views.AnnotationManagerView"
+             x:Name="AnnotationManagerRoot"
+             x:DataType="vm:AnnotationManagerViewModel">
+
+    <Design.DataContext>
+        <vm:AnnotationManagerViewModel/>
+    </Design.DataContext>
+
+    <Border Background="{DynamicResource SukiCardBackground}"
+            CornerRadius="8"
+            Margin="8">
+        <DockPanel>
+            <StackPanel DockPanel.Dock="Top" Spacing="8" Margin="0,0,0,8">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="4">
+                        <Button Content="Add Layer"
+                                Command="{Binding AddLayerCommand}"/>
+                        <Button Content="Load"
+                                Command="{Binding LoadLayerCommand}"/>
+                    </StackPanel>
+                    <Button DockPanel.Dock="Right"
+                            Content="Cancel"
+                            Command="{Binding CancelPendingCommand}"/>
+                    <TextBlock Text="{Binding LayersCountText}"
+                               VerticalAlignment="Center"
+                               HorizontalAlignment="Right"
+                               Margin="0,0,8,0"
+                               FontSize="12"/>
+                </DockPanel>
+
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Left"
+                               Text="Tool"
+                               VerticalAlignment="Center"
+                               Margin="0,0,8,0"/>
+                    <ComboBox SelectedIndex="{Binding ActiveToolIndex, Mode=TwoWay}">
+                        <ComboBoxItem Content="None"/>
+                        <ComboBoxItem Content="Point"/>
+                        <ComboBoxItem Content="Line"/>
+                        <ComboBoxItem Content="Polygon"/>
+                    </ComboBox>
+                </DockPanel>
+
+                <TextBlock Text="{Binding InteractionHint}"
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           Opacity="0.75"/>
+            </StackPanel>
+
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="8">
+                    <ListBox x:Name="LayerList"
+                             ItemsSource="{Binding Layers}"
+                             SelectedItem="{Binding ActiveLayer, Mode=TwoWay}"
+                             Background="Transparent"
+                             BorderThickness="0">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel/>
+                            </ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="models:AnnotationLayer">
+                                <Border Background="{DynamicResource SukiControlBackground}"
+                                        CornerRadius="6"
+                                        Padding="6"
+                                        Margin="0,0,0,4">
+                                    <StackPanel Spacing="4">
+                                        <DockPanel>
+                                            <Button x:Name="AnnotationColorButton"
+                                                    DockPanel.Dock="Left"
+                                                    Width="24" Height="24"
+                                                    CornerRadius="4"
+                                                    Padding="0"
+                                                    Margin="0,0,6,0"
+                                                    HorizontalContentAlignment="Center">
+                                                <Button.Background>
+                                                    <SolidColorBrush Color="{Binding Color}"/>
+                                                </Button.Background>
+                                                <Button.Flyout>
+                                                    <Flyout>
+                                                        <ColorView Color="{Binding Color, Mode=TwoWay}"
+                                                                   IsAlphaVisible="True"
+                                                                   IsAlphaEnabled="True"/>
+                                                    </Flyout>
+                                                </Button.Flyout>
+                                            </Button>
+                                            <StackPanel DockPanel.Dock="Right"
+                                                        Orientation="Horizontal"
+                                                        Spacing="2">
+                                                <TextBlock Text="{Binding AnnotationCount}"
+                                                           FontSize="11"
+                                                           Opacity="0.6"
+                                                           VerticalAlignment="Center"
+                                                           Margin="2,0"/>
+                                                <CheckBox Content="Show"
+                                                          IsChecked="{Binding IsVisible}"
+                                                          FontSize="11"
+                                                          VerticalAlignment="Center"/>
+                                                <CheckBox Content="Text"
+                                                          IsChecked="{Binding ShowLabels}"
+                                                          FontSize="11"
+                                                          VerticalAlignment="Center"
+                                                          ToolTip.Tip="Draw this layer's annotation names on the slice"/>
+                                                <ToggleButton IsChecked="{Binding IsAnnotationsExpanded, Mode=TwoWay}"
+                                                              Content="{Binding ExpandGlyph}"
+                                                              Width="22" Height="22"
+                                                              Padding="0"
+                                                              FontSize="12"
+                                                              VerticalAlignment="Center"
+                                                              ToolTip.Tip="Collapse or expand this layer's annotations"/>
+                                            </StackPanel>
+                                            <TextBox Text="{Binding Name, Mode=TwoWay}"
+                                                     MinHeight="24"
+                                                     VerticalContentAlignment="Center"/>
+                                        </DockPanel>
+
+                                        <DockPanel>
+                                            <TextBlock Text="α"
+                                                       DockPanel.Dock="Left"
+                                                       VerticalAlignment="Center"
+                                                       Margin="0,0,4,0"
+                                                       FontSize="11"/>
+                                            <TextBlock Text="{Binding AlphaPercent}"
+                                                       DockPanel.Dock="Left"
+                                                       Width="36"
+                                                       VerticalAlignment="Center"
+                                                       FontSize="11"
+                                                       Opacity="0.75"/>
+                                            <StackPanel DockPanel.Dock="Right"
+                                                        Orientation="Horizontal"
+                                                        Spacing="2">
+                                                <Button Content="Save"
+                                                        Padding="6,0"
+                                                        FontSize="11"
+                                                        VerticalAlignment="Center"
+                                                        Command="{Binding DataContext.SaveLayerCommand, ElementName=AnnotationManagerRoot}"
+                                                        CommandParameter="{Binding}"/>
+                                                <Button Content="✕"
+                                                        Padding="6,0"
+                                                        FontSize="11"
+                                                        VerticalAlignment="Center"
+                                                        ToolTip.Tip="Remove layer"
+                                                        Command="{Binding DataContext.RemoveLayerCommand, ElementName=AnnotationManagerRoot}"
+                                                        CommandParameter="{Binding}"/>
+                                            </StackPanel>
+                                        </DockPanel>
+
+                                        <!-- Annotations stay attached to their layer: the list grows
+                                             directly under the layer controls instead of collecting
+                                             every annotation in a separate panel at the bottom. -->
+                                        <Border BorderThickness="2,0,0,0"
+                                                IsVisible="{Binding IsAnnotationsExpanded}"
+                                                Margin="2,0,0,0"
+                                                Padding="8,0,0,0">
+                                            <Border.BorderBrush>
+                                                <SolidColorBrush Color="{Binding Color}"/>
+                                            </Border.BorderBrush>
+                                            <ItemsControl ItemsSource="{Binding Annotations}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <StackPanel Spacing="4"/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="models:Annotation">
+                                                        <DockPanel>
+                                                            <ToggleButton DockPanel.Dock="Left"
+                                                                          Width="22" Height="22"
+                                                                          Padding="0"
+                                                                          FontSize="11"
+                                                                          Content="◎"
+                                                                          ToolTip.Tip="Highlight this annotation on the image"
+                                                                          IsChecked="{Binding IsHighlighted, Mode=OneWay}"
+                                                                          Command="{Binding DataContext.ToggleHighlightCommand, ElementName=AnnotationManagerRoot}"
+                                                                          CommandParameter="{Binding}"/>
+                                                            <Button DockPanel.Dock="Right"
+                                                                    Content="×"
+                                                                    Padding="6,0"
+                                                                    ToolTip.Tip="Remove annotation"
+                                                                    Command="{Binding DataContext.RemoveAnnotationCommand, ElementName=AnnotationManagerRoot}"
+                                                                    CommandParameter="{Binding}"/>
+                                                            <TextBox Text="{Binding Label, Mode=TwoWay}"
+                                                                     PlaceholderText="{Binding DisplayText}"
+                                                                     Margin="4,0,6,0"
+                                                                     MinHeight="24"
+                                                                     VerticalContentAlignment="Center"/>
+                                                        </DockPanel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </Border>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </StackPanel>
+            </ScrollViewer>
+        </DockPanel>
+    </Border>
+</UserControl>

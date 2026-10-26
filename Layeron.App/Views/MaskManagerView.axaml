@@ -54,7 +54,9 @@
                                             </Button.Background>
                                             <Button.Flyout>
                                                 <Flyout>
-                                                    <ColorView Color="{Binding Color, Mode=TwoWay}"/>
+                                                    <ColorView Color="{Binding Color, Mode=TwoWay}"
+                                                           IsAlphaVisible="True"
+                                                           IsAlphaEnabled="True"/>
                                                 </Flyout>
                                             </Button.Flyout>
                                         </Button>
@@ -63,20 +65,13 @@
                                                   IsChecked="{Binding IsVisible}"
                                                   VerticalAlignment="Center"
                                                   Margin="4,0,0,0"/>
+                                        <TextBlock DockPanel.Dock="Right"
+                                                   Text="{Binding AlphaPercent}"
+                                                   FontSize="11"
+                                                   Opacity="0.75"
+                                                   VerticalAlignment="Center"/>
                                         <TextBox Text="{Binding Name, Mode=TwoWay}"
                                                  VerticalContentAlignment="Center"/>
-                                    </DockPanel>
-
-                                    <DockPanel LastChildFill="False">
-                                        <TextBlock Text="Opacity" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                        <Slider Minimum="0" Maximum="1"
-                                                IsSnapToTickEnabled="True"
-                                                TickFrequency="0.05"
-                                                Value="{Binding Opacity, Mode=TwoWay}"
-                                                Width="90" VerticalAlignment="Center"/>
-                                        <TextBlock Text="{Binding OpacityPercent}"
-                                                   Width="46" TextAlignment="Right"
-                                                   VerticalAlignment="Center"/>
                                     </DockPanel>
 
                                     <DockPanel>
