@@ -15,9 +15,10 @@ Layeron's plugin system is built around three concepts:
 | Dockable tool panel | `Registry.AddTool(...)` | Host dock (edge tool area) |
 | Centre document tab | `Registry.AddDocument(...)` | Host dock (document area) |
 | Menu entry | `Registry.AddMenu(...)` | Host menu |
-| Volume filter | `Registry.AddFilter(...)` | Host filter pipeline |
+| Volume filter | `Registry.AddFilter(...)` | Contract and host point exist; **the App has no consumer/driver yet** |
 | Volume loader | `Registry.AddLoader(...)` | `File → Load from data source` |
 | ONNX inference | `Registry.Contribute(IOnnxRunnerService.PointId, ...)` | Other plugins (see [ONNX Model Runner](/en/plugin/onnx)) |
+| Python execution | `Registry.Contribute(IPythonRunnerService.PointId, ...)` | Other plugins (the Agent uses it) |
 | Settings page | `Registry.AddSettingsPage(...)` | Settings window |
 | Custom extension point | `Registry.DefinePoint<T>(...)` | Other plugins |
 | A new plugin format | `Registry.AddPluginSource(...)` | Host plugin manager |
@@ -31,7 +32,7 @@ Layeron's plugin system is built around three concepts:
 | `Layeron.Plugin.Abstractions` | Plugin contracts (no UI framework) | Big3DArray |
 | `Layeron.Scripting.Abstractions` | Scripting contracts (a second system) | Plugin.Abstractions + Big3DArray |
 | `Layeron.Plugin.Host` | Loader kernel: discovery, loading, scopes, point registry | Abstractions |
-| `Layeron.App` | Avalonia host implementing `IPluginHostAdapter` | Host + Abstractions |
+| `Layeron.App` | Avalonia host implementing `IPluginHostAdapter` / `IScriptHostService` | Host + Abstractions + Scripting.Abstractions |
 | `Layeron.Plugins.*` | Sample plugins | Abstractions + Big3DArray (compile-time only) |
 
 **A plugin depends only on the contract assemblies**, declared with `Private="false"`:
@@ -77,16 +78,22 @@ Each plugin loads in its own **collectible `AssemblyLoadContext`**. After an unl
 
 Managed leaks aside, views must cooperate: if the object returned by `ContentFactory` implements `IDisposable`, the host disposes it when the panel or tab closes **or the plugin unloads**. That is where a view detaches host events and releases GPU resources — without it, the plugin's load context cannot be collected.
 
-## The demo plugins
+## The built-in plugins
 
 | Plugin | Id | Capability demonstrated |
 |---|---|---|
 | Threshold Segmentation | `layeron.threshold` | Tool panel + menu + a **custom extension point** other plugins feed |
-| Mask 3D Model | `layeron.model3d` | **Document** contribution + rendering |
+| Mask 3D Model | `layeron.model3d` | **Document** contribution + in-house CPU rasterisation |
 | ONNX Model Runner | `layeron.onnxruntime` | A **model runner**: inference, its own private native runtime, and a published service |
 | C# Script Host | `layeron.scripthost` | A **plugin loader** (`IPluginSource`) + its own editor UI |
+| Python Runner | `layeron.pythonrunner` | Embedded CPython + REPL + editor; publishes `IPythonRunnerService` |
+| AI Agent | `layeron.agent` | Chat tool + tool calls; consumes the Python service through an extension point |
 
 All of them are ordinary plugins: no privileged path was opened for any.
+
+::: warning Current state of filters
+The `IVolumeFilter` contract and the `layeron.filters.volume` point exist and are tested, but `Layeron.App` **does not yet** have a filter panel or executor. Threshold and ONNX use their own paths. See [Volume Filters](/en/plugin/filters).
+:::
 
 ## Next
 

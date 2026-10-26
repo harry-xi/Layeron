@@ -29,7 +29,7 @@ public sealed record PythonOutput(string Stream, string Text)
 /// <para>
 /// Published by the Python runner as an extension point contribution, under the point named by
 /// <see cref="PointId"/>. A consumer resolves it out of that point rather than off the plugin type -
-/// see <c>docs/plugin/shared-contracts.md</c> - which is what keeps the two plugins independent: only
+/// see <c>docs/plugin/extension-points.md</c> - which is what keeps the two plugins independent: only
 /// this small assembly is shared between them, not the runner.
 /// </para>
 /// </summary>

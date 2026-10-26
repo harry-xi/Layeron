@@ -32,12 +32,12 @@ Hold `Ctrl` and drag with the left button on any slice view to paint into the **
 
 The `layeron.model3d` sample plugin contributes a "mask 3D model" document tab: it turns a chosen mask layer into an interactive three-dimensional surface, shown alongside the slice views in the centre document area.
 
-::: warning Graphics support required
-3D display depends on a working graphics stack. On old hardware or an unusual driver stack, opening this view can terminate the application. Slice viewing and the mask data itself are unaffected.
+::: tip Pure CPU rendering
+The 3D view uses the plugin's in-house CPU rasteriser. It needs no GPU, Vulkan or specific driver, and works on machines with no graphics device.
 :::
 
 ## Who owns a mask
 
-A mask is **user data**: you create it, it is saved with the session, and it does not disappear when the plugin or script that produced it is unloaded.
+A mask is **user data**: you create it, it belongs to the current session and can be saved to a file; it does not disappear when the plugin or script that produced it is unloaded.
 
 How plugins and scripts read and write masks is described in [Host Services](/en/plugin/services#masks-imaskservice).

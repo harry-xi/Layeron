@@ -148,8 +148,8 @@ internal sealed class OnnxModelStore : IDisposable
 
             foreach (var (fileName, bytes) in models)
             {
-                // Ids are file names without extension, the same shape a scanned model gets, so a bundled model and
-                // a folder model are named by the same rule and a user folder can shadow one by id.
+                // Ids are file names without extension, the same shape a scanned model gets. The runner loads
+                // embedded models first, so a folder model with the same id is skipped by Rescan.
                 var id = Path.GetFileNameWithoutExtension(fileName);
                 if (_entries.ContainsKey(id))
                     continue;

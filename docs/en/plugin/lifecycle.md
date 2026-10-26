@@ -5,7 +5,7 @@ Layeron's plugin lifetime has exactly one direction: **register, then be rolled 
 ## A full lifetime
 
 ```
-                   ┌─ Discovery (MetadataLoadContext, no plugin code runs)
+                   ┌─ Discovery (MetadataReader reads assembly metadata, no plugin code runs)
                    │
    Load ───────────┼─ Validate identity and API version
                    │
@@ -22,8 +22,8 @@ Layeron's plugin lifetime has exactly one direction: **register, then be rolled 
    Run ─────────────────────────────────┘   (contributions live, driving host UI)
                                         │
    Unload ──────────────────────────────┴─ context.Dispose()
-                                              ├─ release all registrations in reverse order
-                                              ├─ dispose child scopes recursively
+                                              ├─ dispose child scopes recursively first
+                                              ├─ release this scope's registrations in reverse order
                                               └─ unload the ALC → weak-reference check
 ```
 

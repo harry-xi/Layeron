@@ -23,7 +23,7 @@ public static class SettingsPoints
 context.Registry.AddSettingsPage(myPage);
 ```
 
-设置页点由宿主拥有，插件卸载时只移除自己那一条。内置页面为：常规、示例、插件。
+设置页点由宿主拥有，插件卸载时只移除自己那一条。内置页面为：常规、演示、插件。
 
 ## SettingsPageContribution
 
@@ -31,7 +31,7 @@ context.Registry.AddSettingsPage(myPage);
 |---|---|---|
 | `Id` | `string` | **必填**。插件内唯一，例如 `acme.options` |
 | `Title` | `string` | **必填**。左侧导航标题 |
-| `Order` | `int` | 导航排序，越小越靠前，默认 `100`（内置页为 0 / 10） |
+| `Order` | `int` | 导航排序，越小越靠前，默认 `100`（内置页为 0 / 5 / 10） |
 | `Tooltip` | `string?` | 可选提示 |
 | `Settings` | `IReadOnlyList<SettingItem>?` | 声明式设置项 |
 | `ValueGetter` | `Func<string, object?>?` | 按 `SettingItem.Key` 读当前值；返回 null 时显示默认值 |
@@ -143,6 +143,8 @@ public void Activate(IPluginContext context)
 ## 生命周期与清理
 
 `ContentFactory` 返回的对象如果实现 `IDisposable`，**页面被移除时**会得到释放——那是视图与宿主服务解绑的机会。不实现的话，插件的加载上下文无法回收。
+
+如果自定义页面内容被宿主缓存、而设置窗口会反复打开/关闭，请让内容实现 `ISettingsPageContent`（`Detach()`），在窗口关闭时把控件从旧可视化树摘掉；否则第二次打开设置窗口可能因为控件已有父级而失败。
 
 声明式页面由宿主渲染，没有这个问题；只有走 `ContentFactory` 的自定义页面需要自己收尾。
 

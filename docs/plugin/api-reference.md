@@ -2,6 +2,11 @@
 
 按命名空间与类型组织的完整清单。所有类型都在 `Layeron.Plugin.Abstractions`（除注明外）。
 
+::: warning 当前未接线/未实现的 API
+- `IVolumeFilter` 的契约、注册与扩展点存在，但 App 没有过滤器面板/执行器。
+- `IAppLivetimePlugin` 已定义，但 `PluginManager.LoadAppLifetimePlugin` 与 `PluginController.EnableAll` 目前是未实现/未调用的占位。
+:::
+
 ## 入口
 
 ### IPlugin
@@ -21,9 +26,6 @@ public sealed class PluginAttribute : Attribute
 {
     public PluginAttribute(string id);
     public string Id { get; }
-    public string? Name { get; set; }
-    public string? Version { get; set; }
-    public string? Description { get; set; }
 }
 ```
 
@@ -42,6 +44,7 @@ public static class PluginMetadataKeys
     public const string Version = "LayeronPluginVersion";
     public const string Description = "LayeronPluginDescription";
     public const string ApiVersion = "LayeronPluginApiVersion";
+    public const string LivetimeStyle = "LayeronPluginLifetime";
 }
 ```
 
@@ -54,6 +57,9 @@ public interface IPluginContext : IDisposable
 {
     string PluginId { get; }
     string? PluginName { get; }
+    PluginDescriptor PluginDescriptor { get; }
+    string? PluginDirectory { get; }
+    string? PluginDataDirectory { get; }
     IPluginServices Services { get; }
     IPluginRegistry Registry { get; }
     IPluginContext CreateChild(string name);
@@ -76,6 +82,8 @@ public interface IPluginRegistry
 
     IDisposable AddPluginSource(IPluginSource source);
     IDisposable Track(IDisposable disposable);
+
+    IReadOnlyCollection<string> PointIds { get; }
 }
 ```
 
@@ -288,6 +296,7 @@ public enum SlicePlane { XY = 0, XZ = 1, YZ = 2 }
 ```csharp
 public interface IPluginLog
 {
+    void Verbose(string template, params object?[] args);
     void Debug(string template, params object?[] args);
     void Info(string template, params object?[] args);
     void Warn(string template, params object?[] args);
@@ -309,6 +318,10 @@ public readonly record struct MaskColor(byte R, byte G, byte B)
 ```
 
 ## 体数据过滤器
+
+::: warning 当前状态
+`IVolumeFilter` 契约、注册扩展方法、宿主扩展点与测试已存在；`Layeron.App` **尚未**接入过滤器面板/执行器。下面列出的是契约面，不代表应用里已经有一个可用的“过滤器”菜单。
+:::
 
 ```csharp
 public static class FilterPoints
@@ -455,6 +468,7 @@ public sealed class PluginDescriptor
     public string? Location { get; init; }
     public IPlugin? Instance { get; init; }
     public string? Origin { get; init; }
+    public string? LifetimeStyle { get; init; }
 }
 ```
 
@@ -481,6 +495,8 @@ public sealed class PluginManagerOptions
 {
     public string PluginDirectory { get; set; }
     public string DevelopmentPluginDirectory { get; set; }
+    public string SharedPluginDirectory { get; set; }
+    public string UserSharedPluginDirectory { get; set; }
     public bool EnforceApiVersion { get; set; } = true;
     public bool VerifyUnload { get; set; } = true;
 }
@@ -581,11 +597,19 @@ public sealed class ScriptRunContext
 ```csharp
 public interface IScriptHostService
 {
-    string ScriptsDirectory { get; }
-    event Action? ScriptsDirectoryChanged;
-    Task<string?> PickScriptToOpenAsync();
-    Task<string?> PickScriptToSaveAsync(string suggestedFileName);
+    Task<string?> PickFileToOpenAsync(string title, string suggestedDirectory, IReadOnlyList<string> patterns);
+    Task<string?> PickFileToSaveAsync(
+        string title,
+        string suggestedDirectory,
+        string suggestedFileName,
+        string defaultExtension,
+        IReadOnlyList<string> patterns);
+
+    string WorkspaceRoot { get; }
+    event Action? WorkspaceChanged;
+
     void ReloadAllScripts();
+    void LogRunFailure(string name, string? error);
 }
 
 public static class ScriptPaths

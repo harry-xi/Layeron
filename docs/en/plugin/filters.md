@@ -1,10 +1,14 @@
 # Volume Filters
 
+::: warning Current state
+The `IVolumeFilter` contract, the `AddFilter` registration helper, the host extension point and tests exist; **`Layeron.App` does not yet have a filter panel or executor**. This page describes the contract and the intended host/plugin split, not a feature that is already wired into the app.
+:::
+
 A volume filter (`IVolumeFilter`) draws the sharpest responsibility line in the whole system: **the host owns the domain, the plugin owns the mapping.**
 
 | Who | Responsible for |
 |---|---|
-| Host | Allocating the destination `dst`, choosing the `FilterRegion`, deciding when to call, disposing the result, computing global statistics |
+| Host (contract design) | Allocating the destination `dst`, choosing the `FilterRegion`, deciding when to call, disposing the result, computing global statistics |
 | Plugin | Writing only the `dst` voxels inside `region` (may read `src` at any valid coordinate) |
 
 ## The interface
@@ -50,6 +54,8 @@ public readonly record struct FilterRegion(int X0, int Y0, int Z0, int X, int Y,
 - **always fully inside the source volume**;
 - a preview call passes a **one-slice-thick** box (the visible slice);
 - an apply call passes the whole volume (possibly as successive boxes, one per call).
+
+> The app has no executor yet, so these call conventions are currently used only by tests and future consumers.
 
 ## FilterContext: precomputed facts
 
@@ -156,6 +162,8 @@ The loop above iterates per voxel for readability. For a real whole-volume filte
 
 Scripts have no registration entry point for `IVolumeFilter` (a filter is a long-lived feature by definition). When a script needs a volume transform, it traverses with the block API directly and writes the result back with `ReplaceVolume` or `AddMask`.
 
-## Reference implementation
+## Relationship to the built-in plugins
 
-`ThresholdEngine` in the `layeron.threshold` sample plugin is a complete filter: it reads the precomputed global statistics, writes by region, checks cancellation, reports progress per block, and guarantees that preview and apply agree voxel-for-voxel.
+`ThresholdEngine` in `layeron.threshold` is **not** an `IVolumeFilter` implementation; it uses its own threshold path. `layeron.onnxruntime` also calls ONNX Runtime directly rather than going through the filter point. No built-in plugin currently proves that a host filter driver exists.
+
+You can still implement `IVolumeFilter` and register it with `AddFilter`; until the app has an executor it will only appear in the `layeron.filters.volume` point and will not automatically get a UI.

@@ -16,8 +16,9 @@ public static class FilterPoints
 /// <summary>
 /// The box the host asks a filter to write in this call: origin (<see cref="X0"/>,
 /// <see cref="Y0"/>, <see cref="Z0"/>) plus size (<see cref="X"/>, <see cref="Y"/>,
-/// <see cref="Z"/>). Preview calls pass a one-slice-thick box for the visible slice;
-/// apply calls pass the whole volume (possibly as successive boxes, one per call).
+/// <see cref="Z"/>). A future host driver may pass a one-slice-thick box for a preview and
+/// the whole volume (possibly as successive boxes) for an apply. This is a contract
+/// description: <c>Layeron.App</c> does not yet have a filter executor.
 /// The box is always fully inside the source volume.
 /// </summary>
 public readonly record struct FilterRegion(int X0, int Y0, int Z0, int X, int Y, int Z)
@@ -27,11 +28,11 @@ public readonly record struct FilterRegion(int X0, int Y0, int Z0, int X, int Y,
 }
 
 /// <summary>
-/// Per-call context for <see cref="IVolumeFilter.Run{T}"/>. The host precomputes the
-/// global statistics so a filter never scans the whole volume for them: inside
+/// Per-call context for <see cref="IVolumeFilter.Run{T}"/>. A host driver would precompute
+/// the global statistics so a filter never scans the whole volume for them: inside
 /// <c>Run</c> only use the scalars below, never a self-made full-volume pass.
 /// A slice preview and the full-volume apply of the same parameters must agree
-/// voxel-for-voxel on the previewed slice.
+/// voxel-for-voxel on the previewed slice. The App does not yet have such a driver.
 /// </summary>
 public sealed class FilterContext
 {
@@ -49,12 +50,14 @@ public sealed class FilterContext
 }
 
 /// <summary>
-/// A volume filter contributed by a plugin. The core owns the domain, the plugin owns
-/// the mapping: the host allocates <c>dst</c>, chooses <paramref name="region"/>, and
-/// disposes of the result; the plugin only writes <paramref name="region"/> voxels of
-/// <c>dst</c> and may read <c>src</c> at any in-volume coordinate (including outside
-/// <paramref name="region"/>, which is how neighbourhood filters see their halo -
-/// the source volume is fully resident, so no halo metadata is needed or accepted).
+/// A volume filter contributed by a plugin. The intended split is: the host owns the
+/// domain, the plugin owns the mapping. A host driver would allocate <c>dst</c>, choose
+/// <paramref name="region"/> and dispose of the result; the plugin only writes
+/// <paramref name="region"/> voxels of <c>dst</c> and may read <c>src</c> at any
+/// in-volume coordinate (including outside <paramref name="region"/>, which is how
+/// neighbourhood filters see their halo - the source volume is fully resident, so no
+/// halo metadata is needed or accepted). <c>Layeron.App</c> does not yet have such a
+/// driver; the contract and point registration exist for future consumers and tests.
 /// <para>
 /// Rules, enforced by review and tests rather than by metadata:
 /// write only inside <paramref name="region"/>; never modify <c>src</c>;

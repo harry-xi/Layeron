@@ -6,7 +6,7 @@
 |---|---|
 | .NET SDK | 10.0 (projects target `net10.0`) |
 | Operating system | Windows (the current development and verification platform) |
-| GPU | Optional. Slice viewing needs none; the mask 3D model plugin needs a working graphics stack |
+| GPU | Not required. Slice viewing and the mask 3D model both use CPU paths |
 
 ## Clone and run
 
@@ -34,7 +34,7 @@ Layeron separates its state into **application state** and **user data**, and st
 |---|---|---|
 | Plugins (installed) | `%LOCALAPPDATA%\Layeron\plugins` | Long-lived plugins live here |
 | Plugins (development) | `<app output>\plugins.dev` | Locally built plugins, shadowing installed copies |
-| Default workspace | `%LOCALAPPDATA%\Layeron\workspaces\Default` | The user's working files (scripts today) |
+| Default workspace | `%LOCALAPPDATA%\Layeron\workspaces\Default` | The user's working files (C# scripts, Python files, …) |
 | Last workspace | `%APPDATA%\Layeron\workspace.json` | "Which workspace was open" is machine state |
 | Window layout | `%APPDATA%\Layeron\layout.json` | Persisted dock layout |
 
@@ -45,8 +45,8 @@ A development build takes precedence over an installed plugin with the same id, 
 The window starts empty. This sequence shows every major feature quickly:
 
 1. `文件 → 生成演示数据` (File → Generate demo data) — instantly gives you a volume to browse.
-2. Drag horizontally on any slice view to adjust window/level.
-3. `Tools → 遮罩管理器` (Mask Manager) opens the mask panel; the "Threshold Segmentation" sample plugin produces a mask.
+2. Open `Tools → 窗宽窗位` (Window Level) and adjust the lower/upper gray bounds; all three slice views update together.
+3. `Tools → 遮罩管理器` (Mask Manager) opens the mask panel; the Threshold Segmentation plugin produces a mask.
 4. `Tools → 日志` (Log) shows the log.
 
 If you have DICOM data, `文件 → 从数据源加载 → DICOM 序列 (文件夹)` (File → Load from data source → DICOM series) opens a series folder directly.

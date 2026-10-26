@@ -34,6 +34,7 @@ Each view shows the current slice information (plane, slice index, voxel size) i
 | Left drag | Pan the view |
 | Left double-click | Return to fit-to-window framing |
 | Right click | Move the crosshair to that point |
+| `Ctrl` + left drag | Paint into the active mask layer |
 
 The crosshair is shared: moving it in one view shows the corresponding position in the other two.
 
@@ -68,8 +69,8 @@ Select a row and press `Ctrl+C`, or right-click to copy it.
 
 | Page | Contents |
 |---|---|
-| General | Application-level options |
-| Demo | A demonstration page |
+| General | App version and placeholder text |
+| Demo | Declarative-settings demonstration page |
 | Plugins | Plugin directory locations, loaded plugins and reload entry points |
 
 Plugins can append their own pages through an extension point — see [Settings Pages](/en/plugin/settings).

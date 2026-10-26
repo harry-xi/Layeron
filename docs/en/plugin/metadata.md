@@ -20,8 +20,7 @@ A plugin has two sources of identity, serving different moments:
 ```
 
 ```csharp
-[Plugin(Id, Name = "Hello Plugin", Version = "1.0.0",
-    Description = "A minimal example plugin.")]
+[Plugin(Id)]
 public sealed class HelloPlugin : IPlugin
 {
     public const string Id = "acme.hello";   // must match the metadata
@@ -29,9 +28,11 @@ public sealed class HelloPlugin : IPlugin
 }
 ```
 
+`PluginAttribute` carries only the id. Name, version, description and API version come from assembly metadata (`LayeronPluginName` / `Version` / `Description` / `ApiVersion`).
+
 ## Why the metadata is in the assembly
 
-The host reads those lines **read-only** with `MetadataLoadContext`: it does not run module initialisers, does not run static constructors, and does not need to resolve the plugin's dependencies.
+The host reads those lines **read-only** with `System.Reflection.Metadata.MetadataReader`: it does not run module initialisers, does not run static constructors, and does not need to resolve the plugin's dependencies. Unlike `MetadataLoadContext`, it does not materialise a reflection object graph or probe dependency paths.
 
 Consequently:
 
@@ -40,7 +41,7 @@ Consequently:
 - there is **no `manifest.json`** for a .NET plugin: the metadata is already in the assembly, and a manifest would only create a second source of truth to keep in sync.
 
 ::: tip Non-.NET plugins
-Candidates such as scripts and interpreters have no assembly metadata, so they declare the same fields in a `manifest.json` next to their entry point; the host normalises both forms into one `PluginDescriptor`.
+Candidates such as scripts and interpreters have no assembly metadata; they are discovered by an `IPluginSource`, which creates their `PluginDescriptor.Instance` itself. The host does **not** read a `manifest.json`; whether a loader wants one is entirely that loader's decision.
 :::
 
 ## PluginAttribute
@@ -51,9 +52,6 @@ public sealed class PluginAttribute : Attribute
 {
     public PluginAttribute(string id);
     public string Id { get; }
-    public string? Name { get; set; }
-    public string? Version { get; set; }
-    public string? Description { get; set; }
 }
 ```
 
@@ -102,6 +100,7 @@ public sealed class PluginDescriptor
     public string? Location { get; init; }     // assembly candidate: the DLL to load
     public IPlugin? Instance { get; init; }    // in-process candidate: created by the loader
     public string? Origin { get; init; }       // diagnostic origin, e.g. a script path
+    public string? LifetimeStyle { get; init; } // lifetime declaration from metadata
 }
 ```
 

@@ -31,7 +31,7 @@ The settings point is host-owned, so unloading a plugin removes only its own ent
 |---|---|---|
 | `Id` | `string` | **Required.** Unique within the plugin, e.g. `acme.options` |
 | `Title` | `string` | **Required.** Left-hand navigation title |
-| `Order` | `int` | Navigation sort key, lower first; default `100` (built-in pages are 0 / 10) |
+| `Order` | `int` | Navigation sort key, lower first; default `100` (built-in pages are 0 / 5 / 10) |
 | `Tooltip` | `string?` | Optional hint |
 | `Settings` | `IReadOnlyList<SettingItem>?` | Declarative settings |
 | `ValueGetter` | `Func<string, object?>?` | Reads the current value by `SettingItem.Key`; returning null shows the default |
@@ -143,6 +143,8 @@ public void Activate(IPluginContext context)
 ## Lifetime and cleanup
 
 If the `ContentFactory` result implements `IDisposable`, it is disposed when the **page is removed** — the moment to detach the view from host services. Without it the plugin's load context cannot be collected.
+
+If the host caches your custom page content while the settings window can open and close repeatedly, implement `ISettingsPageContent` (`Detach()`) so the control is removed from its old visual tree when the window closes; otherwise the second open can fail because the control already has a parent.
 
 Declarative pages are rendered by the host, so they have no such concern; only a custom page needs its own teardown.
 

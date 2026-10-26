@@ -33,7 +33,7 @@ Layeron.App                    ReferenceOutputAssembly="false" + DeploySamplePlu
 
 **契约程序集里不出现任何 `Microsoft.ML.OnnxRuntime` 类型。** 这条规则是承重的，不是风格：两份同名的 ORT 类型是两个不同的类型，正如两份 `IPlugin`。一旦契约泄漏 `InferenceSession`，第二个插件解析到的服务就永远转换失败，而且不会报错——查找只是"什么也没找到"。整个插件里 ORT 类型只在一个文件里出现（`OnnxSessionFunctor`），规矩因此由构造保证，而不是靠每次调用时记得。
 
-插件对契约用 `Private="false"`，Avalonia 用 `ExcludeAssets="runtime"`；插件的私有依赖（ORT 与 `System.Numerics.Tensors`）则用 `CopyLocalLockFileAssemblies` 落到插件目录，由插件自己的 `.deps.json` 解析——和 Python 插件处理 pythonnet 的方式一致。判定的依据是**进程实际携带的程序集集合**（`HostCarriedAssemblies`）：App 不引用 ORT 与 `System.Numerics.Tensors`，它们就归插件；名字像不像框架程序集不参与判断。
+插件对契约用 `Private="false"`，Avalonia 用 `ExcludeAssets="runtime"`；插件的私有依赖（ORT 与 `System.Numerics.Tensors`）随构建输出落到插件目录，由插件自己的 `.deps.json` 解析——和 Python 插件处理 pythonnet 的方式一致。判定的依据是**进程实际携带的程序集集合**（`HostCarriedAssemblies`）：App 不引用 ORT 与 `System.Numerics.Tensors`，它们就归插件；名字像不像框架程序集不参与判断。
 
 ---
 
@@ -62,7 +62,7 @@ OnnxRunnerPlugin (IPlugin)
 
 ### 3.3 `OnnxInferenceQueue`：串行通道
 
-刻意不用每处 `Task.Run`。单通道让一次长整卷推理不会被用户在此期间连续请求的短预览插队，而这个形状正是 Python 插件实测之后定下来的（见 `python-engine-design.md` §0.3.1）。线程池那一跳是给 UI 用的：没有它，`await` 的第一段同步代码会在调用方线程上跑，窗口就会卡住恰好那么久。
+刻意不用每处 `Task.Run`。单通道让一次长整卷推理不会被用户在此期间连续请求的短预览插队，而这个形状正是 Python 插件实测之后定下来的（见 `python-engine-plan.md` §0.3.1）。线程池那一跳是给 UI 用的：没有它，`await` 的第一段同步代码会在调用方线程上跑，窗口就会卡住恰好那么久。
 
 关闭时 `Dispose` 会**通知并 Join** 通道线程。这不是整洁问题：一个活着的线程持着它的委托，因而让整个插件仍可从被 root 的线程对象到达，宿主的泄漏自检就会报出这个插件。有界等待（5 秒）意味着异常长的推理会延后卸载而不是挂住卸载，而且它是后台线程，超时也不会拖住进程。
 

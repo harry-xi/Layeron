@@ -84,17 +84,18 @@ The **ONNX** page in the settings window:
 
 | Setting | Meaning |
 |---|---|
-| Extra model folders | Semicolon-separated. Earlier folders win, which is how you shadow a bundled demo model |
+| Extra model folders | Semicolon-separated. Earlier folders win among folders; bundled demos are registered first, so a folder model does not shadow one with the same id |
 
 Per-model bindings (plane, threshold, ranges, mode) are stored in `onnx.settings.json` under the plugin's data folder, so they **survive an unload and reload**.
 
 ::: tip Where models live
-- `<workspace>/models/` — travels with the workspace, so switching workspaces switches the model set;
-- **Extra model folders** in settings — your own library, preferred over the bundled demos;
-- `<plugin install folder>/models/` — for models you want to ship alongside the plugin;
-- `<plugin data folder>/models/` — the plugin's own data folder.
+Scan order (earlier wins):
+1. **Extra model folders** in settings;
+2. `<plugin install folder>/models/`;
+3. `<workspace>/models/`;
+4. `<plugin data folder>/models/`.
 
-The two bundled demo models belong to none of these folders: they are embedded in the plugin and loaded from memory. When the same model id (the file name without extension) appears in several folders, **the earlier folder wins** - so dropping your own model of the same name into a folder listed earlier shadows the bundled one.
+The two bundled demo models belong to none of these folders: they are embedded in the plugin and loaded from memory. **The current implementation registers the bundled demos first**, so a folder model with the same id does not shadow them; changing that requires changing the load order in `RescanAsync`.
 :::
 
 ## Known limitations

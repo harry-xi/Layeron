@@ -190,6 +190,7 @@ services.Preview.Publish(new PreviewOverlay
 ```csharp
 public interface IPluginLog
 {
+    void Verbose(string template, params object?[] args);
     void Debug(string template, params object?[] args);
     void Info(string template, params object?[] args);
     void Warn(string template, params object?[] args);

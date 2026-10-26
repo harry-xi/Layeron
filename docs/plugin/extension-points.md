@@ -125,7 +125,7 @@ public sealed class VolumeAction
 
 | 点 Id | 贡献类型 | 见 |
 |---|---|---|
-| `layeron.filters.volume` | `IVolumeFilter` | [体数据过滤器](/plugin/filters) |
+| `layeron.filters.volume` | `IVolumeFilter` | [体数据过滤器](/plugin/filters)（契约已就绪，App 尚未接入执行器） |
 | `layeron.loaders.volume` | `VolumeLoader` | [数据加载器](/plugin/loaders) |
 | `layeron.settings.pages` | `SettingsPageContribution` | [设置页面](/plugin/settings) |
 

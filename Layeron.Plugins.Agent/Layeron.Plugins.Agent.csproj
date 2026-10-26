@@ -54,7 +54,7 @@
       另一个插件的契约：智能体要把 Python 当作工具调用，靠的就是这一份共享程序集。
       Private="false" 是这里唯一重要的事——运行时它由宿主的共享加载上下文提供（plugins.shared 目录），
       而不是随本插件复制一份。复制一份就会得到"同名但不同"的 IPythonRunnerService，扩展点里取到的
-      实例将无法转换，而且不会有任何报错。详见 docs/plugin/shared-contracts.md。
+      实例将无法转换，而且不会有任何报错。详见 docs/plugin/extension-points.md。
     -->
     <ProjectReference Include="..\Layeron.Plugins.PythonRunner.Api\Layeron.Plugins.PythonRunner.Api.csproj" Private="false" />
 

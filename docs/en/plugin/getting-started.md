@@ -33,6 +33,12 @@ A plugin is an ordinary .NET class library targeting the same framework as the h
 </Project>
 ```
 
+If the panel uses Avalonia controls (the `HelloView` below does), add a **compile-time-only** reference; at runtime the host's copy is used:
+
+```xml
+<PackageReference Include="Avalonia" Version="12.1.3" ExcludeAssets="runtime" />
+```
+
 ## 2. Write the entry class
 
 ```csharp
@@ -40,7 +46,7 @@ using Layeron.Plugin.Abstractions;
 
 namespace Acme.Hello;
 
-[Plugin(Id, Name = "Hello Plugin", Version = "1.0.0")]
+[Plugin(Id)]
 public sealed class HelloPlugin : IPlugin
 {
     public const string Id = "acme.hello";
@@ -72,7 +78,7 @@ public sealed class HelloPlugin : IPlugin
 
 Four things to notice:
 
-1. **`[Plugin(Id, ...)]`** marks the single entry class; it must implement `IPlugin` and have a public parameterless constructor.
+1. **`[Plugin(Id)]`** marks the single entry class; it must implement `IPlugin` and have a public parameterless constructor. Name, version and description come from assembly metadata.
 2. **`Id` must match `LayeronPluginId`** in the assembly metadata, otherwise a diagnostic is logged. The id is the plugin's identity, used for de-duplication and lookup.
 3. **`ContentFactory` is lazy**: the panel is created only when first opened. A plugin that is never opened costs nothing.
 4. **`CanExecute` is re-evaluated when the menu opens**, so "disabled while there is no data" needs no state of your own.
@@ -146,7 +152,7 @@ Two development paths:
 
 Copy the plugin's **whole output directory**, not just the single DLL — a plugin may have private dependencies, resolved by its own load context from its folder and `.deps.json`.
 
-Then refresh from the application: `插件 → 重新加载脚本` or the reload entry point on the plugin settings page.
+Then refresh from `窗口 → 设置 → 插件` (Window → Settings → Plugins) using the reload/rescan entries. Compiled plugins have no "Reload scripts" menu; that entry belongs to the script host.
 
 ## 5. Debugging
 

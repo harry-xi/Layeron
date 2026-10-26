@@ -4,7 +4,7 @@ layout: home
 hero:
   name: Layeron
   text: A desktop workbench for volumetric data
-  tagline: Slice viewing, mask editing, C# scripting, and a plugin system that can extend almost anything
+  tagline: Slice viewing, mask editing, C# / Python scripting, and a plugin system that can extend almost anything
   image:
     src: /logo.png
     alt: Layeron
@@ -24,9 +24,9 @@ features:
   - title: Mask editing
     details: Sparse bitmap mask layers with per-layer colour, opacity and visibility — and 3D surfaces derived from them.
   - title: Plugin-based
-    details: Plugins add tool panels, document tabs, menus, volume loaders, filters and settings pages — with leak-free hot reload.
-  - title: C# scripting
-    details: Run .csx scripts against the current data for one-off work, or install a script as a plugin.
+    details: Plugins add tool panels, document tabs, menus, volume loaders and settings pages — with leak-free hot reload. The filter contract is ready, pending a host-side driver.
+  - title: C# / Python scripting
+    details: Run .csx scripts for one-off work and install them as plugins; use the embedded CPython REPL and editor on the current data.
   - title: Extensible extension points
     details: Plugins do not only contribute to the host — they can publish their own extension points for other plugins.
 ---

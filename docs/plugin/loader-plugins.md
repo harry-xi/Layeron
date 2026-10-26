@@ -12,7 +12,7 @@
 |---|---|
 | `.dll` | 宿主的程序集扫描器 |
 | `.csx`（C# 脚本） | `layeron.scripthost` 插件 |
-| Python / F# / 远程源 | 任何第三方插件，用同样的方式 |
+| Python（当前不作为插件源） / F#（未实现） / 远程源 | 任何第三方插件，用同样的方式 |
 
 ## IPluginSource
 
@@ -144,8 +144,10 @@ layeron.scripthost（插件）
 ```csharp
 public sealed class PluginManagerOptions
 {
-    public string PluginDirectory { get; set; }            // 默认 %LOCALAPPDATA%\Layeron\plugins
-    public string DevelopmentPluginDirectory { get; set; } // 默认 <应用目录>\plugins.dev
+    public string PluginDirectory { get; set; }             // 默认 %LOCALAPPDATA%\Layeron\plugins
+    public string DevelopmentPluginDirectory { get; set; }  // 默认 <应用目录>\plugins.dev
+    public string SharedPluginDirectory { get; set; }       // 默认 <应用目录>\plugins.shared
+    public string UserSharedPluginDirectory { get; set; }   // 默认 %LOCALAPPDATA%\Layeron\plugins.shared
     public bool EnforceApiVersion { get; set; } = true;
     public bool VerifyUnload { get; set; } = true;
 }
@@ -155,7 +157,7 @@ var manager = new PluginManager(adapter, new PluginManagerOptions());
 
 | 方法 | 作用 |
 |---|---|
-| `LoadAll()` | 扫描插件目录 + 运行所有插件源，返回新加载的 id |
+| `LoadAll()` | 扫描 `plugins.dev` / `plugins` 目录，返回新加载的 id |
 | `LoadDirectory(path)` | 扫描指定目录 |
 | `LoadAssembly(path)` | 加载单个程序集 |
 | `LoadInProcess(plugin, id, ...)` | 激活一个进程内实例 |

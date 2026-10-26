@@ -12,7 +12,7 @@ Extending "the set of plugin formats" needs no host change:
 |---|---|
 | `.dll` | The host's assembly scanner |
 | `.csx` (C# scripts) | The `layeron.scripthost` plugin |
-| Python / F# / a remote feed | Any third-party plugin, the same way |
+| Python (not currently a plugin source) / F# (not implemented) / a remote feed | Any third-party plugin, the same way |
 
 ## IPluginSource
 
@@ -145,8 +145,10 @@ If you are writing your own host (tests, batch tools), the entry point is `Plugi
 ```csharp
 public sealed class PluginManagerOptions
 {
-    public string PluginDirectory { get; set; }            // default %LOCALAPPDATA%\Layeron\plugins
-    public string DevelopmentPluginDirectory { get; set; } // default <app dir>\plugins.dev
+    public string PluginDirectory { get; set; }             // default %LOCALAPPDATA%\Layeron\plugins
+    public string DevelopmentPluginDirectory { get; set; }  // default <app dir>\plugins.dev
+    public string SharedPluginDirectory { get; set; }       // default <app dir>\plugins.shared
+    public string UserSharedPluginDirectory { get; set; }   // default %LOCALAPPDATA%\Layeron\plugins.shared
     public bool EnforceApiVersion { get; set; } = true;
     public bool VerifyUnload { get; set; } = true;
 }
@@ -156,7 +158,7 @@ var manager = new PluginManager(adapter, new PluginManagerOptions());
 
 | Method | Effect |
 |---|---|
-| `LoadAll()` | Scan plugin directories and run every source; returns newly loaded ids |
+| `LoadAll()` | Scan the `plugins.dev` / `plugins` directories; returns newly loaded ids |
 | `LoadDirectory(path)` | Scan a specific directory |
 | `LoadAssembly(path)` | Load a single assembly |
 | `LoadInProcess(plugin, id, ...)` | Activate an in-process instance |

@@ -1,6 +1,6 @@
 # What is Layeron
 
-Layeron is a desktop workbench for **three-dimensional volumetric data**, built with Avalonia and .NET. It puts browsing, measuring, editing and automation in one window: three orthogonal slice views to look at the data, mask layers to mark regions of interest, and C# scripts and plugins to make repetitive work permanent.
+Layeron is a desktop workbench for **three-dimensional volumetric data**, built with Avalonia and .NET. It puts browsing, measuring, editing and automation in one window: three orthogonal slice views to look at the data, mask layers to mark regions of interest, and C# / Python scripts and plugins to make repetitive work permanent.
 
 Layeron is extensible: data formats, tool panels, menus and volume processing can all be added through plugins, without changing the application itself.
 
@@ -13,7 +13,7 @@ Layeron is extensible: data formats, tool panels, menus and volume processing ca
 | Mask annotation | Sparse bitmap mask layers with overlay, colour, opacity and visibility |
 | Data loading | Built-in DICOM series reader, 8-bit and 16-bit volumes; plugins add more formats |
 | 3D preview | Generate an interactive 3D model from a mask |
-| Scripting | Use C# scripts for one-off computation on the current data, and install them as plugins |
+| Scripting | Use C# scripts for one-off computation and install them as plugins; use the Python REPL/editor on the current data |
 | Extensible | Add data formats, tool panels, menus and processing through plugins |
 
 ## Where to go next

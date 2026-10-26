@@ -4,13 +4,14 @@ A workspace is a folder holding **your working files**. It can be copied, backed
 
 ## Directory convention
 
-The subfolder layout inside a workspace is fixed by the application, not chosen per workspace:
+The subfolder layout inside a workspace is owned by the host and its plugins:
 
-| Directory | Contents |
-|---|---|
-| `<workspace>/scripts` | Your C# scripts (`.csx`) |
+| Directory | Contents | Owner |
+|---|---|---|
+| `<workspace>/scripts` | Your C# scripts (`.csx`) | Created by the host |
+| `<workspace>/python` | Your Python files (`.py`) | Created by the Python plugin on demand |
 
-The subfolders are fixed by the application, so a workspace has the same structure on every machine.
+`scripts/` is fixed by the host; language-specific folders such as `python/` are resolved by the corresponding plugin. The host only exposes the workspace root, so adding a scripting language needs no host change.
 
 ## Locations
 

@@ -1,5 +1,8 @@
 # 布局持久化：Dock 原生 `DockSerializer` vs 自研 `DockLayout`
 
+> 状态：现行实现说明。`Layeron.App` 仍使用自研 `DockLayout` / `DockLayoutNode` /
+> `DockableDescriptor` 描述符树；本文保留当年的实测依据，供后续维护参考。
+
 本文件记录一次**实测结论**：`Layeron.App` 为什么保留自己的 `DockLayout` / `DockLayoutNode` /
 `DockableDescriptor` 描述符树，而不是改用 Dock 自带的 `DockSerializer` 直接序列化 `IRootDock`
 对象图。结论来自对真实视图模型的探针实验（探针代码已删除，实验设定与原始输出见下文）。
@@ -139,10 +142,9 @@ Dock 的序列化面向"模型即内容"，而本项目的面板是**视图模�
 
 ### 仍待决定
 
-- `Layeron.App.csproj` 仍引用 `Dock.Serializer.SystemTextJson`，全项目零使用。
+- `Layeron.App.csproj` 仍引用 `Dock.Serializer.SystemTextJson`，全项目零使用；可以移除。
 - `LayoutNodeKind` 只支持 Root/Proportional/Document/Tool/Splitter；若要用上
   `GridDock`/`StackDock`/`WrapDock`/`UniformGridDock`/pinning，需要新增节点类型并在
   `BuildNode`/`CaptureNode` 各加分支。这是选择自研描述符树时要付的长期代价（见 §3 表格末行）。
-- 插件面板的插件 VM 类型在其自身的 `AssemblyLoadContext` 内，`DockControl` 是否能把该
-  DataContext 正确传播到插件控件，尚未在真实插件上验证。
+- 插件面板的 DataContext 传播已有布局往返测试覆盖；仍建议在真实第三方插件 UI 上做一次手动回归。
 

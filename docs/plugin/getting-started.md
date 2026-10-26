@@ -33,6 +33,12 @@
 </Project>
 ```
 
+如果面板要用 Avalonia 控件（下一节的 `HelloView` 就是），再加一条**只取编译期资产**的引用，运行时仍用宿主的那一份：
+
+```xml
+<PackageReference Include="Avalonia" Version="12.1.3" ExcludeAssets="runtime" />
+```
+
 ## 2. 写入口类
 
 ```csharp
@@ -40,7 +46,7 @@ using Layeron.Plugin.Abstractions;
 
 namespace Acme.Hello;
 
-[Plugin(Id, Name = "Hello Plugin", Version = "1.0.0")]
+[Plugin(Id)]
 public sealed class HelloPlugin : IPlugin
 {
     public const string Id = "acme.hello";
@@ -146,7 +152,7 @@ internal sealed class HelloView : UserControl, IDisposable
 
 把插件**整个输出目录**复制过去（而不是只复制那一个 DLL）——插件可以有私有依赖，它们由插件自己的加载上下文从其文件夹与 `.deps.json` 解析。
 
-然后在应用里 `插件 → 重新加载脚本` / 插件设置页里的重载入口刷新。
+然后在 `窗口 → 设置 → 插件` 页里用重载/重新扫描入口刷新（编译插件没有“重新加载脚本”菜单；那个菜单只属于脚本宿主）。
 
 ## 5. 调试
 

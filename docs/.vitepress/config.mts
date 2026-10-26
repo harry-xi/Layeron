@@ -96,7 +96,7 @@ const enPlugin = [
 
 export default defineConfig({
   title: 'Layeron',
-  description: '面向体数据的桌面工作台：切片浏览、掩膜编辑、C# 脚本与插件扩展',
+  description: '面向体数据的桌面工作台：切片浏览、掩膜编辑、C# / Python 脚本与插件扩展',
   cleanUrls: true,
   lastUpdated: true,
   markdown: {

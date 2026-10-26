@@ -1,7 +1,7 @@
 # Layeron 插件系统
 
-> 状态：已实现（Layeron.Plugin.Abstractions / Layeron.Plugin.Host / Layeron.Plugins.Threshold / Layeron.Plugins.ScriptHost）
-> 本文档为插件相关设计的唯一权威。旧版 `EXTENSION_ARCHITECTURE.md` §4–§5（CapabilityDescriptor / RegisterApplyFilter / Sdk+Kernel 设想）已废弃，仅保留其核心数据模型、切片/渲染、持久化章节有效。
+> 状态：已实现（Layeron.Plugin.Abstractions / Layeron.Plugin.Host / 全部 `Layeron.Plugins.*` 插件）
+> 本文档为插件相关实现的权威说明。旧版 `EXTENSION_ARCHITECTURE.md` 中的 Sdk / Kernel / CapabilityDescriptor / F# 引擎设想已被代码取代，仅保留为历史记录。
 
 ---
 
@@ -25,14 +25,18 @@
 ## 2. 项目与依赖方向
 
 ```
-Layeron.Big3DArray        卷 / 位图核心类型 + 块级读写 API（零依赖）
-Layeron.Plugin.Abstractions  插件契约（只依赖 Big3DArray，不含任何 UI 框架）
-Layeron.Scripting.Abstractions 脚本契约：ScriptGlobals + IScriptHostService（独立的第二套体系，见 §10）
-Layeron.Plugin.Host      加载器内核：PluginManager / PluginLoadContext / 作用域 / 扩展点注册表
-Layeron.Plugins.Threshold    示例插件：阈值分割工具（UI 插件）
-Layeron.Plugins.ScriptHost   示例插件：本身是插件加载器 + 脚本编辑器（见 §10）
-Layeron.App              Avalonia 宿主：实现 IPluginHostAdapter / IScriptHostService，把贡献接到 Dock 与菜单
-Layeron.Plugin.Test      插件系统测试（无 UI）
+Layeron.Big3DArray              卷 / 位图核心类型 + 块级读写 API（零依赖）
+Layeron.Plugin.Abstractions     插件契约（只依赖 Big3DArray，不含任何 UI 框架）
+Layeron.Scripting.Abstractions  脚本契约：ScriptGlobals + ScriptRunContext + IScriptHostService
+Layeron.Plugin.Host             加载器内核：PluginManager / PluginLoadContext / 作用域 / 扩展点注册表
+Layeron.Plugins.Threshold       阈值分割工具；定义 VolumeAction 扩展点
+Layeron.Plugins.Model3D         文档型插件：掩膜 → 3D 模型，自研 CPU 光栅化
+Layeron.Plugins.ScriptHost      插件加载器 + C# `.csx` 脚本编辑器（见 §10）
+Layeron.Plugins.PythonRunner    内嵌 CPython + REPL + 编辑器；发布 IPythonRunnerService
+Layeron.Plugins.OnnxRuntime     ONNX 推理工具；发布 IOnnxRunnerService
+Layeron.Plugins.Agent           AI 对话 / 工具调用
+Layeron.App                     Avalonia 宿主：实现 IPluginHostAdapter / IScriptHostService
+Layeron.Plugin.Test             插件系统测试（无 UI）
 ```
 
 依赖方向：`Abstractions → Big3DArray`；`Scripting.Abstractions → Plugin.Abstractions + Big3DArray`；`Host → Abstractions`；`App → Host + Abstractions + Scripting.Abstractions`；**插件 → Abstractions + Big3DArray（仅编译期）**。
@@ -90,7 +94,7 @@ IPlugin.Activate(ctx)
 </ItemGroup>
 ```
 
-宿主用 `MetadataLoadContext` **只读**这些行：不执行模块初始化器、不跑静态构造、不需要能解析插件依赖，坏 DLL / 敌意 DLL 在运行前就被拒。
+宿主用 `System.Reflection.Metadata.MetadataReader` 直接读 PE 元数据表（`PluginMetadataReader`）：不执行模块初始化器、不跑静态构造、不需要能解析插件依赖，坏 DLL / 敌意 DLL 在运行前就被拒。它比 `MetadataLoadContext` 更轻，也不需要探测依赖路径。
 
 - 没有元数据的 DLL → 直接跳过（DEBUG 日志）。
 - `[Plugin("id")]` 特性仍然标注入口类（`PluginManager` 用它找 `IPlugin` 实现），但 id / 版本以元数据为准，不一致会记日志。
@@ -133,7 +137,7 @@ IVolumeService Volumes   // Current(ReadonlyBig3DArray) · Version · Replaced �
                          // · Snapshot() -> VolumeSnapshot · ComputeHistogram(ct, progress) -> long[]?
 IMaskService   Masks     // Layers · Add(name, Big3DBitMap, MaskColor) · Remove · NotifyContentChanged · Changed
 IPreviewChannel Preview  // Publish(PreviewOverlay) · Clear(ownerId) · Overlays · Changed
-IPluginLog     Log
+IPluginLog     Log        // Verbose / Debug / Info / Warn / Error / ForContext
 T? GetService<T>()       // 宿主按接口提供的可选能力（如 IScriptHostService），缺失返回 null
 ```
 
@@ -229,16 +233,16 @@ context.Registry.AddPluginSource(new MySource());
 | 体素化 | 逐 Z 取 `Big3DBitMap.GetXYSlice(z)`（形状 `[Y,X]`，享受块级批量拷贝），按 factor 做 **OR 折叠**（薄结构不会被抹掉），得到 `bool[nx,ny,nz]` |
 | 网格 | 实体体素只在邻居为空/越界时输出该面（两个三角）；每面 4 个独立顶点带**面法线**（共享顶点会把法线平均掉、方块角变圆）；顶点顺序按右手定则验证为**外向 CCW**；模型居中于原点便于轨道相机围绕 |
 | 双面 | **不剔除背面**：掩膜常是薄片，单面渲染会在背面消失；winding 仍是外向 CCW，与显式法线一致 |
-| 光栅化 | z-buffer（存 `1/w`，免逐像素除法）+ **先近平面 Sutherland-Hodgman 裁剪、再视口裁剪**、最后扫描线填充；**平面着色**（每三角形算一次光照），因每个面本身是平面且自带法线 |
+| 光栅化 | z-buffer 存**真实视空间深度**（正交投影下 `w≡1`，存 `1/w` 会让深度测试失效）+ **先近平面 Sutherland-Hodgman 裁剪、再视口裁剪**、最后扫描线填充；**平面着色**（每三角形算一次光照），因每个面本身是平面且自带法线 |
 | 按需重绘 | 静态模型不需要常驻渲染循环：仅在换网格、改尺寸、拖拽、滚轮时重绘，空闲时 CPU 为零；请求经 `Dispatcher.UIThread.Post` 合并，一批交互只栅格化一次 |
 | 生命周期 | 关标签或卸载插件 → 宿主 dispose 内容 → 视图取消在途的生成请求并丢弃结果（`CancellationToken`），无 GPU 资源需释放 |
-| 验证状态 | ✅ 全量测试通过（152 项，含 15 项光栅器/投影单测，覆盖"模型是否真的出现"、深度测试、近平面裁剪、退化相机）；见 [MASK3D_PLUGIN.md](MASK3D_PLUGIN.md) |
+| 验证状态 | ✅ 现有测试覆盖"模型是否真的出现"、深度测试、近平面裁剪、退化相机等；具体用例数量以 `dotnet test` 当前结果为准，详见 [MASK3D_PLUGIN.md](MASK3D_PLUGIN.md) |
 
 ---
 
 ## 10. 脚本宿主与脚本编辑器
 
-`Layeron.Plugins.ScriptHost` 是一个**普通插件 + 插件源 + 编辑器**：注册 `IPluginSource` 后，宿主把工作区 `scripts/*.csx` 作为它的子作用域逐个激活，卸载脚本宿主即级联卸载全部脚本。
+`Layeron.Plugins.ScriptHost` 是一个**普通插件 + 插件源 + 编辑器**：注册 `IPluginSource` 后，宿主把**插件目录**下的 `scripts/*.csx` 作为它的子作用域逐个激活，卸载脚本宿主即级联卸载全部脚本。工作区 `<workspace>/scripts/*.csx` 只被编辑器列出、编辑和一次性运行，**不会**被自动激活为插件；两者的边界见 §10.5。
 
 脚本有两种用法，API 同时覆盖：
 
@@ -326,10 +330,10 @@ void Menu(...) / void Tool(...) / void Contribute(...)
 
 工作区本身（App 概念）：
 
-- **布局**：`<workspace>/scripts` 是当前唯一使用的子目录。子目录约定由应用固定而不是每个工作区自选，这样一台机器上写的工作区在另一台上打开方式一致，工作区也可以整体拷贝 / 备份 / 分享。
+- **布局**：宿主固定创建 `<workspace>/scripts`。插件自己的文件目录由插件解析：C# 脚本宿主用 `scripts/`，Python 插件用 `python/`，宿主只提供 `IScriptHostService.WorkspaceRoot`，不把任何语言扩展名写进宿主。
 - **默认位置**：`%LOCALAPPDATA%\Layeron\workspaces\Default`；**上次使用的工作区记在** `%APPDATA%\Layeron\workspace.json`（与 `layout.json` 同处）——“上次在哪个工作区”是机器状态而非工作产物，放在文件夹里会导致“打开工作区”必须先写它。
 - **切换**：`文件 → 工作区 → 打开工作区…`（选文件夹，不存在则就地创建）；状态栏常显当前工作区；另有“在资源管理器中打开”。
-- **切换时**：`IScriptHostService.ScriptsDirectory` 指向新工作区，`ScriptsDirectoryChanged` 让编辑器补登新目录的脚本文档。**插件发现不受影响**——它扫的是插件目录。
+- **切换时**：`IScriptHostService.WorkspaceRoot` 指向新工作区并触发 `WorkspaceChanged`，脚本宿主与 Python 插件据此重新列出各自目录。**插件发现不受影响**——它扫的是插件目录。
 - **无头宿主**：没有 `IScriptHostService` 的宿主（测试、批处理）仍能发现并激活插件目录里的脚本，只是没有编辑器。
 
 ### 10.6 无 UI 宿主可加载
@@ -373,7 +377,7 @@ void Menu(...) / void Tool(...) / void Contribute(...)
 ```
 
 ```csharp
-[Plugin("me.myplugin", Name = "My Plugin", Version = "1.0.0")]
+[Plugin("me.myplugin")]
 public sealed class MyPlugin : IPlugin
 {
     public void Activate(IPluginContext context)
@@ -440,14 +444,15 @@ context.Registry.AddFilter(new Mean3x3Filter());
 
 ## 14. 已知限制
 
-1. **脚本宿主仅支持 C# `.csx`**：F# / Python 脚本引擎尚未实现，但 §8 的插件源机制已可承载任意格式。
-2. **脚本编辑器需要 UI 宿主**：无 `IScriptHostService` 的宿主（无头测试 / 批处理）仍能加载并运行脚本，只是没有编辑器窗口。
-3. **工作区目前只承载脚本**：`layout.json` 仍是应用级而非工作区级；数据集 / 派生结果等后续再挂到工作区布局下。
-4. **脚本取消是协作式的**：`Cancellation` 只是令牌，脚本不查就停不下来——纯 CPU 死循环无法硬中断（与 FilterContext 同一约束）。
-5. **脚本结果呈现只到日志窗口**：`Result` 是结构化日志字段，结果在日志窗口可筛、可看、可**逐条复制**（行右键菜单，或详情面板的「复制」）；但尚无附件（图片）渲染，更丰富的输出（内嵌结果面板、REPL）尚未实现。
-6. **进程内信任模型**：插件与宿主同进程，不做沙箱；v1 依靠"安装即信任 + 加载前元数据校验"。
+1. **脚本宿主只把 C# `.csx` 安装为插件**：`PythonRunner` 是编辑器 + REPL，不提供 `IPluginSource`；F# 引擎不存在。§8 的插件源机制仍可承载任意第三方格式。
+2. **脚本编辑器需要 UI 宿主**：无 `IScriptHostService` 的宿主（无头测试 / 批处理）仍能加载并运行插件目录里的脚本，只是没有编辑器窗口。
+3. **工作区只固定创建 `scripts/`**：Python 的 `python/` 等目录由插件自己解析；`layout.json` 仍是应用级而非工作区级。
+4. **脚本取消是协作式的**：`Cancellation` 只是令牌，脚本不查就停不下来——纯 CPU 死循环无法硬中断（与 `FilterContext` 同一约束）。
+5. **C# 脚本结果呈现只到日志窗口**：`Result` 是结构化日志字段；更丰富的输出面板尚未实现。Python 插件有自己的 REPL。
+6. **进程内信任模型**：插件与宿主同进程，不做沙箱；依靠“安装即信任 + 加载前元数据校验”。
 7. **卸载不是立即的**：`ALC.Unload()` 之后要 GC 才回收；靠 `VerifyUnloaded` 发现而不是祈祷。
-6. **依赖冲突**：宿主版本优先（类型同一性 > 插件自由），插件不能替换宿主 UI 栈。
-7. **热重载不迁移状态**：当前实现是卸载→重新加载。
-8. **3D 展示需要可用的 GPU**：Mask 3D 走 Vulkan（Windows 经 D3D11 共享纹理）。功能已在多台设备验证可用，但在**老旧设备 / 异常驱动栈**上，引擎构造可能触发**原生访问违例并终止进程**——`try/catch` 接不住，标签页连"启动失败"提示都不会给出。已确认是设备特定问题，详见 [MASK3D_PLUGIN.md](MASK3D_PLUGIN.md) §4。降采样与网格抽取是纯 CPU 代码，可在无 GPU 环境下单独验证。
+8. **依赖冲突**：宿主版本优先（类型同一性 > 插件自由），插件不能替换宿主 UI 栈。
+9. **热重载不迁移状态**：当前实现是卸载 → 重新加载。
+10. **体滤波器尚无宿主驱动**：`IVolumeFilter` 契约与 `layeron.filters.volume` 点已实现，但 App 没有滤波器面板/执行器；Threshold 与 ONNX 使用各自的处理路径。
+11. **Mask 3D 是纯 CPU 光栅化**：不依赖 GPU / Vulkan；性能与设备无关，详见 [MASK3D_PLUGIN.md](MASK3D_PLUGIN.md)。
 

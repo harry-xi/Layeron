@@ -1,10 +1,14 @@
 # 体数据过滤器
 
+::: warning 当前状态
+`IVolumeFilter` 契约、`AddFilter` 注册扩展方法、宿主扩展点与测试已经存在；**但 `Layeron.App` 还没有过滤器面板或执行器**。本页描述的是契约与未来宿主的分工，不是当前应用里已经可用的功能。
+:::
+
 过滤器（`IVolumeFilter`）是宿主与插件之间职责划分得最清楚的一处：**宿主拥有领域，插件拥有映射。**
 
 | 谁 | 负责 |
 |---|---|
-| 宿主 | 分配目标体数据 `dst`、选择 `FilterRegion`、决定何时调用、处理结果、计算全局统计 |
+| 宿主（契约设计） | 分配目标体数据 `dst`、选择 `FilterRegion`、决定何时调用、处理结果、计算全局统计 |
 | 插件 | 只写 `region` 范围内的 `dst` 体素（可以读 `src` 的任意合法坐标） |
 
 ## 接口
@@ -48,8 +52,10 @@ public readonly record struct FilterRegion(int X0, int Y0, int Z0, int X, int Y,
 
 - 原点 `(X0, Y0, Z0)` 加尺寸 `(X, Y, Z)`；
 - **永远完全位于源体数据内部**；
-- 预览调用传入**一层厚**的盒子（当前可见的那一层）；
-- 应用调用传入整个体数据（可能是连续的多个盒子，一次调用一个）。
+- 契约设计里，预览调用传入**一层厚**的盒子（当前可见的那一层）；
+- 契约设计里，应用调用传入整个体数据（可能是连续的多个盒子，一次调用一个）。
+
+> 当前 App 尚无执行器，因此这些调用约定暂时只由测试与未来消费者使用。
 
 ## FilterContext：硬件信息
 
@@ -157,6 +163,8 @@ context.Registry.AddFilter(new Mean3Filter());
 
 脚本没有 `IVolumeFilter` 的注册入口（过滤器的定位是长期驻留的功能）。脚本需要做体数据变换时，直接用块 API 遍历，然后通过 `ReplaceVolume` 或 `AddMask` 把结果写回会话。
 
-## 参考实现
+## 与现有插件的关系
 
-示例插件 `layeron.threshold` 中的 `ThresholdEngine` 是一个完整的过滤器实现：它读取已算好的全局统计、按区域写入、检查取消、按块报告进度，并且保证预览与应用逐体素一致。
+`layeron.threshold` 的 `ThresholdEngine` **不是** `IVolumeFilter` 的实现；它使用自己的阈值处理路径。`layeron.onnxruntime` 也直接调用 ONNX Runtime，而不是走过滤器点。因此目前没有任何内置插件能证明宿主过滤驱动已经存在。
+
+如果你要实现 `IVolumeFilter`，可以按上面的契约编写并通过 `AddFilter` 注册；在 App 接入执行器之前，它只会出现在 `layeron.filters.volume` 扩展点里，不会自动获得 UI。

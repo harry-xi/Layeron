@@ -20,8 +20,7 @@
 ```
 
 ```csharp
-[Plugin(Id, Name = "Hello Plugin", Version = "1.0.0",
-    Description = "A minimal example plugin.")]
+[Plugin(Id)]
 public sealed class HelloPlugin : IPlugin
 {
     public const string Id = "acme.hello";   // 必须与元数据一致
@@ -29,9 +28,11 @@ public sealed class HelloPlugin : IPlugin
 }
 ```
 
+`PluginAttribute` 只携带 id；名称、版本、描述、API 版本全部来自程序集元数据（`LayeronPluginName` / `Version` / `Description` / `ApiVersion`）。
+
 ## 为什么元数据在程序集里
 
-宿主用 `MetadataLoadContext` **只读**读取这些行：不执行模块初始化器、不跑静态构造函数、不需要能解析插件的依赖。
+宿主用 `System.Reflection.Metadata.MetadataReader` **只读**读取 PE 元数据表：不执行模块初始化器、不跑静态构造函数、不需要能解析插件的依赖。相比 `MetadataLoadContext`，它不需要物化反射对象图，也不探测依赖路径。
 
 于是：
 
@@ -40,7 +41,7 @@ public sealed class HelloPlugin : IPlugin
 - **没有 `manifest.json`**：对 .NET 插件来说，元数据已经在程序集里了，再加一份清单只会制造第二个需要同步的真相。
 
 ::: tip 非 .NET 插件
-脚本、解释器这类候选没有程序集元数据，改为在入口旁边放一份 `manifest.json` 声明同样的字段；宿主把两种形式归一成同一份 `PluginDescriptor`。
+脚本、解释器这类候选没有程序集元数据，它们由 `IPluginSource` 自行发现并创建 `PluginDescriptor.Instance`。宿主本身**不读取** `manifest.json`；是否需要清单、清单长什么样，由加载器插件决定。
 :::
 
 ## PluginAttribute
@@ -51,9 +52,6 @@ public sealed class PluginAttribute : Attribute
 {
     public PluginAttribute(string id);
     public string Id { get; }
-    public string? Name { get; set; }
-    public string? Version { get; set; }
-    public string? Description { get; set; }
 }
 ```
 
@@ -102,6 +100,7 @@ public sealed class PluginDescriptor
     public string? Location { get; init; }     // 程序集插件：要加载的 DLL 路径
     public IPlugin? Instance { get; init; }    // 进程内插件：由插件加载器自己创建
     public string? Origin { get; init; }       // 诊断用的来源，例如脚本路径
+    public string? LifetimeStyle { get; init; } // 元数据里的生命周期声明
 }
 ```
 
