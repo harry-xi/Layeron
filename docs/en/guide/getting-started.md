@@ -24,7 +24,11 @@ An ordinary build yields a working plugin set (the first build restores the NuGe
 dotnet test
 ```
 
-The tests need no graphics environment.
+The tests need no graphics environment. An ordinary run skips the C# script compilation group (`ScriptCompilation`): each case starts Roslyn in a fresh collectible plugin context and costs several seconds. Run it explicitly when changing script plugins:
+
+```powershell
+dotnet test Layeron.Plugin.Test/Layeron.Plugin.Test.csproj --filter "TestCategory=ScriptCompilation"
+```
 
 ## Directory conventions
 

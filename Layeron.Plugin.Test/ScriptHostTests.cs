@@ -18,6 +18,10 @@ namespace Layeron.Plugin.Test;
 /// </para>
 /// </summary>
 [TestClass]
+// Script activation compiles C# with Roslyn inside a fresh collectible plugin context: each test costs
+// several seconds just to warm the compiler. They are opt-in rather than part of the normal suite;
+// see Layeron.Plugin.Test.runsettings.
+[TestCategory("ScriptCompilation")]
 public sealed class ScriptHostTests
 {
     private const string ScriptHostId = "layeron.scripthost";

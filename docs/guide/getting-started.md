@@ -24,7 +24,11 @@ dotnet run --project Layeron.App
 dotnet test
 ```
 
-测试不需要图形环境。
+测试不需要图形环境。日常运行会跳过 C# 脚本编译组（`ScriptCompilation`）：每个用例都要在独立的可回收插件上下文中启动 Roslyn，单次约数秒。需要验证脚本插件时显式运行：
+
+```powershell
+dotnet test Layeron.Plugin.Test/Layeron.Plugin.Test.csproj --filter "TestCategory=ScriptCompilation"
+```
 
 ## 目录约定
 

@@ -7,6 +7,11 @@
     <Nullable>enable</Nullable>
     <UseVSTest>true</UseVSTest>
     <!--
+      C# script tests compile with Roslyn in a fresh collectible context and cost several seconds each, so
+      they are opt-in. A command-line filter overrides this property when the group is run explicitly.
+    -->
+    <VSTestTestCaseFilter>TestCategory!=ScriptCompilation</VSTestTestCaseFilter>
+    <!--
       MSTEST0037 is a stylistic preference between Assert.AreEqual(0, x.Count) and Assert.HasCount(0, x).
       The count form keeps the failure message readable when the collection is not materialised.
     -->
