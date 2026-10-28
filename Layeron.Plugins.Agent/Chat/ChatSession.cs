@@ -6,6 +6,8 @@ using Microsoft.Extensions.AI;
 using OpenAI.Chat;
 using AgentChatMessage = Microsoft.Extensions.AI.ChatMessage;
 using AgentChatRole = Microsoft.Extensions.AI.ChatRole;
+using HistoryMessage = Layeron.Plugins.Agent.ChatMessage;
+using HistoryRole = Layeron.Plugins.Agent.ChatRole;
 
 namespace Layeron.Plugins.Agent.Chat;
 
@@ -19,7 +21,8 @@ namespace Layeron.Plugins.Agent.Chat;
 /// <para>
 /// Rebuilding is deliberately avoided once a conversation has started: an <see cref="AgentSession"/> holds
 /// the transcript, and swapping the agent mid-conversation would swap the history owner with it. Settings
-/// therefore apply from the next session, which is why clearing the transcript also drops the session.
+/// therefore apply from the next session, which is why opening another saved conversation also drops the
+/// session rather than carrying the old history into the new transcript.
 /// </para>
 /// <para>
 /// The stream is the framework's own <see cref="AgentResponseUpdate"/> rather than a panel-shaped event
@@ -27,7 +30,12 @@ namespace Layeron.Plugins.Agent.Chat;
 /// private translation vocabulary would only be another set of events to keep in step.
 /// </para>
 /// </summary>
-internal sealed class ChatSession(IPluginContext context,AgentOptions options, IPluginServices services, IScriptHostService seciptHost) : IChatSession
+internal sealed class ChatSession(
+    IPluginContext context,
+    AgentOptions options,
+    IPluginServices services,
+    IScriptHostService scriptHost,
+    IReadOnlyList<HistoryMessage>? restoredHistory = null) : IChatSession
 {
     /// <summary>
     /// Cancelled when the session is disposed, so a turn still in flight when the panel closes is torn
@@ -35,7 +43,14 @@ internal sealed class ChatSession(IPluginContext context,AgentOptions options, I
     /// </summary>
     private readonly CancellationTokenSource _lifetime = new();
     private readonly SemaphoreSlim _gate = new(1, 1);
-    
+
+    /// <summary>
+    /// The transcript this session was opened on, converted once when the first turn creates the agent
+    /// session. A saved conversation is not just a display: continuing it has to tell the model what was
+    /// already said, or the restored transcript would be a lie about the context of the next reply.
+    /// </summary>
+    private List<AgentChatMessage> _pendingHistory = ToAgentHistory(restoredHistory ?? []);
+
     private AIAgent? _agent;
     private AgentSession? _conversation;
     private MessageInjectingChatClient? _injector;
@@ -126,7 +141,19 @@ internal sealed class ChatSession(IPluginContext context,AgentOptions options, I
             // Created before the run, not after: the framework records the turn into the session it is
             // given, and a null session is a transient one it throws away - so a session obtained after
             // the call would be empty and the model would meet every message as the first.
-            _conversation ??= await agent.CreateSessionAsync(token).ConfigureAwait(false);
+            if (_conversation is null)
+            {
+                _conversation = await agent.CreateSessionAsync(token).ConfigureAwait(false);
+
+                if (_pendingHistory.Count > 0)
+                {
+                    // The provider is an in-memory history store, so seeding it is what turns a restored
+                    // transcript into a conversation the model can continue. It is seeded once: after
+                    // this, the framework records every new turn into the same session.
+                    _conversation.SetInMemoryChatHistory(_pendingHistory);
+                    _pendingHistory = [];
+                }
+            }
 
             await foreach (var update in agent
                            .RunStreamingAsync(message, _conversation, options: null, token)
@@ -181,7 +208,7 @@ internal sealed class ChatSession(IPluginContext context,AgentOptions options, I
             Instructions = options.SystemPrompt,
             Temperature = (float)options.Temperature,
             MaxOutputTokens = (int)options.MaxTokens,
-            Tools = new ChatTools(context, services, seciptHost).BuildTools(),
+            Tools = new ChatTools(context, services, scriptHost).BuildTools(),
         };
 
         var agentOptions = new ChatClientAgentOptions
@@ -210,6 +237,104 @@ internal sealed class ChatSession(IPluginContext context,AgentOptions options, I
             _log.Warn("Agent 未提供消息注入客户端，执行中的指导将不可用。");
 
         return agent;
+    }
+
+    /// <summary>
+    /// Turns a saved transcript into the messages the in-memory history provider expects.
+    /// <para>
+    /// The transcript is a display model - prose, reasoning, calls and results interleaved - while a chat
+    /// history is a sequence of messages. Reasoning is dropped because it shaped the previous answer rather
+    /// than being something the user said, and a tool result travels in its own tool message so the next
+    /// model call sees a complete call/result pair instead of a dangling function request.
+    /// </para>
+    /// </summary>
+    internal static List<AgentChatMessage> ToAgentHistory(IReadOnlyList<HistoryMessage> history)
+    {
+        var messages = new List<AgentChatMessage>(history.Count);
+
+        foreach (var message in history)
+        {
+            switch (message.Role)
+            {
+                case HistoryRole.User:
+                    var text = Compose(new ChatTurn { Text = message.Body, Attachments = message.Attachments });
+                    if (text.Length > 0)
+                    {
+                        messages.Add(new AgentChatMessage(
+                            AgentChatRole.User,
+                            message.IsGuidance ? GuidancePrefix + text : text));
+                    }
+                    break;
+
+                case HistoryRole.Assistant:
+                    AppendAssistantHistory(messages, message);
+                    break;
+
+                // A notice is the panel speaking to the user, not something the model ever said or saw.
+            }
+        }
+
+        return messages;
+    }
+
+    private static void AppendAssistantHistory(List<AgentChatMessage> messages, HistoryMessage message)
+    {
+        var assistantContents = new List<AIContent>();
+        var resultContents = new List<AIContent>();
+
+        void Flush()
+        {
+            if (assistantContents.Count > 0)
+            {
+                messages.Add(new AgentChatMessage(AgentChatRole.Assistant, assistantContents));
+                assistantContents = [];
+            }
+
+            if (resultContents.Count > 0)
+            {
+                messages.Add(new AgentChatMessage(AgentChatRole.Tool, resultContents));
+                resultContents = [];
+            }
+        }
+
+        foreach (var part in message.Parts)
+        {
+            switch (part)
+            {
+                case ChatReasoningPart:
+                    // The model's private working is not part of the conversation it needs replayed.
+                    break;
+
+                case ChatToolCallPart calls:
+                    foreach (var call in calls.Calls)
+                    {
+                        // A call with no result is a turn that never finished; replaying only the request
+                        // would leave the provider with a function call nobody answered.
+                        if (!call.Completed)
+                            continue;
+
+                        // The transcript kept the arguments as display text, not as the provider's
+                        // dictionary. An empty dictionary is the honest replay: the call's name and its
+                        // result are the parts that let the model continue; inventing parsed arguments
+                        // from "key=value" text would be worse than omitting them.
+                        assistantContents.Add(new FunctionCallContent(
+                            call.CallId,
+                            call.Name,
+                            new Dictionary<string, object?>()));
+                        resultContents.Add(new FunctionResultContent(call.CallId, call.Result));
+                    }
+
+                    Flush();
+                    break;
+
+                default:
+                    if (part.Body.Length > 0)
+                        assistantContents.Add(new TextContent(part.Body));
+                    break;
+            }
+        }
+
+        Flush();
     }
 
     /// <summary>

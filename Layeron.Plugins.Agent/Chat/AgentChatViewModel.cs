@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Text;
 using System.Windows.Input;
 using Layeron.Plugin.Abstractions;
@@ -18,8 +19,10 @@ namespace Layeron.Plugins.Agent;
 /// dialogs, through the host's scripting seam. Nothing here references an Avalonia control.
 /// </para>
 /// <para>
-/// The session is created on the first send and owned by this object: the panel is the only thing that
-/// knows a conversation starts, ends or is thrown away, so it is the only thing that can hold the lifetime.
+/// The session is created on the first send and owned by this object. Which conversation is on screen is
+/// shared with the history window through <see cref="AgentConversationManager"/>, but the provider session
+/// itself is this panel's alone: restoring a transcript drops it and the next send seeds a new one from the
+/// saved messages.
 /// </para>
 /// </summary>
 public sealed class AgentChatViewModel : ReactiveObject, IDisposable
@@ -44,6 +47,20 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
     private readonly IScriptHostService _host;
     private readonly AgentOptions _options;
 
+    /// <summary>
+    /// The conversation selected in the history window, shared with the chat panel. Its store lives in the
+    /// workspace that was active when the plugin was activated, on purpose: switching workspaces changes
+    /// where new work goes, not where chats that already belong to a workspace are kept.
+    /// </summary>
+    private readonly AgentConversationManager _conversations;
+
+    /// <summary>Brings the independent history window forward; supplied by the plugin entry point.</summary>
+    private readonly Action _openHistory;
+
+    /// <summary>The handlers are kept so the subscriptions can be undone when the panel closes.</summary>
+    private readonly Action _activeConversationChanged;
+    private readonly Action<string, string> _conversationRenamed;
+
     private IChatSession? _session;
     private CancellationTokenSource? _workCts;
     private bool _busy;
@@ -53,6 +70,24 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
     private string _draft = "";
     private string _externalPath = "";
     private string _statusText = "就绪";
+    private string? _conversationId;
+    private string? _conversationTitle;
+    private string _conversationTitleDraft = "新对话";
+    private DateTimeOffset _conversationCreatedAt;
+
+    /// <summary>
+    /// The messages a newly created backend session is seeded with. It is set when a saved conversation is
+    /// restored and cleared when a new one starts; the backend consumes it on its first turn, then owns the
+    /// history itself.
+    /// </summary>
+    private IReadOnlyList<ChatMessage> _restoredHistory = [];
+
+    /// <summary>
+    /// Whether the transcript has changed since the last write. Opening a saved conversation or closing
+    /// the panel without touching it must not make the conversation look recent: the history list orders
+    /// by when the user actually spoke, not by when they looked.
+    /// </summary>
+    private bool _historyDirty;
 
     private readonly IPluginContext _context;
 
@@ -60,19 +95,35 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
         IPluginContext context,
         IPluginServices services,
         IScriptHostService host,
-        AgentOptions options)
+        AgentOptions options,
+        AgentConversationManager conversations,
+        Action openHistory)
     {
         _context = context;
         _services = services;
         _host = host;
         _options = options;
+        _conversations = conversations;
+        _openHistory = openHistory;
+
+        // The history window can ask for a different conversation while this panel is open, so the panel
+        // follows the shared selection rather than owning it.
+        _activeConversationChanged = OnActiveConversationChanged;
+        _conversationRenamed = OnConversationRenamed;
+        _conversations.ActiveConversationChanged += _activeConversationChanged;
+        _conversations.ConversationRenamed += _conversationRenamed;
+
+        // Restored before the view binds, so the first paint is the conversation the user left behind
+        // rather than an empty panel that fills in a moment later.
+        LoadActiveConversation(announce: false);
 
         // Started rather than awaited: a turn can run for minutes, and a command that stayed executing
         // for its whole length would also keep the same button disabled when the user needs it to send
         // guidance into that turn.
         SendCommand = ReactiveCommand.Create(StartSend);
         CancelCommand = ReactiveCommand.Create(Cancel);
-        ClearCommand = ReactiveCommand.Create(Clear);
+        NewConversationCommand = ReactiveCommand.Create(NewConversation);
+        OpenHistoryCommand = ReactiveCommand.Create(_openHistory);
         BrowseAttachmentCommand = ReactiveCommand.CreateFromTask(BrowseAttachmentAsync);
         AddPathAttachmentCommand = ReactiveCommand.Create(AddPathAttachment);
         AddTextAttachmentCommand = ReactiveCommand.Create(AddTextAttachment);
@@ -87,6 +138,46 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
     public ObservableCollection<ChatMessage> Messages { get; } = [];
 
     public bool HasMessages => Messages.Count > 0;
+
+    /// <summary>
+    /// The text in the toolbar's title box. It is edited in place and committed on focus loss or Enter;
+    /// while a new conversation has no file yet, the edit is kept here until the first save gives it one.
+    /// </summary>
+    public string ConversationTitleDraft
+    {
+        get => _conversationTitleDraft;
+        set => this.RaiseAndSetIfChanged(ref _conversationTitleDraft, value ?? "");
+    }
+
+    /// <summary>
+    /// Saves an edited title. An empty box is not a name, so it falls back to the saved title and then to
+    /// "新对话". Renaming a saved conversation goes through the manager so the history window updates too.
+    /// </summary>
+    public void CommitConversationTitle()
+    {
+        var title = _conversationTitleDraft.Trim();
+
+        if (title.Length == 0)
+        {
+            SetConversationTitleDraft(_conversationTitle);
+            return;
+        }
+
+        if (title == _conversationTitle)
+        {
+            SetConversationTitleDraft(title);
+            return;
+        }
+
+        _conversationTitle = title;
+        SetConversationTitleDraft(title);
+
+        if (_conversationId is not null)
+            _conversations.Rename(_conversationId, title);
+    }
+
+    /// <summary>Discards the edit, for Escape.</summary>
+    public void RevertConversationTitle() => SetConversationTitleDraft(_conversationTitle);
 
     // -----------------------------------------------------------------------
     //  Input
@@ -156,7 +247,14 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
 
     public ICommand CancelCommand { get; }
 
-    public ICommand ClearCommand { get; }
+    /// <summary>
+    /// Starts a fresh conversation. It does not delete the current one: the current transcript is already
+    /// saved, and the history window is the place to manage or remove it.
+    /// </summary>
+    public ICommand NewConversationCommand { get; }
+
+    /// <summary>Brings the independent history window forward, where conversations can be restored or deleted.</summary>
+    public ICommand OpenHistoryCommand { get; }
 
     /// <summary>Opens the host's file dialog and attaches the chosen file.</summary>
     public ICommand BrowseAttachmentCommand { get; }
@@ -200,6 +298,10 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
         Append(new ChatMessage { Role = ChatRole.User, Body = text, Attachments = turn });
         Draft = "";
 
+        // Saved before the provider is contacted: the user's message is already part of the transcript,
+        // so a crash or an unplugged network cable must not take it with it.
+        SaveHistory();
+
         if (!_options.KeepAttachments)
         {
             Attachments.Clear();
@@ -238,6 +340,10 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
         finally
         {
             IsBusy = false;
+
+            // The whole turn - prose, reasoning, tool results and a failure notice, whichever happened -
+            // is on screen by now, so this is the save that makes reopening the panel show it again.
+            SaveHistory();
         }
     }
 
@@ -291,6 +397,7 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
             _splitReply = true;
 
             StatusText = "已发送指导，AI 会在下一次模型调用时采纳";
+            SaveHistory();
         }
         catch (OperationCanceledException)
         {
@@ -328,7 +435,12 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
         // Resolved once per conversation, not per turn: rebuilding the agent mid-conversation would take
         // the history with it. A turn that fails therefore keeps the session it failed on, and that
         // session is let go the next time the transcript is cleared.
-        var session = _session ??= new ChatSession(_context, _options, _services, _host);
+        var session = _session ??= new ChatSession(
+            _context,
+            _options,
+            _services,
+            _host,
+            _restoredHistory);
 
         var answer = new StringBuilder();
         var reasoning = new StringBuilder();
@@ -517,21 +629,27 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
         StatusText = "正在取消…";
     }
 
-    private void Clear()
+    /// <summary>
+    /// Starts a new conversation. The transcript on screen is already saved, so this is a change of
+    /// selection, not a deletion: the old chat stays in the history window and can be restored from there.
+    /// </summary>
+    private void NewConversation() => _conversations.StartNew();
+
+    private void OnActiveConversationChanged() => LoadActiveConversation(announce: true);
+
+    private void OnConversationRenamed(string id, string title)
     {
-        // A turn may be waiting for a tool approval, which is not tied to the session's socket: cancel the
-        // work so that wait is released instead of outliving the transcript it belonged to.
-        _workCts?.Cancel();
-        _splitReply = false;
+        if (_conversationId != id)
+            return;
 
-        Messages.Clear();
-        this.RaisePropertyChanged(nameof(HasMessages));
+        _conversationTitle = title;
+        SetConversationTitleDraft(title);
+    }
 
-        // The transcript is the conversation the user sees, so throwing it away has to throw away the
-        // provider's copy too; otherwise the next reply answers a history that is no longer on screen.
-        DropSession();
-
-        StatusText = "已清空";
+    private void SetConversationTitleDraft(string? title)
+    {
+        _conversationTitleDraft = string.IsNullOrWhiteSpace(title) ? "新对话" : title;
+        this.RaisePropertyChanged(nameof(ConversationTitleDraft));
     }
 
     private CancellationToken ResetWork()
@@ -632,11 +750,149 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
     private void Append(ChatMessage message)
     {
         Messages.Add(message);
+        _historyDirty = true;
 
         while (Messages.Count > TranscriptLimit)
             Messages.RemoveAt(0);
 
         this.RaisePropertyChanged(nameof(HasMessages));
+    }
+
+    /// <summary>
+    /// Shows the conversation the shared manager has selected. The transcript is a record, so a restored
+    /// message is the same object the panel drew before, down to its folds and tool results; only a
+    /// confirmation that was still waiting when the app closed is retired, because nothing could answer it.
+    /// <para>
+    /// Loading is also the one place that drops the provider's session: a restored transcript is a
+    /// different conversation, and carrying the previous agent session into it would make the next reply
+    /// answer a history that is no longer on screen.
+    /// </para>
+    /// </summary>
+    private void LoadActiveConversation(bool announce)
+    {
+        // A turn may be waiting for a tool approval, which is not tied to the session's socket: cancel the
+        // work so that wait is released instead of outliving the transcript it belonged to.
+        _workCts?.Cancel();
+        _splitReply = false;
+        DropSession();
+
+        Messages.Clear();
+        _conversationId = null;
+        _conversationTitle = null;
+        SetConversationTitleDraft(null);
+        _conversationCreatedAt = DateTimeOffset.Now;
+        _historyDirty = false;
+
+        var conversation = _conversations.LoadActive();
+
+        // A restored transcript is also the context the next reply needs. The backend gets this list when
+        // its session is created, so "打开历史对话" means "continue this one", not "show me an old picture".
+        _restoredHistory = conversation?.Messages ?? [];
+
+        if (conversation is not null)
+        {
+            _conversationId = conversation.Id;
+            _conversationTitle = conversation.Title;
+            SetConversationTitleDraft(conversation.Title);
+            _conversationCreatedAt = conversation.CreatedAt;
+
+            foreach (var message in conversation.Messages)
+            {
+                Messages.Add(message);
+
+                while (Messages.Count > TranscriptLimit)
+                    Messages.RemoveAt(0);
+            }
+        }
+
+        this.RaisePropertyChanged(nameof(HasMessages));
+
+        StatusText = conversation is null
+            ? announce ? "新对话" : "就绪"
+            : $"已恢复「{conversation.Title}」 · {Messages.Count} 条";
+    }
+
+    /// <summary>
+    /// Persists the current conversation after a change. Every call is a complete snapshot, which is what
+    /// makes a half-written turn recoverable: the next save replaces the file with whatever the panel now
+    /// shows. A blank conversation is not written at all, so "新建对话" cannot litter the workspace with
+    /// empty entries.
+    /// </summary>
+    private void SaveHistory()
+    {
+        if (Messages.Count == 0)
+        {
+            _historyDirty = false;
+            return;
+        }
+
+        if (!_historyDirty)
+            return;
+
+        try
+        {
+            var now = DateTimeOffset.Now;
+
+            _conversationId ??= Guid.NewGuid().ToString("N");
+
+            if (string.IsNullOrWhiteSpace(_conversationTitle))
+            {
+                // A title typed before the first save is already a name the user chose. Otherwise the first
+                // thing they said becomes the handle the history window shows.
+                var draft = _conversationTitleDraft.Trim();
+                _conversationTitle = draft.Length > 0 && draft != "新对话"
+                    ? draft
+                    : CreateTitle();
+            }
+
+            if (string.IsNullOrWhiteSpace(_conversationTitleDraft) || _conversationTitleDraft == "新对话")
+                SetConversationTitleDraft(_conversationTitle);
+
+            var conversation = new AgentConversation
+            {
+                Id = _conversationId,
+                Title = _conversationTitle,
+                CreatedAt = _conversationCreatedAt,
+                UpdatedAt = now,
+                Messages = [.. Messages]
+            };
+
+            _conversations.Save(conversation);
+            _historyDirty = false;
+        }
+        catch (Exception ex)
+        {
+            // The store already treats a file problem as loggable, but a bug in the snapshot must not
+            // turn into an exception on the UI thread either.
+            _services.Log.Warn("Agent 聊天记录保存失败（{Message}）。", ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Names a conversation from the first thing the user actually said. A title is a handle for the
+    /// history list, not an edit the user has to make before starting to type.
+    /// </summary>
+    private string CreateTitle()
+    {
+        var first = Messages.FirstOrDefault(message =>
+            message.Role == ChatRole.User && !message.IsGuidance);
+
+        var text = first?.Body.Trim();
+
+        if (string.IsNullOrEmpty(text) && first is { Attachments.Count: > 0 })
+            text = first.Attachments[0].TranscriptText;
+
+        if (string.IsNullOrEmpty(text))
+            return "新对话";
+
+        text = text.ReplaceLineEndings(" ");
+
+        // Text elements rather than UTF-16 code units: cutting an emoji in half would leave a lone
+        // surrogate in the title, which is neither a readable title nor always valid JSON.
+        var elements = new StringInfo(text);
+        return elements.LengthInTextElements <= 30
+            ? text
+            : elements.SubstringByTextElements(0, 30) + "…";
     }
 
     // -----------------------------------------------------------------------
@@ -671,10 +927,17 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
             return;
         _disposed = true;
 
+        _conversations.ActiveConversationChanged -= _activeConversationChanged;
+        _conversations.ConversationRenamed -= _conversationRenamed;
+
         _workCts?.Cancel();
         _workCts?.Dispose();
         _workCts = null;
         _splitReply = false;
+
+        // The panel is going away, so this is the last chance to keep whatever arrived during a turn
+        // that was still streaming when it closed.
+        SaveHistory();
 
         DropSession();
         Attachments.Clear();

@@ -87,7 +87,7 @@ manager.VerifyUnloaded();   // 弱引用自检：报告没能被回收的插件
 | ONNX 模型运行器 | `layeron.onnxruntime` | **模型运行器**：推理、自带私有原生运行时、发布可被其他插件调用的服务 |
 | C# 脚本宿主 | `layeron.scripthost` | **插件加载器**（`IPluginSource`）+ 自己的编辑器 UI |
 | Python 运行器 | `layeron.pythonrunner` | 内嵌 CPython + REPL + 编辑器；发布 `IPythonRunnerService` |
-| AI Agent | `layeron.agent` | 对话工具 + 工具调用；通过扩展点消费 Python 服务 |
+| AI Agent | `layeron.agent` | 对话工具 + 历史窗口 + 工具调用；通过扩展点消费 Python 服务 |
 
 它们都是普通插件：没有为任何一个开特权通道。
 

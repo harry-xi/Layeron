@@ -10,8 +10,12 @@ The subfolder layout inside a workspace is owned by the host and its plugins:
 |---|---|---|
 | `<workspace>/scripts` | Your C# scripts (`.csx`) | Created by the host |
 | `<workspace>/python` | Your Python files (`.py`) | Created by the Python plugin on demand |
+| `<workspace>/agent/conversations/` | Agent chat transcripts (one `.json` each) | Written automatically by the Agent plugin |
+| `<workspace>/agent/conversations.json` | Chat history index | Written automatically by the Agent plugin |
 
 `scripts/` is fixed by the host; language-specific folders such as `python/` are resolved by the corresponding plugin. The host only exposes the workspace root, so adding a scripting language needs no host change.
+
+The Agent's chat history is saved per workspace under `agent/`: one JSON file per conversation, plus an index that the independent "Agent history" tool window lists. Every change is saved automatically - no manual save. Conversation titles in both the chat panel and the history window can be edited in place: the text box has no visible border until it is focused, Enter saves and Escape cancels. The chat panel's "New conversation" only starts another chat; the previous one stays in the history window. Deleting a record is a management action in that window. Both windows bind to the workspace that was active when the plugin loaded; switching workspaces afterwards does not move the conversation elsewhere.
 
 ## Locations
 

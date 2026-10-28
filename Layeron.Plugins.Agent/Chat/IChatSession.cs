@@ -8,9 +8,9 @@ namespace Layeron.Plugins.Agent;
 /// The seam between the chat panel and whatever actually answers a message.
 /// <para>
 /// A session is shorter-lived than the panel. It is a conversation, not a connection: the panel creates one
-/// when it is opened or cleared and disposes it when the user closes the panel, so a session that is
-/// finished with is finitely released - a provider call holding a socket would otherwise pin the plugin's
-/// load context for the life of the process.
+/// when it starts or restores a conversation and disposes it when the user switches to another one or closes
+/// the panel, so a session that is finished with is finitely released - a provider call holding a socket
+/// would otherwise pin the plugin's load context for the life of the process.
 /// </para>
 /// <para>
 /// The reply is a stream of the framework's own updates rather than a string or a panel-specific event

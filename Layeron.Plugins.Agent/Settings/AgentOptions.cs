@@ -16,8 +16,9 @@ namespace Layeron.Plugins.Agent;
 /// see <see cref="ApiKey"/>.
 /// </para>
 /// <para>
-/// This is configuration only. The transcript, the draft and the queued attachments are session state and
-/// belong to the panel, not to a settings store.
+/// This is configuration only. The transcript is durable too, but it is a record of a conversation rather
+/// than a preference: it lives in the workspace's <c>agent/</c> folder (see
+/// <see cref="AgentConversationStore"/>), not in this settings file.
 /// </para>
 /// </summary>
 public sealed class AgentOptions

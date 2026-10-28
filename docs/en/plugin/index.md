@@ -87,7 +87,7 @@ Managed leaks aside, views must cooperate: if the object returned by `ContentFac
 | ONNX Model Runner | `layeron.onnxruntime` | A **model runner**: inference, its own private native runtime, and a published service |
 | C# Script Host | `layeron.scripthost` | A **plugin loader** (`IPluginSource`) + its own editor UI |
 | Python Runner | `layeron.pythonrunner` | Embedded CPython + REPL + editor; publishes `IPythonRunnerService` |
-| AI Agent | `layeron.agent` | Chat tool + tool calls; consumes the Python service through an extension point |
+| AI Agent | `layeron.agent` | Chat tool + history window + tool calls; consumes the Python service through an extension point |
 
 All of them are ordinary plugins: no privileged path was opened for any.
 

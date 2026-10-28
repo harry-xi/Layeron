@@ -1,0 +1,88 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="using:Layeron.Plugins.Agent"
+             mc:Ignorable="d" d:DesignWidth="360" d:DesignHeight="520"
+             x:Class="Layeron.Plugins.Agent.AgentHistoryView"
+             x:DataType="local:AgentHistoryViewModel">
+  <UserControl.Styles>
+    <!--
+      名称平时看起来就是一行文本：边框透明、背景透明。只有获得焦点时才出现边框和淡背景，
+      这样列表不会到处是输入框，但想改名字时又不需要先点一个「重命名」按钮。
+    -->
+    <Style Selector="TextBox.titleEdit">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="Padding" Value="3,1"/>
+      <Setter Property="MinHeight" Value="0"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="TextBox.titleEdit:focus">
+      <Setter Property="BorderBrush" Value="{DynamicResource ThemeControlMidBrush}"/>
+      <Setter Property="Background" Value="#20808080"/>
+    </Style>
+  </UserControl.Styles>
+
+  <DockPanel>
+    <!--
+      管理窗口的工具栏只做对话级动作：新建、刷新。打开和删除属于每一条记录，
+      所以放在行里而不是这里，免得先选中再判断按钮作用于哪一场对话。
+    -->
+    <Border DockPanel.Dock="Top" Background="{DynamicResource ThemeControlMidBrush}" Padding="6,4">
+      <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+        <TextBlock Grid.Column="0" Text="{Binding StatusText}" FontSize="11" Opacity="0.7"
+                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+        <Button Grid.Column="1" Content="刷新" Command="{Binding RefreshCommand}"
+                ToolTip.Tip="重新读取工作区里的对话列表"/>
+        <Button Grid.Column="2" Content="新建对话" Command="{Binding NewConversationCommand}"
+                ToolTip.Tip="开始一场新对话；当前对话不会被删除"/>
+      </Grid>
+    </Border>
+
+    <TextBlock DockPanel.Dock="Bottom" Margin="8,4" FontSize="10" Opacity="0.55"
+               TextWrapping="Wrap"
+               Text="对话会自动保存在当前工作区的 agent/conversations 目录中；「删除」只删除磁盘上的记录。"/>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+      <StackPanel Margin="6" Spacing="6">
+        <!-- 空状态要说明"为什么空"以及下一步，而不是留一块看起来像加载失败的空白。 -->
+        <TextBlock Text="这里还没有保存的对话。发送第一条消息后，它会出现在列表中。"
+                   IsVisible="{Binding IsEmpty}"
+                   Margin="8,12" FontSize="11" Opacity="0.6" TextWrapping="Wrap"/>
+        <ItemsControl ItemsSource="{Binding Conversations}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="local:AgentConversationEntry">
+              <Border Background="{DynamicResource ThemeControlMidBrush}" CornerRadius="8"
+                      Padding="8,6">
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                  <StackPanel Grid.Column="0" Spacing="1" VerticalAlignment="Center">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                      <TextBox Grid.Column="0" Classes="titleEdit"
+                               Text="{Binding Title, Mode=TwoWay}"
+                               LostFocus="TitleBox_LostFocus"
+                               KeyDown="TitleBox_KeyDown"
+                               ToolTip.Tip="点击修改名称；Enter 保存，Esc 取消"/>
+                      <TextBlock Grid.Column="1" Text="当前" IsVisible="{Binding IsActive}"
+                                 FontSize="10" Opacity="0.7" VerticalAlignment="Center"/>
+                    </Grid>
+                    <TextBlock Text="{Binding Subtitle}" FontSize="10" Opacity="0.6"
+                               Margin="4,0,0,0"/>
+                  </StackPanel>
+                  <Button Grid.Column="1" Content="打开" FontSize="11" Padding="8,2"
+                          Command="{Binding OpenCommand}"
+                          ToolTip.Tip="恢复这场对话并在聊天面板中继续"/>
+                  <Button Grid.Column="2" Content="删除" FontSize="11" Padding="8,2"
+                          Command="{Binding DeleteCommand}"
+                          ToolTip.Tip="从工作区删除这场对话的记录，无法撤销"/>
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>

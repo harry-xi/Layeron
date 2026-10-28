@@ -41,20 +41,54 @@
     <Style Selector="Expander.chatFold:pointerover /template/ Border">
       <Setter Property="BorderBrush" Value="{StaticResource ChatMutedBrush}"/>
     </Style>
+
+    <!--
+      对话名称平时就是工具栏里的一行字；只有获得焦点时才出现边框和淡背景，直接改名字，
+      不需要额外的重命名按钮。提交时机见 AgentChatView.axaml.cs。
+    -->
+    <Style Selector="TextBox.chatTitle">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="Padding" Value="3,1"/>
+      <Setter Property="MinHeight" Value="0"/>
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="TextBox.chatTitle:focus">
+      <Setter Property="BorderBrush" Value="{StaticResource ChatMutedBrush}"/>
+      <Setter Property="Background" Value="#20808080"/>
+    </Style>
   </UserControl.Styles>
 
   <DockPanel>
     <!--
-      顶部工具栏只留对话级操作（取消、清空）：发送按钮已经下移到输入框旁边，和常见聊天软件一致，
+      顶部工具栏只留对话级操作（取消、新建对话）：发送按钮已经下移到输入框旁边，和常见聊天软件一致，
       这两个动作改变的是整轮对话的状态，所以留在上面而不是挤在发送旁边。
+      新建对话不删除当前记录：历史由独立的「Agent 历史」工具窗口管理。
     -->
     <Border DockPanel.Dock="Top" Background="{DynamicResource ThemeControlMidBrush}" Padding="6,4">
-      <StackPanel Orientation="Horizontal" Spacing="6">
-        <Button Content="取消" Command="{Binding CancelCommand}" IsEnabled="{Binding IsBusy}"/>
-        <Button Content="清空对话" Command="{Binding ClearCommand}" IsEnabled="{Binding HasMessages}"/>
-        <ProgressBar Width="80" Height="4" VerticalAlignment="Center"
-                     IsIndeterminate="True" IsVisible="{Binding IsBusy}"/>
-      </StackPanel>
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+        <TextBox Grid.Column="0" Classes="chatTitle"
+                 Text="{Binding ConversationTitleDraft, Mode=TwoWay}"
+                 LostFocus="TitleBox_LostFocus"
+                 KeyDown="TitleBox_KeyDown"
+                 ToolTip.Tip="点击修改对话名称；Enter 保存，Esc 取消"/>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+          <Button Content="历史" Command="{Binding OpenHistoryCommand}"
+                  ToolTip.Tip="打开独立的「Agent 历史」窗口"/>
+          <Button Content="取消" Command="{Binding CancelCommand}" IsEnabled="{Binding IsBusy}"/>
+          <!--
+            新建对话而不是清空：当前对话已经自动保存在历史里，这里只是开始另一场，
+            要删除旧对话请用独立的「Agent 历史」工具窗口。
+          -->
+          <Button Content="新建对话" Command="{Binding NewConversationCommand}"
+                  ToolTip.Tip="开始一场新对话；当前对话仍保留在历史中"/>
+          <ProgressBar Width="80" Height="4" VerticalAlignment="Center"
+                       IsIndeterminate="True" IsVisible="{Binding IsBusy}"/>
+        </StackPanel>
+      </Grid>
     </Border>
 
     <Border DockPanel.Dock="Bottom" Padding="6">

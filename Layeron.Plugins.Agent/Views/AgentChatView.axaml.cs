@@ -1,4 +1,6 @@
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
 using Layeron.Plugin.Abstractions;
@@ -13,9 +15,15 @@ public sealed partial class AgentChatView : UserControl, IDisposable
 {
     private readonly AgentChatViewModel? _viewModel;
 
-    public AgentChatView(IPluginContext context, IPluginServices services, IScriptHostService host, AgentOptions options)
+    public AgentChatView(
+        IPluginContext context,
+        IPluginServices services,
+        IScriptHostService host,
+        AgentOptions options,
+        AgentConversationManager conversations,
+        Action openHistory)
     {
-        _viewModel = new AgentChatViewModel(context, services, host, options);
+        _viewModel = new AgentChatViewModel(context, services, host, options, conversations, openHistory);
         DataContext = _viewModel;
         InitializeComponent();
 
@@ -39,6 +47,30 @@ public sealed partial class AgentChatView : UserControl, IDisposable
     /// this assembly stays reachable from a host object.
     /// </summary>
     public void Dispose() => _viewModel?.Detach();
+
+    /// <summary>Commits the name when the title box loses focus; typing alone does not write a file.</summary>
+    private void TitleBox_LostFocus(object? sender, RoutedEventArgs e) =>
+        _viewModel?.CommitConversationTitle();
+
+    /// <summary>Enter saves the name; Escape puts the saved one back.</summary>
+    private void TitleBox_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (_viewModel is null)
+            return;
+
+        switch (e.Key)
+        {
+            case Key.Enter:
+                _viewModel.CommitConversationTitle();
+                e.Handled = true;
+                break;
+
+            case Key.Escape:
+                _viewModel.RevertConversationTitle();
+                e.Handled = true;
+                break;
+        }
+    }
 
     private void ScrollToEnd() => Dispatcher.UIThread.Post(
         () => MessageScroller?.ScrollToEnd(),
