@@ -30,7 +30,7 @@ Layeron.Plugin.Abstractions     插件契约（只依赖 Big3DArray，不含任�
 Layeron.Scripting.Abstractions  脚本契约：ScriptGlobals + ScriptRunContext + IScriptHostService
 Layeron.Plugin.Host             加载器内核：PluginManager / PluginLoadContext / 作用域 / 扩展点注册表
 Layeron.Plugins.Threshold       阈值分割工具；定义 VolumeAction 扩展点
-Layeron.Plugins.Model3D         文档型插件：掩膜 → 3D 模型，Aura3D 渲染 + glTF 导入
+Layeron.Plugins.Model3D         工具+文档型插件：掩膜 → 3D 模型管理，Aura3D 渲染 + glTF 导入
 Layeron.Plugins.ScriptHost      插件加载器 + C# `.csx` 脚本编辑器（见 §10）
 Layeron.Plugins.PythonRunner    内嵌 CPython + REPL + 编辑器；发布 IPythonRunnerService
 Layeron.Plugins.OnnxRuntime     ONNX 推理工具；发布 IOnnxRunnerService
@@ -220,29 +220,33 @@ context.Registry.AddPluginSource(new MySource());
 ### 9.1 第二参考实现：Mask 3D（文档型插件 + 私有渲染引擎）
 
 `Layeron.Plugins.Model3D` 演示另一条路径：把**掩膜降采样成体素，再抽取表面三角网格**，
-在文档标签页里用 **Aura3D** 交互式展示（旋转/平移/缩放），并可导入 glTF/GLB。
+在文档标签页里用 **Aura3D** 交互式展示（旋转/平移/缩放）；同一个插件还提供**管理面板**负责创建、
+导入与多模型管理。
 
 | 关注点 | 做法 |
 |---|---|
-| 贡献 | `AddDocument`（文档标签页）。3D 模型是要与切片视图平级的主视图，不是侧边小工具 |
-| 惰性 | 激活时不计算任何东西；网格与首帧由 `ContentFactory` 在首次打开标签页时才生成 |
+| 贡献 | `AddTool`（右侧“3D 模型”管理面板）+ `AddDocument`（3D 视图）。创建在面板，展示在文档；两者共享一个 `Mask3DModelManager` |
+| 惰性 | 激活时不计算任何东西；面板/标签页由各自的 `ContentFactory` 在首次打开时创建，管理器只持有数据 |
 | 共享边界 | **普通 UI 的 Avalonia 基础依赖（Avalonia/Skia/ReactiveUI）由宿主提供**（`ExcludeAssets="runtime"`）；Aura3D、Silk.NET、SharpGLTF 等专用引擎是**插件私有**，随插件目录部署（`CopyLocalLockFileAssemblies`）。宿主恰好携带同名程序集时才按 `HostCarriedAssemblies` 延迟，不靠名单 |
 | 版本 | `Aura3D.Avalonia` / `Aura3D.Model.GltfLoader` 固定 **0.0.6-alpha.0.8**：该线是 `net10.0 + Avalonia 12`，与宿主同代；2.0 线仍是 Avalonia 11 / net8，不能绑到本宿主 |
 | 视图 | `Mask3DViewport : Aura3DView`，复用 Avalonia 的 OpenGL 上下文；正交轨道相机 + 按需重绘，不初始化 Vulkan |
-| 视图构造 | 带 `x:Class` 的 XAML 必须提供**公开无参构造**，否则运行时加载器无法实例化该资源（`AVLN3001`）。约定与 `ThresholdToolView` 一致：无参构造**只构建视觉树**（供设计器/加载器用），带服务构造才接线宿主；因此宿主依赖（服务）均为可空并带空值守卫 |
+| 多模型 | 视口按模型 id 维护节点字典；显隐切 `Node.Enable`，增删才改场景；相机按**可见模型的并集包围球**取景，显隐/缩放不重置视角 |
+| 颜色 | 列表色块 + `ColorPicker`；改色只替换材质的 1×1 sRGB BaseColor 纹理，不重建几何。导入模型设置颜色会覆盖其自带材质 |
+| 点击定位 | 松手时 `PickClosestAt` 拾取掩膜表面，世界坐标（原始体素坐标）经 `VoxelAt` 映射后调用 `IVolumeService.SetCrosshair`；只在拖拽阈值内算点击，导入模型不参与 |
+| 视图构造 | 带 `x:Class` 的 XAML 必须提供**公开无参构造**，否则运行时加载器无法实例化该资源（`AVLN3001`）。约定与 `ThresholdToolView` 一致：无参构造**只构建视觉树**（供设计器/加载器用），带服务/管理器构造才接线宿主；因此宿主依赖均为可空并带空值守卫 |
 | 线程 | 降采样/表面抽取在 `Task.Run` 上跑，成品网格回 UI 线程；场景内容在 UI 线程增删，引擎在渲染线程出帧（与上游 `CameraController` 的用法一致） |
 | 取消 | 新的生成请求会取消上一个（`CancellationToken`），保证连续改降采样倍数时只呈现最后那个 |
 | 体素化 | 逐 Z 取 `Big3DBitMap.GetXYSlice(z)`（形状 `[Y,X]`，享受块级批量拷贝），按 factor 做 **OR 折叠**（薄结构不会被抹掉），得到 `bool[nx,ny,nz]` |
-| 网格 | 实体体素只在邻居为空/越界时输出该面（两个三角）；每面 4 个独立顶点带**面法线**（共享顶点会把法线平均掉、方块角变圆）；顶点顺序按右手定则验证为**外向 CCW**；模型居中于原点便于轨道相机围绕 |
+| 网格 | 实体体素只在邻居为空/越界时输出该面（两个三角）；每面 4 个独立顶点带**面法线**（共享顶点会把法线平均掉、方块角变圆）；顶点顺序按右手定则验证为**外向 CCW**；坐标写成原始体数据坐标（`index × voxelSize`，原点在采样盒角上），不同降采样倍数共享同一世界框 |
 | 双面 | `Material.DoubleSided = true`：掩膜常是薄片，单面渲染会在背面消失 |
 | 材质 | `BaseColor` 通道 + 1×1 **sRGB** 纹理（引擎线性空间着色、最后再做 gamma 编码；不标 sRGB 会多压一次 gamma 而发白） |
 | 取景 | ⚠️ `Camera.OrthographicSize` 是**完整可见高度**（引擎用 `CreateOrthographic(size * aspect, size, …)`），不是半高；可见高度取 `radius × 2.3`，相机距离取 `radius × 4 + 1`，`near/far` 由 `radius` 推导 |
 | 灯光 | 方向光的 `Forward` 就是入射方向，着色器用 `dot(normal, -Forward)`；只有 `Camera` 有 `LookAt`，灯的欧拉角由 `RotationDegreesFor` 反解。灯锚定在**相机空间**，转视角时同一屏幕位置亮度恒定。高光是指数 32 的硬编码项，只能靠光强/环境光/偏角调节 |
 | 切线基 | 着色器无条件用 TBN 变换法线贴图；没有 `Tangent`/`Bitangent` 时 `normalize(0)` 产生 NaN，光照项变 0（纯色剪影）。表面按面法线生成正交基，导入模型缺 T/B 时补全 |
-| 导出 | 当前表面可存为二进制 STL（50 B/面）或 GLB（法线 + 颜色）；GLB 用 SharpGLTF 写，STL 手写，两者都有文件级测试 |
+| 导出 | 选中的表面可存为二进制 STL（50 B/面）或 GLB（法线 + 颜色）；GLB 用 SharpGLTF 写，STL 手写，两者都有文件级测试。导入模型的原始文件已在磁盘上，故不提供回写 |
 | 按需重绘 | `AutoRequestNextFrameRendering = false`：仅在换网格、改尺寸、拖拽、滚轮时请求一帧，空闲时零 GPU 负载 |
-| 生命周期 | 关标签或卸载插件 → 宿主 dispose 内容 → 视图取消在途生成；GPU 资源随控件脱离视觉树由引擎释放 |
-| 验证状态 | `Mask3DSceneTests` 覆盖"表面 → Geometry/材质"、"正交取景"、"灯光朝向"；具体用例数量以 `dotnet test` 当前结果为准，详见 [MASK3D_PLUGIN.md](MASK3D_PLUGIN.md) §8 |
+| 生命周期 | 面板/标签页关闭或卸载插件 → 宿主 dispose 内容 → 面板取消在途生成；模型由管理器持有，关面板不等于清场景；GPU 资源随控件脱离视觉树由引擎释放 |
+| 验证状态 | `Mask3DSceneTests` 覆盖"表面 → Geometry/材质"、"正交取景/并集取景"、"灯光朝向"；`Mask3DModelManagerTests` 覆盖列表/命名/显隐/首次打开；具体用例数量以 `dotnet test` 当前结果为准，详见 [MASK3D_PLUGIN.md](MASK3D_PLUGIN.md) §8 |
 
 ---
 
@@ -358,7 +362,7 @@ void Menu(...) / void Tool(...) / void Contribute(...)
 | 插件生命周期 | 加载/卸载/重复 id/激活抛异常回滚/管理器 Dispose |
 | 作用域 | 定义者卸载 → 扩展点消失；贡献者卸载 → 贡献消失而插槽仍在；预览被清理；掩膜被保留 |
 | 嵌套加载 | 子插件归属、卸载加载器级联卸载、只卸载子插件、源重载不产生重复 |
-| 真实程序集 | 元数据身份、加载、卸载后 ALC 被回收、热重载得到新实例、非插件程序集静默跳过；文档型插件（Model3D）的 document 贡献与卸载，且**内容工厂从未被调用也能完成加载/卸载**（因此无 GPU 环境同样可测） |
+| 真实程序集 | 元数据身份、加载、卸载后 ALC 被回收、热重载得到新实例、非插件程序集静默跳过；文档型插件（Model3D）的 tool + document 贡献与卸载，且**内容工厂从未被调用也能完成加载/卸载**（因此无 GPU 环境同样可测） |
 | 脚本宿主 | 脚本作为子插件加载/卸载/扩展点贡献；源重载拾取已编辑脚本、坏脚本失败隔离；编辑器为每个脚本注册文档、且插件自己的菜单经 `Open()` 打开自己贡献的文档；**工作区里的脚本不被激活为插件，只出现在编辑器文档列表**。全部在无 UI 宿主里完成（脚本宿主的 UI 类型不被加载） |
 
 ---

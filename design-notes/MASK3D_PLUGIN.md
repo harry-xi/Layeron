@@ -3,7 +3,8 @@
 > 记录时间：2026-09-28（2026-10-29 更新）
 > 最近修订：渲染控件已迁移到 **Aura3D**（`Aura3D.Avalonia` + `Aura3D.Model.GltfLoader`，走 Avalonia 提供的 OpenGL 上下文）；
 > §4 的 Helix/Vulkan 原生崩溃与 §5 的自研 CPU 光栅化保留为历史记录，不再代表当前实现。
-> 范围：本文覆盖"掩膜降采样 → 3D 模型 → 文档标签页交互展示"的实现与验证状态，以及旧渲染方案的历史排障记录。
+> 范围：本文覆盖"掩膜降采样 → 3D 模型 → 管理面板 + 文档标签页（可同时显示多个模型）"的实现与验证状态，
+> 以及旧渲染方案的历史排障记录。
 > 设计契约另见 [PLUGIN_SYSTEM.md](PLUGIN_SYSTEM.md)。
 
 ---
@@ -17,6 +18,8 @@
 | HelixToolkit.Nex 1.2.0 | ❌ **放弃**：第一帧必抛 `TypeLoadException`（引擎自身缺陷，见 §4.6），且 nuget 上无更高版本 |
 | 3D 渲染（**Aura3D**） | ✅ 完成：OpenGL 经 Avalonia 合成、正交轨道相机、按需重绘；**不引入 Vulkan/D3D 互操作** |
 | glTF/GLB 导入 | ✅ 完成：`Aura3D.Model.GltfLoader` 加载到同一视口，与掩膜表面共用相机/交互 |
+| 模型管理面板 | ✅ 完成：独立 `ToolContribution`（右侧坞），负责创建/导入/显隐/删除/导出 |
+| 多模型同时显示 | ✅ 完成：文档只做视口，渲染管理器持有的全部模型；相机按可见模型并集取景 |
 | 场景转换与取景的单元测试 | ✅ 覆盖表面→`Geometry`、法线/索引、双面材质与 sRGB、正交取景、灯光朝向 |
 | 本机（5 年前设备）异常 | ✅ **已绕过**：不再初始化 Vulkan，也不再用自绘 D3D 互操作；Aura3D 复用 Avalonia 已有的 OpenGL 上下文 |
 | 插件部署体积 | ⚠️ 3 个文件 ~110 KB → **16 个文件 ~4.0 MB**（Aura3D/Silk.NET/SharpGLTF 等插件私有依赖，宿主不携带） |
@@ -54,24 +57,36 @@
 ```
 Layeron.Plugins.Model3D/
 ├─ Layeron.Plugins.Model3D.csproj   身份元数据
-├─ Mask3DPlugin.cs                  入口：只做 AddDocument，零渲染依赖
+├─ Mask3DPlugin.cs                  入口：AddTool + AddDocument，共享一个模型管理器，零渲染依赖
+├─ Mask3DModels.cs                  会话级模型列表（Mask3DModel / Mask3DModelManager，纯数据）
 ├─ Mask3DGeometry.cs                纯 CPU：降采样 + 两种表面抽取（分派入口）
 ├─ Mask3DSignedDistanceField.cs     有符号距离场（chamfer 双向扫掠）
 ├─ MarchingCubesTable.cs            256 行三角查找表 + 立方体几何
 ├─ MarchingCubes.cs                 游走立方体：等值面抽取（分 Z 带并行）
-├─ Mask3DScene.cs                   表面 → Aura3D 节点、正交取景、灯光朝向（纯数据，可无窗口单测）
-├─ Mask3DViewport.cs                Aura3DView + 轨道相机 + 指针输入 + 按需重绘
-└─ Mask3DView.axaml(.cs)           工具栏 + 视口 + 导入模型
+├─ Mask3DScene.cs                   表面 → Aura3D 节点、并集取景、灯光朝向（纯数据，可无窗口单测）
+├─ Mask3DExport.cs                  二进制 STL / GLB 写出（纯数据，可单测）
+├─ Mask3DViewport.cs                Aura3DView + 轨道相机 + 指针输入 + 按需重绘 + 多节点同步
+├─ Mask3DToolView.axaml(.cs)        管理面板：创建、导入、模型列表、显隐/删除/导出
+└─ Mask3DView.axaml(.cs)            文档标签页：只有视口和空状态提示
 ```
+
+**职责划分**：管理面板是唯一的创建入口，文档标签页是唯一的展示入口；两者**只通过
+`Mask3DModelManager` 通信**（创建/删除/显隐 → `Changed` → 视口同步），互不持有对方的引用。
+这样标签页可以长期开着做对比，关掉面板也不会清空场景。
 
 ### 3.1 算法部分（与渲染器无关，可直接复用）
 
 - **降采样**：逐 Z 取 `Big3DBitMap.GetXYSlice(z)`（形状 `[Y,X]`，享受块级批量拷贝），按 factor 做 **OR 折叠**得到 `bool[nx,ny,nz]`。
   OR 而非多数表决：薄结构不会被抹掉，避免“用户画的膜消失了”这类最难解释的失败。
-- **两种重建方式**（工具栏切换，同一入口 `Mask3DGeometry.BuildSurface(grid, method, ct)`）：
+- **两种重建方式**（管理面板切换，同一入口 `Mask3DGeometry.BuildSurface(grid, method, ct)`）：
   - **游走立方体**（默认）：掩膜 → **有符号距离场** → 切零等值面。
   - **体素面**：实体体素只在邻居为空/越界时输出该面；每面 4 个独立顶点带**面法线**（共享顶点会把法线平均掉、方块角变圆）；顶点顺序按右手定则验证为**外向 CCW**。
-  - 两者都输出同一个 `SurfaceMesh`（`Vector4` 位置 + `VertexNormal` + 索引），居中于原点，包围球由采样盒推得，**相机无需任何特殊处理**。
+  - 两者都输出同一个 `SurfaceMesh`（`Vector4` 位置 + `VertexNormal` + 索引），**坐标直接写成原始体数据坐标**：
+  原点在采样盒角上，1 世界单位 = 1 个原始体素，降采样倍数通过 `voxelSize` 烘焙进顶点位置。
+  包围球由采样盒推得（`Center` = 体数据中心），因此同一体积下 1×/2×/4× 的模型占据同一世界区域，
+  顶点坐标可以直接回查掩膜的体素索引。
+- **采样盒边界**：每轴块数为 `ceil(维度 / factor)`。维度能被 factor 整除时世界盒恰为 `[0, 维度]`；
+  不能整除时最后一个块延伸到块边界（最多多出 `factor − 1` 个体素），内部坐标仍然精确。
 - **为什么用距离场而不是模糊后的占据率**：二值掩膜只有跳变、没有可插值的等值面，必须先造一个连续场。常见做法是“把占据率模糊一下、在 0.5 处切开”，但它会**静默抹掉最该保留的结构**——孤立单个体素模糊后峰值只有 1/27，单层薄片峰值 1/3，两者都低于阈值而彻底消失。有符号距离场没有这个偏置：无论结构多薄，每个实体体素都是 −1，每个空体素都是 +1，零等值面必然落在真实边界上。
 - **距离场算法**：对实体集和空集各跑一次 **chamfer 距离变换**（正、反两个线性扫掠，邻域偏移按真实长度加权），相减得到 `d(solid) − d(empty)`。两个变换互相独立，`Parallel.Invoke` 并行。代价与体积成正比而非平方。
 - **边界闭合**：场每个方向填 1 层空体素。填充既让贴边的实心掩膜在边界处有有限距离（否则外部变换会跑出网格），也让等值面在体素盒边缘正确收口而不是被切开。
@@ -84,13 +99,17 @@ Layeron.Plugins.Model3D/
   所以插件既不创建 Vulkan 设备，也不做 D3D 互操作，画面直接进 Avalonia 合成器。
 - **迁移边界**：算法层（`Mask3DGeometry` 及以下）原样保留；删除 `Mask3DRenderer` 与 `ViewProjection`，
   新增 `Mask3DScene`（表面 → 节点、正交取景、灯光朝向；纯数据，可无窗口单测）。
-- **场景何时建**：引擎在**首帧**才创建 `Scene`（`SceneInitialized` 事件）。在此之前到达的网格先挂在
-  `_pendingContent`，事件里再 `AddNode`；背景、灯光也只在事件里配置一次。
+- **场景何时建**：引擎在**首帧**才创建 `Scene`（`SceneInitialized` 事件）。在此之前管理器里的模型只记录在列表里，
+  事件里再统一 `AddNode`；背景、灯光也只在事件里配置一次。文档标签页可以在模型创建之前或之后打开，两条路径都走同一个
+  `ShowModels` 同步。
+- **多模型**：视口按 `Mask3DModel.Id` 维护 `Node` 字典；新增/删除只改场景节点，显隐只切 `Node.Enable`（不重建几何）。
+  相机在**模型列表变化时**取可见模型的**并集包围球**（`Mask3DScene.UnionBounds`），单纯缩放或显隐不会重置视角。
 - **投影仍是正交**：掩膜是用来检查形状的，透视会让等体积格子近大远小。⚠️ `Camera.OrthographicSize` 是
   **完整可见高度**（引擎内部 `CreateOrthographic(size * aspect, size, …)`），不是半高；按半高写会让模型放大一倍
   （已由测试钉住）。
 - **取景**：`可见高度 = radius × 2.3`，相机放在 `radius × 4 + 1` 处；`near/far` 由 `radius` 推导，
-  任何轨道角度下模型都不会被近平面切开。导入的 glTF 用包围盒中心与半对角线当 `radius`，走同一套相机。
+  任何轨道角度下模型都不会被近平面切开。掩膜模型的取景中心是 `SurfaceMesh.Center`（体数据采样盒中心），
+  不再是世界原点；导入的 glTF 用自身包围盒中心与半对角线，走同一套相机。
 - **材质**：`BaseColor` 通道 + 1×1 纹理承载掩膜颜色（与 glTF 加载器给"无贴图材质"的表示一致）；
   纹理标记为 **sRGB**，因为引擎在线性空间做光照、最后再做 gamma 编码——不标记会被多压一次 gamma，颜色发白。
   `DoubleSided = true` 保留"薄片从背面看不能消失"。
@@ -101,19 +120,30 @@ Layeron.Plugins.Model3D/
 - **反光调节**：引擎的 Blinn-Phong 高光是指数 32 的硬编码项，没有材质开关；能调的只有光强、环境光和灯相对相机的偏角。
   这几个数集中在 `Mask3DScene`：`KeyLightIrradiance`（当前 0.4）、`AmbientIntensity`（0.35）、
   `KeyLightUp` / `KeyLightRight`（相机空间偏角）。早先 0.8 强度 + 0.3 环境光会让受光面红通道饱和到 255（发亮）。
-- **导出**：`导出模型…` 把屏上这块表面写成**二进制 STL**（50 B/面，网格/切片工具直接可用）或 **GLB**
-  （保留逐面法线与掩膜颜色；SharpGLTF 本就在插件私有依赖里）。导出使用上次生成的表面，不重新抽取。
+- **导出**：管理面板"导出选中…"把选中的掩膜表面写成**二进制 STL**（50 B/面，网格/切片工具直接可用）或 **GLB**
+  （保留逐面法线与掩膜颜色；SharpGLTF 本就在插件私有依赖里）。导出使用创建时的表面，不重新抽取；坐标与视口一致
+  （原始体素单位，原点在采样盒角上）。导入的 glTF 不可导出（原文件本来就在磁盘上，重编码只会丢数据）。
+- **点击定位**：左键单击（移动 ≤4 DIP，不是拖拽）掩膜表面时，用 `Aura3DViewBase.PickClosestAt` 取到节点与
+  `WorldPosition`；节点反查所属 `Mask3DModel`，世界坐标经 `Mask3DScene.VoxelAt` 变成体素索引，再调用
+  `IVolumeService.SetCrosshair`，三个切片视图一起跳转。只在松手时拾取（基类的按下拾取会在每次开始旋转时触发），
+  导入模型保留文件坐标、不参与定位。
+- **颜色**：模型列表为每个模型保存一个颜色，选中后可用 `ColorPicker` 修改。掩膜表面默认取掩膜层颜色；
+  改色只替换材质的 1×1 `BaseColor` 纹理（`Mask3DScene.ApplyColor`），不重建几何，也不动相机。
+  导入的 glTF 初始不覆盖材质（列表色块为空）；一旦设置颜色，会对它的**所有网格**写入同一个纯色 BaseColor——
+  这是"整个模型一个颜色"的明确含义，代价是覆盖文件自带的贴图。
 - **切线基（T/B）**：着色器无条件用 `vTBN` 变换法线贴图，没有 `Tangent` 属性时 `T = normalize(0)` 是 NaN，
   `NaN × 0` 仍是 NaN，光照项会被算成 0（模型只剩环境光）。所以表面与导入模型都必须带 `Tangent`/`Bitangent`，
   详见 §8.4。
 - **法线朝外仍然重要**：虽然双面渲染关掉了背面剔除，法线仍来自抽取阶段，写反会变成"从里往外打光"；
   原有回归测试 `BothExtractionMethods_WindTheirTrianglesOutward` 保留。
 - **按需重绘**：`AutoRequestNextFrameRendering = false`，换网格/改尺寸/拖拽/滚轮时各请求一帧；
-  静态场景空闲时 GPU 零负载，交互仍是一动作一帧。
+  静态场景空闲时 GPU 零负载，交互仍是一动作一帧。模型列表/材质变化后额外补一帧（在 `SceneUpdated`
+  里再请求一次）：新内容的第一帧可能早于引擎的首次上传或光照 shader 变体，只有一帧时会表现为
+  “首次拖拽前模型没有光照”。
 - **线程**：场景内容在 UI 线程构建与增删，引擎在渲染线程出帧（与上游 `CameraController` 的用法一致）；
   算法仍在 `Task.Run` 上跑，新请求取消旧请求。
-- **glTF 导入**：工具栏"导入模型…"用 `ModelLoader.LoadGlbModel/LoadGltfModel` 解析（后台线程），
-  替换当前内容并重新取景——这就是 `Aura3D.Model.GltfLoader` 的用途。
+- **glTF 导入**：管理面板"导入模型…"用 `ModelLoader.LoadGlbModel/LoadGltfModel` 解析（后台线程），
+  作为**新模型加入列表**（不再替换当前内容）——这就是 `Aura3D.Model.GltfLoader` 的用途。
 - **部署**：Aura3D.Core/Avalonia/Model.GltfLoader 与 Silk.NET、SharpGLTF 等作为插件私有依赖随插件目录走；
   Avalonia/Skia 栈由宿主提供，构建后从插件目录裁掉，避免第二份副本。Aura3D 的 macOS ANGLE dylib 在非 macOS
   构建里用 `Aura3DAngleMacosTargetsSkip` 跳过（`libGLESv2.dylib` 单文件约 20 MB）。最终 **16 个文件 / 约 4.0 MB**。
@@ -123,8 +153,9 @@ Layeron.Plugins.Model3D/
 ### 3.3 影响范围（重要）
 
 - `Mask3DPlugin.cs` —— 零渲染依赖。
-- `Mask3DGeometry` / `Mask3DScene` / `Mask3DViewport` 均为实现细节（`internal` 或字段全 `private`）；
-  `Mask3DView` 虽 `public`（XAML 需要），字段全为 `private`。
+- `Mask3DGeometry` / `Mask3DScene` / `Mask3DModelManager` / `Mask3DModel` / `Mask3DViewport` 均为实现细节
+  （`internal` 或字段全 `private`）；`Mask3DView` / `Mask3DToolView` 虽 `public`（XAML 需要），
+  带管理器参数的构造函数是 `internal`，字段全为 `private`。
 - 外部依赖：宿主共享的 `Avalonia`（编译期引用、运行时资产排除）+ 插件私有的 Aura3D 渲染栈；
   二者都不出现在插件对外契约里。
 
@@ -298,7 +329,9 @@ dotnet run
 2. **原生崩溃风险不再来自本插件**：没有 Vulkan 初始化，也没有 D3D 互操作；GL 上下文由 Avalonia 管。
 3. 若将来再换渲染后端，`Mask3DGeometry`（降采样 + Marching Cubes 重建）与 `Mask3DScene` 的
    转换/取景数学可原样复用，只需替换 `Mask3DViewport` 与 `Mask3DScene.CreateMeshNode`。
-4. **已知限制**：视角不跨标签页持久化；glTF 动画不播放（只显示静态姿态）；不做物体拾取。
+4. **已知限制**：视角不跨标签页持久化；glTF 动画不播放（只显示静态姿态）；不做物体拾取；
+   多个模型共享一个场景但暂不支持逐模型的位移/旋转/缩放（掩膜表面使用原始体数据坐标，导入模型保留文件自带坐标；
+两者只有恰好在同一坐标系下才会重合）。
 
 ---
 
@@ -326,9 +359,18 @@ Aura3D 用 GPU 出图并自带 Blinn-Phong 管线与 glTF 加载器；且它走 
 - **删除**：`Mask3DRenderer.cs`、`ViewProjection.cs`、`Mask3DRasterizerTests.cs`、`Mask3DRenderPerformanceTests.cs`。
 - **新增**：`Mask3DScene.cs`（表面 → `Geometry`/`Material`/`Mesh`，正交取景，灯光朝向）、`Mask3DSceneTests.cs`。
 - **重写**：`Mask3DViewport` 改为 `Aura3DView` 子类（轨道相机 + 输入 + 按需重绘 + 场景装配）。
-- **工具栏**：新增"导入模型…"（`.glb` / `.gltf`），走 `ModelLoader`；与"生成模型"互斥地替换视口内容。
+- **导入**：管理面板"导入模型…"（`.glb` / `.gltf`），走 `ModelLoader`；导入作为新模型加入列表，不替换已有内容。
 - **导出**：新增"导出模型…"，把当前表面写成二进制 STL 或 GLB（`Mask3DExport`，两种格式都有测试，
   GLB 会再用引擎加载器读回校验三角面数）。
+- **管理面板**：新增独立 `ToolContribution`（`Mask3DToolView`，右侧坞），把创建/导入/导出从文档标签页移过去，
+  并加上模型列表（显隐、删除、清空）。文档标签页 `Mask3DView` 只剩视口和空状态提示。
+- **多模型**：新增 `Mask3DModels.cs`（`Mask3DModel` / `Mask3DModelManager`）。面板与标签页通过它通信；
+  视口按 id 维护节点字典，显隐切 `Node.Enable`，取景用可见模型的并集包围球。
+- **颜色**：模型列表增加色块与 `ColorPicker`；`Mask3DModelManager.SetColor` 替换节点材质的 BaseColor 纹理并触发重绘，
+  导入模型则对每个网格应用同一个纯色（`Mask3DScene.ApplyColor`）。色块使用 `Avalonia.Controls.ColorPicker`
+  （宿主已携带，插件只做编译期引用）。
+- **点击定位**：视口在松手时拾取模型表面（`PickClosestAt`），文档把命中的掩膜模型世界坐标映射为体素索引，
+  通过新增的 `IVolumeService.SetCrosshair` 移动共享十字准线；导入模型不参与。
 - **工程**：`CopyLocalLockFileAssemblies` 打开；Avalonia/Skia 运行时资产仍排除；非 macOS 构建用
   `Aura3DAngleMacosTargetsSkip` 跳过 Aura3D 的 ANGLE dylib（`libGLESv2.dylib` 单文件约 20 MB）；
   构建后裁掉宿主已携带的 Skia 栈，避免插件目录出现第二份。
@@ -344,7 +386,9 @@ Aura3D 用 GPU 出图并自带 Blinn-Phong 管线与 glTF 加载器；且它走 
    **相机空间**：世界固定的灯会让模型在轨道旋转时"转出光区"，正要看的那一面变黑。
    高光项（指数 32）是硬编码的，没有材质参数；要压"发亮"只能降 `KeyLightIrradiance`、抬环境光、
    或把灯再偏离视轴一点。
-4. **`Scene` 在首帧才存在**。`SceneInitialized` 之前到达的网格必须先缓存，事件里再 `AddNode`。
+4. **`Scene` 在首帧才存在**。`SceneInitialized` 之前管理器里的模型只记录在列表里，事件里再统一 `AddNode`。
+   新内容的第一帧还可能早于引擎的首次上传/着色器变体；按需渲染下不会自动再来一帧，所以内容变化后
+   在 `SceneUpdated` 里补请求一帧。
 5. **受光网格必须带切线基（T/B）**。着色器无条件用 `vTBN` 变换法线贴图；没有 `Tangent` 时
    `T = normalize(0)` 是 NaN，`NaN × 0` 仍是 NaN，`max(dot(NaN, L), 0)` 在 ANGLE/D3D 上取 0 ——
    整个模型只剩环境光，表现为**纯色剪影**。引擎自带的 `BoxGeometry` 正是
@@ -362,5 +406,13 @@ Aura3D 用 GPU 出图并自带 Blinn-Phong 管线与 glTF 加载器；且它走 
 - 复杂形状（空心球 + 三条正交隧道 + 薄鳍片，15k 面）：补上 T/B 前整个表面是纯环境光色
   （RGB 恒定 `125,48,34`），补上后出现清晰的受光明暗；把 yaw 转 2.2 rad 后，正对相机处亮度
   基本不变（`255,101,71 → 255,108,76`），确认灯已锚定在相机空间。
-- 真实使用：`dotnet build Layeron.App` 后启动 App，打开 Model 3D 文档标签页，用带薄壁/孔洞的掩膜、
-  分别用"游走立方体 / 体素面"生成，拖拽旋转并滚轮缩放观察。
+- 多模型冒烟：同一管理器加入两个表面（红色外壳 + 绿色内壳），`NODES=2`，绿色内壳从外壳的隧道口可见；
+  把内壳 `IsVisible=false` 后重新同步，绿色消失、节点数仍为 2 —— 显隐走 `Node.Enable`，没有重建几何。
+- 颜色：`Mask3DModelManagerTests.SetColor_*` 校验 1×1 sRGB BaseColor 纹理的像素值、导入模型的每个网格都被覆盖，
+  以及重复设置同一颜色不触发重绘。
+- 坐标：`Mask3DSurfaceTests.BuiltFromAMaskAtDifferentFactors_StaysInTheSameVolumeFrame` 把一个只占 8³ 体积中间 4³ 的掩膜
+  分别按 1× 和 2× 抽取，断言两种方式的世界包围盒都落在 `[2,6]³`、中心和半径一致——对齐来自体数据坐标，而不是对象包围盒。
+- 点击定位：`Mask3DSceneTests.VoxelAt_*` 覆盖体素坐标到索引的 floor/夹取；`IVolumeService.SetCrosshair` 在宿主与
+  测试服务里都接到同一份十字准线状态，切片视图随属性变更刷新。
+- 真实使用：`dotnet build Layeron.App` 后启动 App，从插件菜单打开"3D 模型"面板，生成/导入模型后
+  打开"掩膜 3D 模型"标签页；用带薄壁/孔洞的掩膜分别用"游走立方体 / 体素面"生成，拖拽旋转并滚轮缩放观察。

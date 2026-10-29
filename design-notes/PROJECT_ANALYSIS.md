@@ -30,7 +30,7 @@
 | Layeron.Plugins.PythonRunner | 15 | 3,261 | 内嵌 CPython、REPL、编辑器、数据桥 |
 | Layeron.Plugins.Agent | 20 | 2,877 | AI 对话与工具调用 |
 | Layeron.Plugins.OnnxRuntime | 16 | 2,695 | ONNX 模型扫描、推理、面板 |
-| Layeron.Plugins.Model3D | 11 | 2,100 | 掩膜 → 3D 模型 + Aura3D 渲染 |
+| Layeron.Plugins.Model3D | 11 | 2,100 | 掩膜 → 3D 模型管理（面板 + 文档）+ Aura3D 渲染 |
 | design-notes | 8 | 1,234 | 实现记录与设计依据 |
 | Layeron.Plugin.Host | 11 | 1,597 | 插件发现、ALC、生命周期、扩展点 |
 | Layeron.Big3DArray | 7 | 1,427 | 体数据 / 稀疏位图 / IO / 直方图 |

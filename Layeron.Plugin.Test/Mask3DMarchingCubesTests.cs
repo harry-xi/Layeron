@@ -154,8 +154,8 @@ public sealed class Mask3DMarchingCubesTests
         // silhouette - so nothing about the shape gives it away - but flat shading then lights the
         // model from the inside out, which reads as "the light is coming from below".
         //
-        // The solid is centred on the origin, so a triangle's own centroid stands in for "outward".
-        // That is exact for the two star-shaped solids tested here.
+        // The solid fills most of the volume, so a triangle's centroid relative to the volume centre
+        // stands in for "outward". That is exact for the two star-shaped solids tested here.
         foreach (var (name, grid) in new (string, bool[,,])[] { ("block", Solid(20, 20, 20)), ("ball", Ball(21)) })
         {
             foreach (var method in new[]
@@ -180,7 +180,7 @@ public sealed class Mask3DMarchingCubesTests
                         continue;
 
                     total++;
-                    if (System.Numerics.Vector3.Dot(n, (a + b + c) / 3f) < 0f)
+                    if (System.Numerics.Vector3.Dot(n, (a + b + c) / 3f - mesh.Center) < 0f)
                         inward++;
                 }
 

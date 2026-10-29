@@ -28,6 +28,7 @@ public interface IVolumeService
 
     int CurrentX { get; } int CurrentY { get; } int CurrentZ { get; }   // crosshair
     event Action? CrosshairChanged;
+    void SetCrosshair(int x, int y, int z);     // move to a voxel index (clamped to the volume)
 
     long[]? ComputeHistogram(CancellationToken ct = default, Action<double>? progress = null);
 }
@@ -86,6 +87,8 @@ This is **the same operation a built-in load performs**: the previous instance i
 ### Crosshair
 
 `CurrentX/Y/Z` and `CrosshairChanged` let a plugin default to **the slice the user is looking at** — usually a better default than asking for a slice index again.
+
+`SetCrosshair(x, y, z)` writes the same state, so all three slice views follow. Coordinates are voxel indices (not physical coordinates), out-of-range values are clamped to the volume, and it is a no-op when no volume is loaded. Call it on the UI thread: the slice views are bound directly to this state.
 
 ## Masks: IMaskService
 

@@ -28,6 +28,7 @@ public interface IVolumeService
 
     int CurrentX { get; } int CurrentY { get; } int CurrentZ { get; }   // 十字准线
     event Action? CrosshairChanged;
+    void SetCrosshair(int x, int y, int z);     // 移动到体素坐标（越界自动夹到卷内）
 
     long[]? ComputeHistogram(CancellationToken ct = default, Action<double>? progress = null);
 }
@@ -86,6 +87,8 @@ services.Volumes.Replace(newVolume);
 ### 十字准线
 
 `CurrentX/Y/Z` 与 `CrosshairChanged` 让插件能默认作用于**用户正在看的**那一层——这通常比让用户再选一次层号更符合直觉。
+
+`SetCrosshair(x, y, z)` 走同一份状态，因此三个切片视图会一起跟随。坐标是体素索引（不是物理坐标），越界会被夹到卷内；没有加载体数据时是空操作。它需要从 UI 线程调用，因为切片视图直接绑定这份状态。
 
 ## 掩膜：IMaskService
 

@@ -86,13 +86,18 @@ internal static class Mask3DGeometry
     /// Extracts the boundary of a solid voxel grid: for every solid voxel, the faces whose neighbour is
     /// empty or outside the grid become two triangles.
     /// <para>
-    /// Voxels are unit cubes and the result is centred on the origin, so an orbit camera can spin around
-    /// the model without a pivot offset. Each face gets its own four vertices carrying the face normal,
-    /// which is what gives a blocky mask the flat-shaded look it should have - sharing vertices across
-    /// faces would average the normals and round off the corners.
+    /// Coordinates are <b>original volume coordinates</b>: sample index 0 starts at world 0 and one
+    /// downsampled voxel is <paramref name="voxelSize"/> original voxels wide. Nothing is re-centred on
+    /// the object or on the grid, so two models of the same volume - at any downsample factor - occupy
+    /// the same world region and a vertex can be mapped straight back to the mask's voxel index.
+    /// </para>
+    /// <para>
+    /// Each face gets its own four vertices carrying the face normal, which is what gives a blocky mask
+    /// the flat-shaded look it should have - sharing vertices across faces would average the normals and
+    /// round off the corners.
     /// </para>
     /// </summary>
-    public static SurfaceMesh BuildSurface(bool[,,] grid, CancellationToken ct)
+    public static SurfaceMesh BuildSurface(bool[,,] grid, int voxelSize, CancellationToken ct)
     {
         var nx = grid.GetLength(0);
         var ny = grid.GetLength(1);
@@ -101,9 +106,6 @@ internal static class Mask3DGeometry
         var vertices = new List<Vector4>();
         var vertexProps = new List<VertexNormal>();
         var indices = new List<uint>();
-
-        // Centre of the grid in voxel units; subtracting it puts the model at the origin.
-        var half = new Vector3(nx, ny, nz) * 0.5f;
 
         var solidVoxels = 0;
 
@@ -134,11 +136,11 @@ internal static class Mask3DGeometry
                             continue;
 
                         var start = (uint)vertices.Count;
-                        var origin = new Vector3(x, y, z) - half;
+                        var origin = new Vector3(x, y, z) * voxelSize;
 
                         foreach (var corner in face.Corners)
                         {
-                            vertices.Add(new Vector4(origin + corner, 1f));
+                            vertices.Add(new Vector4(origin + corner * voxelSize, 1f));
                             vertexProps.Add(new VertexNormal(face.Normal));
                         }
 
@@ -155,25 +157,42 @@ internal static class Mask3DGeometry
             }
         }
 
-        // Bounding sphere of the voxel box: enough to frame the camera without a per-vertex pass.
-        var radius = 0.5f * new Vector3(nx, ny, nz).Length();
+        // Bounding sphere of the sampled box, in world units: enough to frame the camera without a
+        // per-vertex pass. The centre is the volume's centre, not the object's - the camera pivots on
+        // the data, not on whatever shape happens to be filled in.
+        var center = new Vector3(nx, ny, nz) * (voxelSize * 0.5f);
+        var radius = 0.5f * new Vector3(nx, ny, nz).Length() * voxelSize;
 
-        return new SurfaceMesh(vertices, vertexProps, indices, radius, solidVoxels);
+        return new SurfaceMesh(vertices, vertexProps, indices, center, radius, solidVoxels);
     }
+
+    /// <summary>Voxel faces in single-voxel units (the convenience overload used by tests and tools).</summary>
+    public static SurfaceMesh BuildSurface(bool[,,] grid, CancellationToken ct)
+        => BuildSurface(grid, 1, ct);
 
     /// <summary>
     /// Extracts a surface from a voxel grid with the requested method.
     /// <para>
-    /// This is the single entry point the view uses, so switching methods in the toolbar is a one-line
-    /// change here rather than a branch at the call site.
+    /// This is the single entry point the view uses, so switching methods is a one-line change here
+    /// rather than a branch at the call site. <paramref name="voxelSize"/> is the number of original
+    /// voxels one downsampled voxel represents, which is what keeps models at different factors in the
+    /// same coordinate system.
     /// </para>
     /// </summary>
-    public static SurfaceMesh BuildSurface(bool[,,] grid, ExtractionMethod method, CancellationToken ct)
+    public static SurfaceMesh BuildSurface(
+        bool[,,] grid,
+        ExtractionMethod method,
+        int voxelSize,
+        CancellationToken ct)
         => method switch
         {
-            ExtractionMethod.MarchingCubes => BuildIsosurface(grid, ct),
-            _ => BuildSurface(grid, ct),
+            ExtractionMethod.MarchingCubes => BuildIsosurface(grid, voxelSize, ct),
+            _ => BuildSurface(grid, voxelSize, ct),
         };
+
+    /// <summary>Single-voxel-unit convenience overload.</summary>
+    public static SurfaceMesh BuildSurface(bool[,,] grid, ExtractionMethod method, CancellationToken ct)
+        => BuildSurface(grid, method, 1, ct);
 
     /// <summary>
     /// Extracts the smooth isosurface of the grid through Marching Cubes.
@@ -184,17 +203,22 @@ internal static class Mask3DGeometry
     /// a single voxel or a one-voxel-thick sheet from dissolving.
     /// </para>
     /// </summary>
-    public static SurfaceMesh BuildIsosurface(bool[,,] grid, CancellationToken ct)
+    public static SurfaceMesh BuildIsosurface(bool[,,] grid, int voxelSize, CancellationToken ct)
     {
         var field = Mask3DSignedDistanceField.FromVoxels(grid, ct);
-        return MarchingCubes.Extract(field, ct);
+        return MarchingCubes.Extract(field, voxelSize, ct);
     }
+
+    /// <summary>Single-voxel-unit convenience overload.</summary>
+    public static SurfaceMesh BuildIsosurface(bool[,,] grid, CancellationToken ct)
+        => BuildIsosurface(grid, 1, ct);
 
     /// <summary>A triangle soup with per-face normals, plus what the UI needs to describe it.</summary>
     internal sealed record SurfaceMesh(
         List<Vector4> Vertices,
         List<VertexNormal> VertexProps,
         List<uint> Indices,
+        Vector3 Center,
         float Radius,
         int SolidVoxels)
     {

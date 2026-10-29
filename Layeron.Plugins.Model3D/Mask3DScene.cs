@@ -127,12 +127,7 @@ internal static class Mask3DScene
         // The engine lights in linear space and gamma-encodes on output, so the texture has to be
         // declared as sRGB: otherwise the raw bytes are treated as linear and the model comes out
         // washed out by one extra gamma step.
-        var texture = AuraTexture.CreateFromColor(AuraColor.FromArgb(
-            255,
-            ToByte(color.R),
-            ToByte(color.G),
-            ToByte(color.B)));
-        texture.SetIsGammaSpace(true);
+        var texture = CreateColorTexture(color);
 
         var material = new AuraMaterial { DoubleSided = true };
         material.SetChannel(new Channel { Name = "BaseColor", Texture = texture });
@@ -143,6 +138,51 @@ internal static class Mask3DScene
             Geometry = geometry,
             Material = material,
         };
+    }
+
+    /// <summary>
+    /// Replaces a model's albedo with a flat colour. A mask surface is one mesh; an imported model
+    /// applies the same texture to every mesh, which intentionally overrides whatever base-colour
+    /// texture the file carried - the caller is asking for one colour for the whole model.
+    /// </summary>
+    public static void ApplyColor(Node content, Rgb color)
+    {
+        var texture = CreateColorTexture(color);
+
+        switch (content)
+        {
+            case AuraMesh mesh:
+                SetBaseColor(mesh, texture);
+                break;
+
+            case AuraModel model:
+                foreach (var mesh in model.Meshes)
+                    SetBaseColor(mesh, texture);
+                break;
+        }
+    }
+
+    private static void SetBaseColor(AuraMesh mesh, AuraTexture texture)
+    {
+        if (mesh.Material is not { } material)
+        {
+            material = new AuraMaterial { DoubleSided = true };
+            mesh.Material = material;
+        }
+
+        material.SetChannel(new Channel { Name = "BaseColor", Texture = texture });
+    }
+
+    /// <summary>One-pixel sRGB texture, the same representation the loader uses for a flat material.</summary>
+    private static AuraTexture CreateColorTexture(Rgb color)
+    {
+        var texture = AuraTexture.CreateFromColor(AuraColor.FromArgb(
+            255,
+            ToByte(color.R),
+            ToByte(color.G),
+            ToByte(color.B)));
+        texture.SetIsGammaSpace(true);
+        return texture;
     }
 
     /// <summary>
@@ -200,6 +240,46 @@ internal static class Mask3DScene
         bitangents.Add(bitangent.Y);
         bitangents.Add(bitangent.Z);
     }
+
+    /// <summary>
+    /// Bounding sphere that contains every given sphere, used when several models share the scene.
+    /// <para>
+    /// Merging in world space (rather than adding radii or averaging centres) keeps the camera framing
+    /// correct when the models sit apart: two unit spheres ten units apart need a much larger box than
+    /// either one alone, and the centre belongs between them, not on the first model.
+    /// </para>
+    /// </summary>
+    public static (Vector3 Center, float Radius) UnionBounds(IEnumerable<(Vector3 Center, float Radius)> bounds)
+    {
+        var min = new Vector3(float.PositiveInfinity);
+        var max = new Vector3(float.NegativeInfinity);
+        var any = false;
+
+        foreach (var (center, radius) in bounds)
+        {
+            any = true;
+            var extent = new Vector3(MathF.Max(radius, 0f));
+            min = Vector3.Min(min, center - extent);
+            max = Vector3.Max(max, center + extent);
+        }
+
+        if (!any)
+            return (Vector3.Zero, MinRadius);
+
+        var size = max - min;
+        return ((min + max) * 0.5f, MathF.Max(size.Length() * 0.5f, MinRadius));
+    }
+
+    /// <summary>
+    /// Maps a world point in volume coordinates to the voxel that contains it. Voxel <c>i</c> spans
+    /// <c>[i, i+1)</c>, so this is a floor plus a clamp for clicks exactly on the border (and for
+    /// imported models, whose coordinates are not volume coordinates).
+    /// </summary>
+    public static (int X, int Y, int Z) VoxelAt(Vector3 world, int sizeX, int sizeY, int sizeZ)
+        => (
+            Math.Clamp((int)MathF.Floor(world.X), 0, Math.Max(0, sizeX - 1)),
+            Math.Clamp((int)MathF.Floor(world.Y), 0, Math.Max(0, sizeY - 1)),
+            Math.Clamp((int)MathF.Floor(world.Z), 0, Math.Max(0, sizeZ - 1)));
 
     /// <summary>Vertical extent of the orthographic box that frames a model of this radius.</summary>
     public static float ViewHeightForRadius(float radius)

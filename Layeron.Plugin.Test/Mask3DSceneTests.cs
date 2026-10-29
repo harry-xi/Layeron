@@ -145,17 +145,26 @@ public sealed class Mask3DSceneTests
     }
 
     [TestMethod]
-    public void Surface_IsCentredOnTheOrigin()
+    public void Surface_UsesVolumeCoordinates()
     {
+        // Not centred on the object: sample 0 starts at world 0 so a vertex maps back to the mask's
+        // voxel index. A single-voxel grid at factor 1 therefore spans [0,1]^3, and the reported
+        // centre is the volume centre the camera should pivot on.
         var surface = SingleVoxel();
         var node = Mask3DScene.CreateMeshNode(surface, Rgb.FromBytes(1, 1, 1));
 
         var bounds = node.Geometry!.BoundingBox;
         Assert.IsNotNull(bounds);
-        Assert.AreEqual(0f, bounds!.Center.Length(), 1e-5f, "the camera frames the origin, so the model has to sit on it");
+        Assert.AreEqual(0.5f, bounds!.Center.X, 1e-5f);
+        Assert.AreEqual(0.5f, bounds.Center.Y, 1e-5f);
+        Assert.AreEqual(0.5f, bounds.Center.Z, 1e-5f);
         Assert.AreEqual(1f, bounds.Size.X, 1e-5f);
         Assert.AreEqual(1f, bounds.Size.Y, 1e-5f);
         Assert.AreEqual(1f, bounds.Size.Z, 1e-5f);
+
+        Assert.AreEqual(0.5f, surface.Center.X, 1e-5f);
+        Assert.AreEqual(0.5f, surface.Center.Y, 1e-5f);
+        Assert.AreEqual(0.5f, surface.Center.Z, 1e-5f);
     }
 
     [TestMethod]
@@ -235,6 +244,48 @@ public sealed class Mask3DSceneTests
 
             Assert.IsTrue(lit > 0.5f, "a surface facing the viewer must stay clearly lit");
         }
+    }
+
+    [TestMethod]
+    public void VoxelAt_MapsVolumeCoordinatesToTheContainingVoxel()
+    {
+        // Voxel i spans [i, i+1), so the mapping is a floor. Out-of-range clicks come from the
+        // surface sitting exactly on the border; they clamp instead of indexing outside the volume.
+        Assert.AreEqual((0, 0, 0), Mask3DScene.VoxelAt(new Vector3(0f, 0f, 0f), 10, 12, 14));
+        Assert.AreEqual((1, 2, 3), Mask3DScene.VoxelAt(new Vector3(1.9f, 2.0f, 3.5f), 10, 12, 14));
+        Assert.AreEqual((0, 0, 0), Mask3DScene.VoxelAt(new Vector3(-5f, -0.1f, -100f), 10, 12, 14));
+        Assert.AreEqual((9, 11, 13), Mask3DScene.VoxelAt(new Vector3(10f, 12f, 13.9f), 10, 12, 14));
+    }
+
+    [TestMethod]
+    public void UnionBounds_ContainsEveryModelAndCentresBetweenThem()
+    {
+        // The document can hold several models. Framing has to fit all of them, not just the newest:
+        // two unit spheres ten units apart need a box around both and a centre between them.
+        var bounds = Mask3DScene.UnionBounds(
+        [
+            (Vector3.Zero, 1f),
+            (new Vector3(10f, 0f, 0f), 1f),
+        ]);
+
+        Assert.AreEqual(5f, bounds.Center.X, 1e-4f);
+        Assert.AreEqual(0f, bounds.Center.Y, 1e-4f);
+        Assert.AreEqual(0f, bounds.Center.Z, 1e-4f);
+
+        var min = bounds.Center - new Vector3(bounds.Radius);
+        var max = bounds.Center + new Vector3(bounds.Radius);
+        Assert.IsTrue(min.X <= -1f, "the left model must be inside the framed sphere");
+        Assert.IsTrue(max.X >= 11f, "the right model must be inside the framed sphere");
+        Assert.IsTrue(bounds.Radius >= 6f);
+    }
+
+    [TestMethod]
+    public void UnionBounds_OfNothingIsAValidCameraTarget()
+    {
+        var bounds = Mask3DScene.UnionBounds([]);
+
+        Assert.AreEqual(Vector3.Zero, bounds.Center);
+        Assert.AreEqual(Mask3DScene.MinRadius, bounds.Radius, 1e-6f);
     }
 
     [TestMethod]

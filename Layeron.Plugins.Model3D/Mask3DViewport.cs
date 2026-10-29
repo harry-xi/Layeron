@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using Aura3D.Avalonia;
 using Aura3D.Core.Nodes;
@@ -7,7 +9,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using AuraColor = System.Drawing.Color;
-using AuraModel = Aura3D.Core.Nodes.Model;
 using AuraTexture = Aura3D.Core.Resources.Texture;
 using Mask3DGeometry = Layeron.Plugins.Model3D.Mask3DGeometry;
 
@@ -15,7 +16,7 @@ namespace Layeron.Plugins.Model3D;
 
 /// <summary>
 /// The 3D viewport: an <see cref="Aura3DView"/> (OpenGL through Avalonia) with an orbit camera and the
-/// nodes it currently shows.
+/// nodes the model manager owns.
 /// <para>
 /// Rendering is <em>on demand</em>. A static model does not need a continuous render loop, so
 /// <see cref="Aura3DViewBase.AutoRequestNextFrameRendering"/> is off and a frame is requested exactly
@@ -28,19 +29,38 @@ namespace Layeron.Plugins.Model3D;
 /// <see cref="Camera.OrthographicSize"/> rather than moving the camera closer. The scene content and
 /// the framing maths live in <see cref="Mask3DScene"/>, which needs no control or GL context.
 /// </para>
+/// <para>
+/// The viewport draws whatever <see cref="Mask3DModelManager"/> currently holds. It keys the scene
+/// nodes by model id, so a visibility toggle flips <see cref="Node.Enable"/> instead of rebuilding
+/// geometry, and the camera frames the union of the visible models only when the model list itself
+/// changed (add/remove) - zooming and toggling keep the current framing.
+/// </para>
 /// </summary>
 public sealed class Mask3DViewport : Aura3DView
 {
     private const double RotateRadiansPerPixel = 0.008;
-    private const double ZoomPerWheelDelta = 0.0030;
+    private const double ZoomPerWheelDelta = 0.0090;
 
-    private Node? _content;
+    /// <summary>Pointer travel under this many DIPs still counts as a click, not an orbit.</summary>
+    private const double ClickSlop = 4;
+
+    private readonly Dictionary<string, Node> _nodes = [];
+
+    /// <summary>The model list this viewport mirrors, copied so it never enumerates a live collection.</summary>
+    private IReadOnlyList<Mask3DModel> _models = [];
+
+    /// <summary>Ids of the models the camera was last framed on; add/remove triggers a reframe.</summary>
+    private string _framedSignature = string.Empty;
+
+    /// <summary>
+    /// Set when the scene content changed. The first frame after new content can be drawn before the
+    /// engine's first-use uploads/shader recompilation have settled (the model then looks unlit until
+    /// something else causes a redraw), so one follow-up frame is requested after that render.
+    /// </summary>
+    private bool _needsFollowUpFrame;
 
     /// <summary>The key light, kept at a fixed angle to the camera (see <see cref="ApplyCamera"/>).</summary>
     private DirectionalLight? _keyLight;
-
-    /// <summary>Built while no scene exists yet (the control has not been rendered), added on init.</summary>
-    private Node? _pendingContent;
 
     private Vector3 _target = Vector3.Zero;
     private float _radius = 1f;
@@ -55,6 +75,14 @@ public sealed class Mask3DViewport : Aura3DView
     private bool _dragging;
     private bool _panning;
     private Point _lastPointer;
+    private Point _pressPosition;
+
+    /// <summary>
+    /// Raised for a click (not a drag) that hits a model, with the point in that model's own
+    /// coordinates. The document turns this into a crosshair move; the viewport stays free of host
+    /// services.
+    /// </summary>
+    internal event Action<Mask3DModel, Vector3>? SurfacePicked;
 
     public Mask3DViewport()
     {
@@ -67,6 +95,7 @@ public sealed class Mask3DViewport : Aura3DView
 
         ClipToBounds = true;
         SceneInitialized += OnSceneInitialized;
+        SceneUpdated += OnSceneUpdated;
     }
 
     /// <summary>Camera azimuth in radians; 0 looks down -Z.</summary>
@@ -110,36 +139,38 @@ public sealed class Mask3DViewport : Aura3DView
         }
     }
 
-    /// <summary>Replaces the displayed surface and reframes the camera onto it.</summary>
-    internal void SetMesh(Mask3DGeometry.SurfaceMesh surface, Rgb color)
+    /// <summary>
+    /// Mirrors the manager's model list into the scene: new models are added, removed ones are taken
+    /// out, and the camera reframes only when the list of ids changed.
+    /// </summary>
+    internal void ShowModels(IReadOnlyList<Mask3DModel> models)
     {
-        if (surface.TriangleCount == 0)
-        {
-            // An empty mask has no bounding box, and the engine's octree expects one. Showing nothing
-            // is also the honest result for a layer that produced no surface.
-            Clear();
-            return;
-        }
+        _models = [.. models];
 
-        Show(Mask3DScene.CreateMeshNode(surface, color), Vector3.Zero, surface.Radius);
+        // Add/remove/visibility/colour all end in a frame; ask for the follow-up here so the result
+        // does not depend on what the user happens to do next.
+        _needsFollowUpFrame = true;
+
+        ApplyModels();
     }
 
-    /// <summary>Replaces the displayed content with a loaded glTF model and frames it.</summary>
-    internal void SetModel(AuraModel model)
+    /// <summary>
+    /// Runs after a frame has been rendered. One extra frame is scheduled when content changed, so
+    /// the first frame's first-use work (shader variant, buffer upload) cannot leave the model looking
+    /// flat until the user drags.
+    /// </summary>
+    private void OnSceneUpdated(object? sender, UpdateRoutedEventArgs e)
     {
-        if (model.Meshes.Count == 0)
-            throw new InvalidOperationException("模型中没有可显示的网格。");
+        if (!_needsFollowUpFrame)
+            return;
 
-        if (model.BoundingBox is not { } bounds)
-            throw new InvalidOperationException("模型没有可用的包围盒。");
-
-        Mask3DScene.EnsureTangentBasis(model);
-        Show(model, bounds.Center, MathF.Max(bounds.Size.Length() * 0.5f, Mask3DScene.MinRadius));
+        _needsFollowUpFrame = false;
+        RequestNextFrameRendering();
     }
 
     /// <summary>
     /// Builds the fixed part of the scene once the engine has created it: background, key light and
-    /// the content that was prepared before the first frame.
+    /// whatever the manager already holds (the tab can be created after models exist).
     /// </summary>
     private void OnSceneInitialized(object? sender, InitializedRoutedEventArgs e)
     {
@@ -168,52 +199,67 @@ public sealed class Mask3DViewport : Aura3DView
         scene.MainDirectionalLight = light;
         _keyLight = light;
 
-        if (_pendingContent is { } pending)
-        {
-            _pendingContent = null;
-            Attach(pending);
-        }
-
+        ApplyModels();
         ApplyCamera();
     }
 
-    /// <summary>Puts <paramref name="node"/> in the scene, replacing whatever was shown before.</summary>
-    private void Show(Node node, Vector3 target, float radius)
-    {
-        _radius = MathF.Max(radius, Mask3DScene.MinRadius);
-        _target = target;
-        _viewHeight = Mask3DScene.ViewHeightForRadius(_radius);
-        _orbitDistance = Mask3DScene.OrbitDistanceForRadius(_radius);
-
-        if (Scene is null)
-            _pendingContent = node;
-        else
-            Attach(node);
-
-        ApplyCamera();
-    }
-
-    private void Attach(Node node)
+    /// <summary>Syncs the scene's node set with <see cref="_models"/> and applies visibility.</summary>
+    private void ApplyModels()
     {
         if (Scene is not { } scene)
             return;
 
-        if (_content is { } previous)
-            scene.RemoveNode(previous);
+        var present = new HashSet<string>(StringComparer.Ordinal);
 
-        scene.AddNode(node);
-        _content = node;
+        foreach (var model in _models)
+        {
+            present.Add(model.Id);
+
+            if (_nodes.ContainsKey(model.Id))
+            {
+                model.Content.Enable = model.IsVisible;
+                continue;
+            }
+
+            scene.AddNode(model.Content);
+            _nodes[model.Id] = model.Content;
+            model.Content.Enable = model.IsVisible;
+        }
+
+        foreach (var id in _nodes.Keys.Where(id => !present.Contains(id)).ToArray())
+        {
+            scene.RemoveNode(_nodes[id]);
+            _nodes.Remove(id);
+        }
+
+        // Reframe on add/remove only: hiding a model or zooming should not throw away the camera the
+        // user just set up.
+        var signature = string.Join('|', _models.Select(model => model.Id));
+        if (!string.Equals(signature, _framedSignature, StringComparison.Ordinal))
+        {
+            _framedSignature = signature;
+            FrameVisible();
+        }
+
+        // Visibility changes still need a frame, and the first models can arrive after the scene was
+        // initialized (the tab was created from a restored layout), so push the camera every time.
+        ApplyCamera();
     }
 
-    /// <summary>Removes whatever is displayed, leaving the camera where it is.</summary>
-    private void Clear()
+    /// <summary>Frames the union of the visible models, leaving the camera alone when everything is hidden.</summary>
+    private void FrameVisible()
     {
-        if (Scene is { } scene && _content is { } previous)
-            scene.RemoveNode(previous);
+        var visible = _models.Where(model => model.IsVisible).ToArray();
+        if (visible.Length == 0)
+            return;
 
-        _content = null;
-        _pendingContent = null;
-        RequestNextFrameRendering();
+        var bounds = Mask3DScene.UnionBounds(
+            visible.Select(model => (model.Center, model.Radius)));
+
+        _radius = bounds.Radius;
+        _target = bounds.Center;
+        _viewHeight = Mask3DScene.ViewHeightForRadius(_radius);
+        _orbitDistance = Mask3DScene.OrbitDistanceForRadius(_radius);
     }
 
     /// <summary>Pushes the orbit camera onto the scene camera and asks for one frame.</summary>
@@ -273,6 +319,7 @@ public sealed class Mask3DViewport : Aura3DView
         _dragging = true;
         _panning = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
         _lastPointer = e.GetPosition(this);
+        _pressPosition = _lastPointer;
         e.Pointer.Capture(this);
     }
 
@@ -293,7 +340,10 @@ public sealed class Mask3DViewport : Aura3DView
         }
         else
         {
-            Yaw += delta.X * RotateRadiansPerPixel;
+            // Horizontal drag follows the surface: dragging right turns the model right, which means
+            // moving the camera the other way around the target. Vertical drag keeps the usual
+            // "drag down to look from above" feel.
+            Yaw -= delta.X * RotateRadiansPerPixel;
             Pitch += delta.Y * RotateRadiansPerPixel;
         }
     }
@@ -302,9 +352,52 @@ public sealed class Mask3DViewport : Aura3DView
     {
         base.OnPointerReleased(e);
 
+        var position = e.GetPosition(this);
+        var deltaX = position.X - _pressPosition.X;
+        var deltaY = position.Y - _pressPosition.Y;
+
+        // A press that barely moved is a click; anything else was an orbit or a pan. Picking on
+        // release (rather than enabling the base class's press-time picking) is what keeps an orbit
+        // from moving the crosshair on every mouse-down.
+        var wasClick = !_panning
+            && e.InitialPressMouseButton == MouseButton.Left
+            && deltaX * deltaX + deltaY * deltaY <= ClickSlop * ClickSlop;
+
         _dragging = false;
         _panning = false;
         e.Pointer.Capture(null);
+
+        if (wasClick)
+            PickSurface(position);
+    }
+
+    /// <summary>Picks the closest surface at a click and reports which model it belongs to.</summary>
+    private void PickSurface(Point position)
+    {
+        if (Scene is null || PickClosestAt(position.X, position.Y) is not { } hit)
+            return;
+
+        if (FindOwner(hit.Node) is { } model)
+            SurfacePicked?.Invoke(model, hit.WorldPosition);
+    }
+
+    /// <summary>
+    /// Finds the model that owns a picked node. A mask surface is itself the node; a glTF mesh is
+    /// reported as its parent model by the engine, but walking the parents keeps this correct if a
+    /// model nests one level deeper.
+    /// </summary>
+    private Mask3DModel? FindOwner(Node? node)
+    {
+        for (var current = node; current is not null; current = current.Parent)
+        {
+            foreach (var model in _models)
+            {
+                if (ReferenceEquals(model.Content, current))
+                    return model;
+            }
+        }
+
+        return null;
     }
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
@@ -312,8 +405,10 @@ public sealed class Mask3DViewport : Aura3DView
         base.OnPointerWheelChanged(e);
 
         // Multiplicative zoom: each notch scales the visible world height, so the perceived step is
-        // the same whether the model is nearly filling the tab or a dot in the middle of it.
-        ViewHeight = _viewHeight * Math.Exp(e.Delta.Y * ZoomPerWheelDelta);
+        // the same whether the model is nearly filling the tab or a dot in the middle of it. A
+        // positive Delta.Y (wheel up) shrinks the height - i.e. zooms in, matching the rest of the
+        // application's "up means closer" convention.
+        ViewHeight = _viewHeight * Math.Exp(-e.Delta.Y * ZoomPerWheelDelta);
         e.Handled = true;
     }
 }

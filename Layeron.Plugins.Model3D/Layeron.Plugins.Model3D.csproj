@@ -23,8 +23,8 @@
   <ItemGroup>
     <AssemblyMetadata Include="LayeronPluginId" Value="layeron.model3d" />
     <AssemblyMetadata Include="LayeronPluginName" Value="Mask 3D Model" />
-    <AssemblyMetadata Include="LayeronPluginVersion" Value="1.1.0" />
-    <AssemblyMetadata Include="LayeronPluginDescription" Value="Downsamples a mask layer and shows it as an interactive 3D surface in a document tab, rendered with Aura3D and able to open glTF models." />
+    <AssemblyMetadata Include="LayeronPluginVersion" Value="1.2.0" />
+    <AssemblyMetadata Include="LayeronPluginDescription" Value="Turns mask layers into 3D surfaces, manages several generated or imported models in a tool panel, and renders them together with Aura3D in a document tab." />
     <AssemblyMetadata Include="LayeronPluginApiVersion" Value="1.0" />
   </ItemGroup>
 
@@ -53,10 +53,13 @@
     <!--
       UI plugins declare views in XAML against the host's Avalonia; runtime assets are excluded, so the
       plugin binds to the host's Avalonia at runtime instead of shipping a second copy. Avalonia.Skia is
-      named only to exclude the copy Aura3D.Avalonia would otherwise drag in.
+      named only to exclude the copy Aura3D.Avalonia would otherwise drag in. The colour picker is the
+      same deal: it is a normal Avalonia control the host already carries, so the model list can offer
+      an editable colour without inventing a palette UI.
     -->
     <PackageReference Include="Avalonia" Version="12.1.3" GeneratePathProperty="true" ExcludeAssets="runtime" />
     <PackageReference Include="Avalonia.Skia" Version="12.1.3" ExcludeAssets="runtime" />
+    <PackageReference Include="Avalonia.Controls.ColorPicker" Version="12.1.3" ExcludeAssets="runtime" />
   </ItemGroup>
 
   <ItemGroup>

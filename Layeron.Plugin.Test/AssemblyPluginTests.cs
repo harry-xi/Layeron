@@ -57,13 +57,13 @@ public sealed class AssemblyPluginTests
     }
 
     /// <summary>
-    /// The 3D plugin is the only sample that contributes a document instead of a tool panel, and the only
-    /// one whose content factory would start a GPU engine. So this is also the proof that a plugin can be
-    /// loaded and unloaded without its content ever being created: the contribution hands the host a
-    /// factory, and nothing here invokes it.
+    /// The 3D plugin contributes a management panel and a document, sharing one model manager. Both
+    /// content factories would create UI and (for the document) start a GPU engine, so this is also
+    /// the proof that a plugin can be loaded and unloaded without either content ever being created:
+    /// the contributions hand the host factories, and nothing here invokes them.
     /// </summary>
     [TestMethod]
-    public void Model3DPlugin_LoadsAndContributesDocument()
+    public void Model3DPlugin_LoadsAndContributesToolAndDocument()
     {
         var adapter = new TestHostAdapter(TestVolumes.Small());
         var manager = new PluginManager(adapter);
@@ -72,6 +72,7 @@ public sealed class AssemblyPluginTests
 
         Assert.AreEqual("layeron.model3d", id, "the id must come from the assembly metadata");
         Assert.AreEqual("Mask 3D Model", name);
+        Assert.AreEqual(0, adapter.Tools.Count, "tools must be detached on unload");
         Assert.AreEqual(0, adapter.Documents.Count, "documents must be detached on unload");
         Assert.AreEqual(0, manager.Plugins.Count);
 
@@ -90,9 +91,13 @@ public sealed class AssemblyPluginTests
         manager.LoadAssembly(TestPaths.Model3DPluginAssembly);
 
         var plugin = manager.Plugins.Single();
-        Assert.AreEqual(0, adapter.Tools.Count, "the 3D plugin contributes no tool panel");
+        Assert.IsTrue(adapter.Tools.ContainsKey("layeron.model3d::mask3d.models"),
+            "the creation/management panel must be attached to the host");
         Assert.IsTrue(adapter.Documents.ContainsKey("layeron.model3d::mask3d"),
             "the plugin's document must be attached to the host");
+        Assert.AreEqual(1, adapter.Tools.Count);
+        Assert.AreEqual(1, adapter.Documents.Count);
+        Assert.AreEqual(0, adapter.Opened.Count, "neither surface may be created just by loading the plugin");
 
         var result = (plugin.Descriptor.Id, plugin.Descriptor.Name ?? "");
         manager.Unload("layeron.model3d");

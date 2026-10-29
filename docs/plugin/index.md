@@ -83,7 +83,7 @@ manager.VerifyUnloaded();   // 弱引用自检：报告没能被回收的插件
 | 插件 | Id | 展示的能力 |
 |---|---|---|
 | 阈值分割 | `layeron.threshold` | 工具面板 + 菜单 + **自定义扩展点**（其他插件可往它的面板加按钮） |
-| 掩膜 3D 模型 | `layeron.model3d` | **文档**贡献 + Aura3D 渲染（可按需导入 glTF/GLB） |
+| 掩膜 3D 模型 | `layeron.model3d` | **工具面板 + 文档**共享模型列表；Aura3D 渲染（多模型、glTF/GLB 导入、STL/GLB 导出） |
 | ONNX 模型运行器 | `layeron.onnxruntime` | **模型运行器**：推理、自带私有原生运行时、发布可被其他插件调用的服务 |
 | C# 脚本宿主 | `layeron.scripthost` | **插件加载器**（`IPluginSource`）+ 自己的编辑器 UI |
 | Python 运行器 | `layeron.pythonrunner` | 内嵌 CPython + REPL + 编辑器；发布 `IPythonRunnerService` |

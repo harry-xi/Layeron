@@ -95,6 +95,19 @@ internal sealed class AppVolumeService : IVolumeService, IDisposable
     public int CurrentZ => _sharedData?.CurrentZ ?? 0;
 
     /// <inheritdoc />
+    public void SetCrosshair(int x, int y, int z)
+    {
+        if (_sharedData is not { } shared)
+            return;
+
+        // The view model clamps to the volume and raises its own notifications, which is how the
+        // slice views and this service's CrosshairChanged stay in step.
+        shared.CurrentX = x;
+        shared.CurrentY = y;
+        shared.CurrentZ = z;
+    }
+
+    /// <inheritdoc />
     public long[]? ComputeHistogram(CancellationToken ct = default, Action<double>? progress = null)
         => Current is { } volume ? VolumeHistogram.Compute(volume, ct, progress) : null;
 
