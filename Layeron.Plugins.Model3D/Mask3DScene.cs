@@ -1,0 +1,262 @@
+using System;
+using System.Collections.Generic;
+using System.Numerics;
+using Aura3D.Core.Nodes;
+using Aura3D.Core.Resources;
+using AuraColor = System.Drawing.Color;
+using AuraGeometry = Aura3D.Core.Resources.Geometry;
+using AuraMaterial = Aura3D.Core.Resources.Material;
+using AuraMesh = Aura3D.Core.Nodes.Mesh;
+using AuraModel = Aura3D.Core.Nodes.Model;
+using AuraTexture = Aura3D.Core.Resources.Texture;
+using Mask3DGeometry = Layeron.Plugins.Model3D.Mask3DGeometry;
+
+namespace Layeron.Plugins.Model3D;
+
+/// <summary>
+/// A normalised colour in [0,1] with no UI or engine type attached, so the surface conversion can be
+/// tested without Avalonia. <see cref="Layeron.Plugin.Abstractions.MaskColor"/> converts into it at the edge.
+/// </summary>
+internal readonly record struct Rgb(float R, float G, float B)
+{
+    /// <summary>Converts an 8-bit-per-channel mask colour to normalised floats.</summary>
+    public static Rgb FromBytes(byte r, byte g, byte b) => new(r / 255f, g / 255f, b / 255f);
+
+    public override string ToString() => $"#{R * 255f:0},#{G * 255f:0},#{B * 255f:0}";
+}
+
+/// <summary>
+/// The bridge from an extracted mask surface to Aura3D scene content: the renderable node, plus the
+/// camera maths that frames a model.
+/// <para>
+/// Everything here is plain data and arithmetic against <c>Aura3D.Core</c> - no Avalonia control, no
+/// OpenGL context - so the conversion and the framing are unit-testable without a window, and the
+/// viewport stays a thin control that only moves a camera and forwards input.
+/// </para>
+/// </summary>
+internal static class Mask3DScene
+{
+    public const float ZoomMinViewHeight = 0.005f;
+    public const float ZoomMaxViewHeight = 1_000_000f;
+
+    /// <summary>Smallest radius used for framing, so a degenerate model still yields a valid camera.</summary>
+    public const float MinRadius = 0.001f;
+
+    /// <summary>Vertical framing as a multiple of the model's bounding radius.</summary>
+    private const float FrameMargin = 2.3f;
+
+    /// <summary>
+    /// Key light strength. The pipeline's specular term is hardcoded (exponent 32, no material knob),
+    /// and the shader adds diffuse on top of ambient; at the old 0.8 the lit faces saturated to 255 and
+    /// read as glare. 0.4 keeps highlights off the ceiling while the 0.35 ambient still lifts faces that
+    /// turn away. This and <see cref="AmbientIntensity"/> are the two numbers to touch for "too shiny".
+    /// </summary>
+    public const float KeyLightIrradiance = 40_000f;
+
+    /// <summary>Flat ambient term; the engine defaults to 0.1, which leaves back faces nearly black.</summary>
+    public const float AmbientIntensity = 0.35f;
+
+    /// <summary>How far the key light sits above and to the right of the view axis, in camera space.</summary>
+    private const float KeyLightUp = 1.15f;
+    private const float KeyLightRight = 0.55f;
+
+    /// <summary>
+    /// How far the eye sits from the target, as a multiple of the radius. Under an orthographic
+    /// projection the distance only affects clipping, but keeping it outside the model means the near
+    /// plane never cuts through it.
+    /// </summary>
+    private const float OrbitDistanceScale = 4f;
+
+    /// <summary>
+    /// The key light direction for a camera looking from <paramref name="viewDirection"/> (target to
+    /// eye): fixed in camera space, so a face keeps the same shading while the user orbits.
+    /// <para>
+    /// A world-fixed light makes the model rotate out of the lit region - the face you are inspecting
+    /// goes dark exactly when you turn to look at it. Anchoring the light to the camera means the same
+    /// screen position always reads the same way, which is what a shape inspector wants. The small
+    /// up/right offset keeps a gradient instead of a flat head-light.
+    /// </para>
+    /// </summary>
+    public static Vector3 LightForwardFor(Vector3 viewDirection, Vector3 cameraUp, Vector3 cameraRight)
+        => -Vector3.Normalize(viewDirection + cameraUp * KeyLightUp + cameraRight * KeyLightRight);
+
+    /// <summary>
+    /// Builds the renderable node for an extracted surface.
+    /// <para>
+    /// The mask surface has per-face normals, which the engine reads from the <c>Normal</c> attribute
+    /// exactly like a loaded glTF mesh; the albedo arrives through the <c>BaseColor</c> channel because
+    /// that is the channel the lighting pass samples. Both sides are drawn - a mask is often a thin
+    /// sheet and a single-sided surface would vanish the moment the camera moved behind it.
+    /// </para>
+    /// </summary>
+    public static AuraMesh CreateMeshNode(Mask3DGeometry.SurfaceMesh surface, Rgb color)
+    {
+        var positions = new List<float>(surface.Vertices.Count * 3);
+        foreach (var vertex in surface.Vertices)
+        {
+            positions.Add(vertex.X);
+            positions.Add(vertex.Y);
+            positions.Add(vertex.Z);
+        }
+
+        var normals = new List<float>(surface.VertexProps.Count * 3);
+        foreach (var vertex in surface.VertexProps)
+        {
+            normals.Add(vertex.Normal.X);
+            normals.Add(vertex.Normal.Y);
+            normals.Add(vertex.Normal.Z);
+        }
+
+        // The lighting shader always runs its normal map through the interpolated TBN matrix. With no
+        // tangent attribute, normalize(0) makes T and B NaN - and NaN times the flat map's zero x/y is
+        // still NaN, so every fragment loses its diffuse term and the model renders as a flat ambient
+        // silhouette. A deterministic basis perpendicular to each face normal keeps the shader finite;
+        // a flat normal map (0,0,1) then resolves back to exactly the geometric normal.
+        var tangents = new List<float>(surface.VertexProps.Count * 3);
+        var bitangents = new List<float>(surface.VertexProps.Count * 3);
+        foreach (var vertex in surface.VertexProps)
+            AppendTangentBasis(vertex.Normal, tangents, bitangents);
+
+        var geometry = new AuraGeometry { PrimitiveType = PrimitiveType.Triangles };
+        geometry.SetVertexAttribute(BuildInVertexAttribute.Position, 3u, positions);
+        geometry.SetVertexAttribute(BuildInVertexAttribute.Normal, 3u, normals);
+        geometry.SetVertexAttribute(BuildInVertexAttribute.Tangent, 3u, tangents);
+        geometry.SetVertexAttribute(BuildInVertexAttribute.Bitangent, 3u, bitangents);
+        geometry.SetIndices(surface.Indices);
+
+        // The engine lights in linear space and gamma-encodes on output, so the texture has to be
+        // declared as sRGB: otherwise the raw bytes are treated as linear and the model comes out
+        // washed out by one extra gamma step.
+        var texture = AuraTexture.CreateFromColor(AuraColor.FromArgb(
+            255,
+            ToByte(color.R),
+            ToByte(color.G),
+            ToByte(color.B)));
+        texture.SetIsGammaSpace(true);
+
+        var material = new AuraMaterial { DoubleSided = true };
+        material.SetChannel(new Channel { Name = "BaseColor", Texture = texture });
+
+        return new AuraMesh
+        {
+            Name = "Mask surface",
+            Geometry = geometry,
+            Material = material,
+        };
+    }
+
+    /// <summary>
+    /// Fills in a tangent basis for every mesh of a loaded model that has none.
+    /// <para>
+    /// The glTF loader derives tangents only when a primitive carries texture coordinates; a model
+    /// without UVs would otherwise hit the same NaN TBN as a hand-built surface and lose all shading.
+    /// Only geometry that is missing a basis is touched, so a fully authored model is left alone.
+    /// </para>
+    /// </summary>
+    public static void EnsureTangentBasis(AuraModel model)
+    {
+        foreach (var mesh in model.Meshes)
+        {
+            if (mesh.Geometry is not { } geometry)
+                continue;
+
+            if (geometry.GetAttributeData(BuildInVertexAttribute.Tangent) is not null)
+                continue;
+
+            var normals = geometry.GetAttributeData(BuildInVertexAttribute.Normal);
+            if (normals is null || normals.Count < 3)
+                continue;
+
+            var tangents = new List<float>(normals.Count);
+            var bitangents = new List<float>(normals.Count);
+            for (var i = 0; i + 2 < normals.Count; i += 3)
+                AppendTangentBasis(new Vector3(normals[i], normals[i + 1], normals[i + 2]), tangents, bitangents);
+
+            geometry.SetVertexAttribute(BuildInVertexAttribute.Tangent, 3u, tangents);
+            geometry.SetVertexAttribute(BuildInVertexAttribute.Bitangent, 3u, bitangents);
+        }
+    }
+
+    /// <summary>
+    /// Appends one vertex of an orthonormal basis around <paramref name="normal"/>.
+    /// <para>
+    /// The surface carries no texture coordinates, so any basis perpendicular to the normal is as good
+    /// as another: the only map sampled through it is the engine's flat default normal (0,0,1), which
+    /// resolves back to the normal itself.
+    /// </para>
+    /// </summary>
+    private static void AppendTangentBasis(Vector3 normal, List<float> tangents, List<float> bitangents)
+    {
+        // Cross with a reference that is not parallel to the normal; Y is the usual case, X near the poles.
+        var reference = MathF.Abs(normal.Y) > 0.9f ? Vector3.UnitX : Vector3.UnitY;
+        var tangent = Vector3.Normalize(Vector3.Cross(normal, reference));
+        var bitangent = Vector3.Cross(normal, tangent);
+
+        tangents.Add(tangent.X);
+        tangents.Add(tangent.Y);
+        tangents.Add(tangent.Z);
+
+        bitangents.Add(bitangent.X);
+        bitangents.Add(bitangent.Y);
+        bitangents.Add(bitangent.Z);
+    }
+
+    /// <summary>Vertical extent of the orthographic box that frames a model of this radius.</summary>
+    public static float ViewHeightForRadius(float radius)
+        => Math.Clamp(radius * FrameMargin, ZoomMinViewHeight, ZoomMaxViewHeight);
+
+    /// <summary>Distance from the target at which the eye orbits a model of this radius.</summary>
+    public static float OrbitDistanceForRadius(float radius)
+        => radius * OrbitDistanceScale + 1f;
+
+    /// <summary>
+    /// Points a camera at <paramref name="target"/> from <paramref name="direction"/> with an
+    /// orthographic box <paramref name="viewHeight"/> world units tall. Clipping planes are derived
+    /// from the bounding radius so the whole model stays between them at any orbit angle.
+    /// <para>
+    /// <see cref="Camera.OrthographicSize"/> is the full visible height (the projection is built as
+    /// <c>CreateOrthographic(size * aspect, size, …)</c>), so it takes the view height unchanged.
+    /// </para>
+    /// </summary>
+    public static void ConfigureCamera(
+        Camera camera,
+        Vector3 target,
+        Vector3 direction,
+        float viewHeight,
+        float radius,
+        float distance)
+    {
+        camera.ProjectionType = ProjectionType.Orthographic;
+        camera.OrthographicSize = viewHeight;
+        camera.Position = target + direction * distance;
+        camera.LookAt(target);
+
+        var extent = MathF.Max(radius * 2f, 0.5f);
+        var near = MathF.Max(0.01f, distance - extent);
+        var far = distance + extent + 1f;
+        camera.SetClippingPlanes(near, far);
+    }
+
+    /// <summary>
+    /// Euler angles in degrees that make a node's forward vector point along
+    /// <paramref name="forward"/>.
+    /// <para>
+    /// Aura3D builds rotation with <c>Quaternion.CreateFromYawPitchRoll(yaw, pitch, roll)</c>, so a
+    /// node's forward (-Z) is <c>(-cos(pitch)·sin(yaw), sin(pitch), -cos(pitch)·cos(yaw))</c>; this
+    /// inverts that. Only <see cref="Camera"/> has a <c>LookAt</c>, and a directional light needs the
+    /// same treatment: the shader reads the light's forward as the direction the light travels.
+    /// </para>
+    /// </summary>
+    public static Vector3 RotationDegreesFor(Vector3 forward)
+    {
+        var unit = Vector3.Normalize(forward);
+        var pitch = MathF.Asin(Math.Clamp(unit.Y, -1f, 1f));
+        var yaw = MathF.Atan2(-unit.X, -unit.Z);
+
+        const float radiansToDegrees = 180f / MathF.PI;
+        return new Vector3(pitch * radiansToDegrees, yaw * radiansToDegrees, 0f);
+    }
+
+    private static byte ToByte(float channel)
+        => (byte)Math.Clamp((int)MathF.Round(channel * 255f), 0, 255);
+}

@@ -7,8 +7,8 @@
              x:Class="Layeron.Plugins.Model3D.Mask3DView">
 
   <!--
-    A toolbar over the 3D viewport. The viewport rasterises on the CPU and presents through a
-    WriteableBitmap, so it draws as an ordinary Avalonia visual and needs no GPU interop.
+    A toolbar over the 3D viewport. The viewport is an Aura3D view, which renders through the OpenGL
+    context Avalonia already provides, so it draws as an ordinary Avalonia visual.
   -->
   <Grid RowDefinitions="Auto,*">
 
@@ -24,6 +24,8 @@
         <ComboBox x:Name="MethodBox" Width="150" />
 
         <Button x:Name="GenerateButton" Content="生成模型" />
+        <Button x:Name="ImportButton" Content="导入模型…" />
+        <Button x:Name="ExportButton" Content="导出模型…" IsEnabled="False" />
         <ProgressBar x:Name="Progress" Width="90" IsIndeterminate="True" IsVisible="False" />
         <TextBlock x:Name="StatusText" VerticalAlignment="Center" TextWrapping="NoWrap" />
       </StackPanel>

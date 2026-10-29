@@ -7,15 +7,24 @@
     <AssemblyName>Layeron.Plugins.Model3D</AssemblyName>
     <!-- Avalonia XAML: enable compiled XAML for the plugin's own view. -->
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
-    <!-- The rasteriser writes straight into a locked WriteableBitmap framebuffer, a native address. -->
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!--
+      Aura3D is the plugin's private rendering engine: it must land next to the plugin so the plugin's
+      own load context resolves it from this folder and .deps.json. The host never references it.
+    -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <!--
+      Aura3D.Avalonia pulls in the macOS ANGLE dylibs unconditionally (libGLESv2 alone is ~20 MB).
+      They are only loaded by the macOS backend, so a non-macOS build would copy dead weight into the
+      plugin folder - and from there into the app's deployment.
+    -->
+    <Aura3DAngleMacosTargetsSkip Condition="!$([MSBuild]::IsOSPlatform('OSX'))">true</Aura3DAngleMacosTargetsSkip>
   </PropertyGroup>
 
   <ItemGroup>
     <AssemblyMetadata Include="LayeronPluginId" Value="layeron.model3d" />
     <AssemblyMetadata Include="LayeronPluginName" Value="Mask 3D Model" />
-    <AssemblyMetadata Include="LayeronPluginVersion" Value="1.0.0" />
-    <AssemblyMetadata Include="LayeronPluginDescription" Value="Downsamples a mask layer and shows it as an interactive 3D surface in a document tab." />
+    <AssemblyMetadata Include="LayeronPluginVersion" Value="1.1.0" />
+    <AssemblyMetadata Include="LayeronPluginDescription" Value="Downsamples a mask layer and shows it as an interactive 3D surface in a document tab, rendered with Aura3D and able to open glTF models." />
     <AssemblyMetadata Include="LayeronPluginApiVersion" Value="1.0" />
   </ItemGroup>
 
@@ -28,18 +37,50 @@
     <ProjectReference Include="..\Layeron.Plugin.Abstractions\Layeron.Plugin.Abstractions.csproj" Private="false" />
 
     <!--
+      Aura3D: the rendering control, plus the glTF loader used by "导入模型". Both are private to the
+      plugin - the 0.0.6 line is the one built against Avalonia 12 / net10.0; the 2.0 line still
+      targets Avalonia 11 and cannot bind to this host.
+    -->
+    <PackageReference Include="Aura3D.Avalonia" Version="0.0.6-alpha.0.8" />
+    <PackageReference Include="Aura3D.Model.GltfLoader" Version="0.0.6-alpha.0.8" />
+    <!--
+      Named explicitly because "导出模型…" writes GLB directly. The loader already pulls the same
+      version in, so this adds no deployment weight - it just makes the use intentional rather than a
+      silent dependency on a transitive compile asset.
+    -->
+    <PackageReference Include="SharpGLTF.Toolkit" Version="1.0.5" />
+
+    <!--
       UI plugins declare views in XAML against the host's Avalonia; runtime assets are excluded, so the
-      plugin binds to the host's Avalonia at runtime instead of shipping a second copy.
+      plugin binds to the host's Avalonia at runtime instead of shipping a second copy. Avalonia.Skia is
+      named only to exclude the copy Aura3D.Avalonia would otherwise drag in.
     -->
     <PackageReference Include="Avalonia" Version="12.1.3" GeneratePathProperty="true" ExcludeAssets="runtime" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.3" ExcludeAssets="runtime" />
   </ItemGroup>
 
   <ItemGroup>
     <!--
-      The surface extraction and the rasteriser are internal on purpose - they are implementation, not
-      contract - so the test project is granted access instead of widening the public surface.
+      The surface extraction and the scene conversion are internal on purpose - they are
+      implementation, not contract - so the test project is granted access instead of widening the
+      public surface.
     -->
     <InternalsVisibleTo Include="Layeron.Plugin.Test" />
   </ItemGroup>
+
+  <!--
+    Aura3D.Avalonia depends on Avalonia.Skia, whose runtime assets drag the host's Skia stack into this
+    folder. Those assemblies are carried by the app process (it renders with them) and the plugin load
+    context defers their names to the host before consulting this folder, so a copy here would only
+    duplicate ~1 MB and blur which assemblies the plugin actually owns. The .deps.json entries stay,
+    exactly like the Avalonia reference above - the host serves those names.
+  -->
+  <Target Name="TrimHostCarriedSkiaStack" AfterTargets="Build">
+    <ItemGroup>
+      <HostCarriedSkiaFile Include="$(OutDir)Avalonia.Remote.Protocol.dll;$(OutDir)SkiaSharp.dll;$(OutDir)HarfBuzzSharp.dll;$(OutDir)MicroCom.Runtime.dll" />
+    </ItemGroup>
+
+    <Delete Files="@(HostCarriedSkiaFile)" ContinueOnError="true" />
+  </Target>
 
 </Project>

@@ -83,7 +83,7 @@ Managed leaks aside, views must cooperate: if the object returned by `ContentFac
 | Plugin | Id | Capability demonstrated |
 |---|---|---|
 | Threshold Segmentation | `layeron.threshold` | Tool panel + menu + a **custom extension point** other plugins feed |
-| Mask 3D Model | `layeron.model3d` | **Document** contribution + in-house CPU rasterisation |
+| Mask 3D Model | `layeron.model3d` | **Document** contribution + Aura3D rendering (glTF/GLB import) |
 | ONNX Model Runner | `layeron.onnxruntime` | A **model runner**: inference, its own private native runtime, and a published service |
 | C# Script Host | `layeron.scripthost` | A **plugin loader** (`IPluginSource`) + its own editor UI |
 | Python Runner | `layeron.pythonrunner` | Embedded CPython + REPL + editor; publishes `IPythonRunnerService` |

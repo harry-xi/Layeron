@@ -32,8 +32,8 @@ Hold `Ctrl` and drag with the left button on any slice view to paint into the **
 
 The `layeron.model3d` sample plugin contributes a "mask 3D model" document tab: it turns a chosen mask layer into an interactive three-dimensional surface, shown alongside the slice views in the centre document area.
 
-::: tip Pure CPU rendering
-The 3D view uses the plugin's in-house CPU rasteriser. It needs no GPU, Vulkan or specific driver, and works on machines with no graphics device.
+::: tip GPU rendering without a private graphics stack
+The 3D view uses the plugin's Aura3D engine through the OpenGL context Avalonia already hosts — no Vulkan initialisation, and no in-house rasteriser to maintain.
 :::
 
 ## Who owns a mask
