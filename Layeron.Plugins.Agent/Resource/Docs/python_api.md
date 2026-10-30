@@ -2,7 +2,7 @@
 
 Every function forwards to the private bridge module the engine registers before any user code runs. One surface rather than reaching into the runtime directly: the boundary gets one place to live, and one place to look at when it breaks.
 
-The data functions work in numpy arrays. A volume or a mask is shaped `[z, y, x]` — the same order the host uses — so `read_roi(x, y, z, sx, sy, sz)` comes back as an array you index as `roi[lz, ly, lx]`. Everything here copies: nothing returns a live view of the loaded volume, so a computation cannot corrupt what is on screen by accident. To put something back, use `set_volume`, `mask_add`, or the `MaskLayer` returned by `mask_create`.
+The data functions work in numpy arrays. A volume or a mask is shaped `[z, y, x]` — the same order the host uses — so `read_roi(x, y, z, sx, sy, sz)` comes back as an array you index as `roi[lz, ly, lx]`. Everything here copies: nothing returns a live view of the loaded volume, so a computation cannot corrupt what is on screen by accident. To put something back, use `set_volume`, `mask_add`, or the `MaskLayer` returned by `mask_create`; `annotation_layer_create` and its `add_*` methods create vector annotations instead.
 
 The dtype always matters and is never guessed. `set_volume` takes the storage depth from the array's dtype, and both `set_volume` and `mask_add` refuse a dtype that has no sensible meaning rather than converting it — a float array is a mistake worth being told about, not a volume to silently truncate.
 
@@ -173,3 +173,129 @@ Use this when the data already exists as an array. To build a mask slice by slic
 ### `mask_remove(name)`
 
 Removes every mask layer called `name`, and returns how many were removed.
+
+## Annotations
+
+Annotations are the vector counterpart of masks: a layer holds points, segments and closed regions, and each annotation is confined to one slice. They are user data like masks, so they outlive the script that created them.
+
+`plane` is one of `'xy'`, `'xz'` or `'yz'`; `index` selects the slice inside that plane. Vertices are `(u, v)` pixel coordinates in the slice's own axes — `u` is the image's horizontal axis and `v` its vertical axis — so they mean the same thing a mask slice does:
+
+| Plane | `u` | `v` | `index` |
+|---|---|---|---|
+| `'xy'` | X | Y | Z |
+| `'xz'` | X | Z | Y |
+| `'yz'` | Y | Z | X |
+
+The host validates every shape: a point needs one vertex, a line exactly two, a polygon at least three, and every coordinate must lie inside the current volume.
+
+### `class Annotation`
+
+One annotation: fixed geometry plus an editable caption.
+
+#### Properties
+
+##### `handle`
+
+The annotation's handle, for passing back to functions that take one.
+
+##### `kind`
+
+`'point'`, `'line'` or `'polygon'`.
+
+##### `plane`
+
+`'xy'`, `'xz'` or `'yz'`.
+
+##### `index`
+
+The slice index inside `plane`.
+
+##### `vertices`
+
+A list of `(u, v)` pixel-coordinate tuples.
+
+##### `label`
+
+The caption drawn next to the shape, or `None`. Assigning to it updates the annotation and redraws the views.
+
+#### Methods
+
+##### `remove()`
+
+Removes this annotation from its layer, and returns whether it was still there.
+
+### `class AnnotationLayer`
+
+An annotation layer, addressed by handle rather than by name — the vector counterpart of `MaskLayer`.
+
+Unlike a mask, a layer holds shapes rather than pixels, so there is nothing to publish: every annotation appears as soon as it is added.
+
+#### Properties
+
+##### `handle`
+
+The layer's handle, for passing back to functions that take one.
+
+##### `name`
+
+The layer name. Assigning writes it back to the host.
+
+##### `color`
+
+An `(r, g, b, a)` tuple; the alpha channel is the layer opacity. Assigning writes it back to the host.
+
+##### `visible`
+
+Whether the layer is shown. Assigning writes it back to the host.
+
+##### `active`
+
+Whether this is the layer the viewer's drawing tools add to.
+
+##### `annotations`
+
+The layer's annotations as `Annotation` objects, in creation order.
+
+#### Methods
+
+##### `add_point(plane, index, u, v, label=None)`
+
+Adds a point at pixel `(u, v)` on slice `index` of `plane`, and returns it as an `Annotation`.
+
+##### `add_line(plane, index, u1, v1, u2, v2, label=None)`
+
+Adds a segment from `(u1, v1)` to `(u2, v2)`, and returns it as an `Annotation`.
+
+##### `add_polygon(plane, index, vertices, label=None)`
+
+Adds a closed region from an iterable of `(u, v)` pairs, and returns it as an `Annotation`.
+
+At least three vertices are required; the closing edge back to the first vertex is implicit.
+
+##### `activate()`
+
+Makes this the layer the viewer's drawing tools add to.
+
+### `annotation_layers()`
+
+The existing annotation layers as `AnnotationLayer` objects, including the user's own.
+
+This is the way in to annotations the script did not create: find the layer here, then read or extend it. The layer the viewer draws into is marked `active`.
+
+### `annotation_layer_get(handle)`
+
+The layer with this handle, or `None`. Use it to re-check a layer that may have been removed.
+
+### `annotation_get(handle)`
+
+The annotation with this handle, or `None`. Use it to re-check one that may have been removed.
+
+### `annotation_layer_create(name, color=None)`
+
+Creates an empty annotation layer and returns it as an `AnnotationLayer`.
+
+The new layer becomes the active one, so the viewer's drawing tools add to it. `color` is an `(r, g, b, a)` tuple; a three-item tuple uses the default alpha. The default is a translucent yellow.
+
+### `annotation_layer_remove(name)`
+
+Removes every annotation layer called `name`, and returns how many were removed.

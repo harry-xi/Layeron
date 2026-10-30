@@ -229,6 +229,13 @@ internal sealed class TestAnnotationService : IAnnotationService
 
     public event Action? ContentChanged;
 
+    /// <summary>Drops every layer so a test that shares one service instance starts from a known state.</summary>
+    public void Clear()
+    {
+        _layers.Clear();
+        ActiveLayer = null;
+    }
+
     public IAnnotationLayer AddLayer(string name, MaskColor color)
     {
         var layer = new TestAnnotationLayer(name, color);

@@ -292,3 +292,216 @@ def mask_add(name, mask, color=None):
 def mask_remove(name):
     """Removes every mask layer called ``name``, and returns how many were removed."""
     return _clr.mask_remove(str(name))
+
+
+# ---------------------------------------------------------------------------
+#  Annotations
+# ---------------------------------------------------------------------------
+
+
+def _text(value):
+    return None if value is None else str(value)
+
+
+class Annotation:
+    """One annotation: fixed geometry plus an editable caption.
+
+    ``kind`` is ``'point'``, ``'line'`` or ``'polygon'``, ``plane`` is ``'xy'``, ``'xz'`` or ``'yz'`` and
+    ``vertices`` are ``(u, v)`` pixel coordinates inside that one slice. Only :attr:`label` can be changed
+    in place; the geometry is immutable once the annotation exists.
+    """
+
+    def __init__(self, description, layer=None):
+        self._handle = description["handle"]
+        self._layer = layer
+        self.kind = description["kind"]
+        self.plane = description["plane"]
+        self.index = description["index"]
+        self.vertices = [tuple(vertex) for vertex in description["vertices"]]
+        self._label = description["label"]
+
+    @property
+    def handle(self):
+        """The annotation's handle, for passing back to functions that take one."""
+        return self._handle
+
+    @property
+    def label(self):
+        """The caption drawn next to the shape, or ``None``.
+
+        Assigning to it updates the annotation and redraws the views, so a script can name a result after
+        creating it.
+        """
+        return self._label
+
+    @label.setter
+    def label(self, value):
+        self._label = _clr.annotation_set_label(self._handle, _text(value))["label"]
+
+    def remove(self):
+        """Removes this annotation from its layer, and returns whether it was still there."""
+        removed = _clr.annotation_remove(self._handle)
+
+        if removed and self._layer is not None:
+            self._layer.annotations = [
+                annotation for annotation in self._layer.annotations if annotation is not self
+            ]
+
+        return removed
+
+    def __repr__(self):
+        return (
+            f"<layeron.Annotation {self.kind} {self.plane} {self.index} "
+            f"vertices={self.vertices} label={self._label!r}>"
+        )
+
+
+class AnnotationLayer:
+    """An annotation layer, addressed by handle rather than by name.
+
+    The vector counterpart of :class:`MaskLayer`: a named, coloured, independently visible group. Create
+    one with :func:`annotation_layer_create`, then add points, lines and polygons to it; every annotation
+    belongs to exactly one slice.
+
+    ``name``, ``color`` and ``visible`` can be assigned and are written back to the host. ``color`` is an
+    ``(r, g, b, a)`` tuple whose alpha is the layer opacity. ``active`` reports whether the layer's drawing
+    tools add to this layer; call :meth:`activate` to make it so.
+    """
+
+    def __init__(self, description):
+        self._handle = description["handle"]
+        self._name = description["name"]
+        self._color = tuple(description["color"])
+        self._visible = bool(description["visible"])
+        self._active = bool(description["active"])
+        self.annotations = [Annotation(entry, self) for entry in description["annotations"]]
+
+    @property
+    def handle(self):
+        """The layer's handle, for passing back to functions that take one."""
+        return self._handle
+
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, value):
+        text = str(value)
+        _clr.annotation_layer_set_name(self._handle, text)
+        self._name = text
+
+    @property
+    def color(self):
+        return self._color
+
+    @color.setter
+    def color(self, value):
+        r, g, b, a = _rgba(value, (255, 214, 64, 204))
+        _clr.annotation_layer_set_color(self._handle, int(r), int(g), int(b), int(a))
+        self._color = (int(r), int(g), int(b), int(a))
+
+    @property
+    def visible(self):
+        return self._visible
+
+    @visible.setter
+    def visible(self, value):
+        _clr.annotation_layer_set_visible(self._handle, bool(value))
+        self._visible = bool(value)
+
+    @property
+    def active(self):
+        """Whether this is the layer the UI's drawing tools add to."""
+        return self._active
+
+    def activate(self):
+        """Makes this the layer the UI's drawing tools add to."""
+        _clr.annotation_layer_set_active(self._handle)
+        self._active = True
+
+    def add_point(self, plane, index, u, v, label=None):
+        """Adds a point at pixel ``(u, v)`` on slice ``index`` of ``plane``."""
+        annotation = Annotation(
+            _clr.annotation_add_point(self._handle, str(plane), int(index), int(u), int(v), _text(label)),
+            self,
+        )
+        self.annotations.append(annotation)
+        return annotation
+
+    def add_line(self, plane, index, u1, v1, u2, v2, label=None):
+        """Adds a segment from ``(u1, v1)`` to ``(u2, v2)`` on slice ``index`` of ``plane``."""
+        annotation = Annotation(
+            _clr.annotation_add_line(
+                self._handle, str(plane), int(index), int(u1), int(v1), int(u2), int(v2), _text(label)
+            ),
+            self,
+        )
+        self.annotations.append(annotation)
+        return annotation
+
+    def add_polygon(self, plane, index, vertices, label=None):
+        """Adds a closed region from an iterable of ``(u, v)`` pairs; at least three are required.
+
+        The closing edge back to the first vertex is implicit.
+        """
+        points = [(int(u), int(v)) for u, v in vertices]
+        annotation = Annotation(
+            _clr.annotation_add_polygon(
+                self._handle, str(plane), int(index), points, _text(label)
+            ),
+            self,
+        )
+        self.annotations.append(annotation)
+        return annotation
+
+    def __repr__(self):
+        return (
+            f"<layeron.AnnotationLayer {self._name!r} handle={self._handle} "
+            f"annotations={len(self.annotations)} active={self._active}>"
+        )
+
+
+def annotation_layers():
+    """The existing annotation layers as :class:`AnnotationLayer` objects, including the user's own.
+
+    This is the way in to annotations the script did not create: find the layer here, then read or extend
+    it. A layer the viewer draws into is marked ``active``.
+    """
+    return [AnnotationLayer(entry) for entry in _clr.annotation_layers()]
+
+
+def annotation_layer_get(handle):
+    """The layer with this handle, or ``None``. Use it to re-check a layer that may have been removed."""
+    for layer in annotation_layers():
+        if layer.handle == handle:
+            return layer
+    return None
+
+
+def annotation_get(handle):
+    """The annotation with this handle, or ``None``. Use it to re-check one that may have been removed."""
+    for layer in annotation_layers():
+        for annotation in layer.annotations:
+            if annotation.handle == handle:
+                return annotation
+    return None
+
+
+def annotation_layer_create(name, color=None):
+    """Creates an empty annotation layer and returns it as an :class:`AnnotationLayer`.
+
+    The new layer becomes the active one, so the viewer's drawing tools add to it. Layers hold annotations
+    rather than pixels, so there is nothing to publish: every shape appears as soon as it is added.
+
+    ``color`` is an ``(r, g, b, a)`` tuple; a three-item tuple uses the default alpha. The default is a
+    translucent yellow.
+    """
+    r, g, b, a = _rgba(color, (255, 214, 64, 204))
+    return AnnotationLayer(_clr.annotation_layer_create(str(name), int(r), int(g), int(b), int(a)))
+
+
+def annotation_layer_remove(name):
+    """Removes every annotation layer called ``name``, and returns how many were removed."""
+    return _clr.annotation_layer_remove(str(name))
+

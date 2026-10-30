@@ -46,6 +46,13 @@ internal sealed class PythonBridge
     /// </summary>
     private readonly Dictionary<int, IMaskLayer> _masks = [];
 
+    /// <summary>
+    /// Annotation layers and annotations this session handed a handle to, so a script can address a layer
+    /// the user created as well as the ones it made itself.
+    /// </summary>
+    private readonly Dictionary<int, IAnnotationLayer> _annotationLayers = [];
+    private readonly Dictionary<int, IAnnotation> _annotations = [];
+
     private int _nextHandle = 1;
 
     public PythonBridge(IPluginServices services, Action<Action> invoke)
@@ -365,6 +372,296 @@ internal sealed class PythonBridge
     }
 
     private readonly HashSet<int> _published = [];
+
+    // ---------------------------------------------------------------------
+    //  Annotations
+    // ---------------------------------------------------------------------
+
+    /// <summary>
+    /// Describes the existing annotation layers, their annotations, and which layer is active. Handles are
+    /// assigned on first sight, so a script can address a layer the user drew in as well as one it made.
+    /// </summary>
+    public PyObject AnnotationLayers()
+    {
+        using (Py.GIL())
+        {
+            // A layer or annotation the session no longer owns must not keep a usable handle: a stale
+            // handle has to fail when it is used, not silently edit something that is gone.
+            PruneAnnotations();
+
+            var list = new PyList();
+            foreach (var layer in _services.Annotations.Layers)
+                list.Append(DescribeAnnotationLayer(layer));
+
+            return list;
+        }
+    }
+
+    /// <summary>Creates an empty annotation layer, makes it the active one and returns its description.</summary>
+    public PyObject AnnotationLayerCreate(string name, int r, int g, int b, int a)
+    {
+        IAnnotationLayer? layer = null;
+        _invoke(() => layer = _services.Annotations.AddLayer(
+            name, new MaskColor((byte)r, (byte)g, (byte)b, (byte)a)));
+
+        using (Py.GIL())
+            return DescribeAnnotationLayer(layer!);
+    }
+
+    /// <summary>Removes every annotation layer with this name, and reports how many were removed.</summary>
+    public int AnnotationLayerRemove(string name)
+    {
+        var matches = _services.Annotations.Layers
+            .Where(layer => string.Equals(layer.Name, name, StringComparison.Ordinal))
+            .ToArray();
+
+        if (matches.Length == 0)
+            return 0;
+
+        _invoke(() =>
+        {
+            foreach (var layer in matches)
+                _services.Annotations.RemoveLayer(layer);
+        });
+
+        PruneAnnotations();
+        return matches.Length;
+    }
+
+    /// <summary>Renames a layer; the panel observes the property, so no explicit refresh is needed.</summary>
+    public void AnnotationLayerSetName(int handle, string name)
+    {
+        var layer = RequireAnnotationLayer(handle);
+        _invoke(() => layer.Name = name);
+    }
+
+    /// <summary>Changes a layer's colour and opacity.</summary>
+    public void AnnotationLayerSetColor(int handle, int r, int g, int b, int a)
+    {
+        var layer = RequireAnnotationLayer(handle);
+        _invoke(() => layer.Color = new MaskColor((byte)r, (byte)g, (byte)b, (byte)a));
+    }
+
+    /// <summary>Shows or hides a layer.</summary>
+    public void AnnotationLayerSetVisible(int handle, bool visible)
+    {
+        var layer = RequireAnnotationLayer(handle);
+        _invoke(() => layer.IsVisible = visible);
+    }
+
+    /// <summary>Makes a layer the one the viewer's drawing tools add to.</summary>
+    public void AnnotationLayerSetActive(int handle)
+    {
+        var layer = RequireAnnotationLayer(handle);
+        _invoke(() => _services.Annotations.ActiveLayer = layer);
+    }
+
+    /// <summary>Adds a point at <c>(u, v)</c> on one slice, and returns the annotation's description.</summary>
+    public PyObject AnnotationAddPoint(int layerHandle, string plane, int index, int u, int v, string? label) =>
+        AddAnnotation(layerHandle, plane, (layer, slicePlane) =>
+            _services.Annotations.AddPoint(layer, slicePlane, index, new AnnotationVertex(u, v), label));
+
+    /// <summary>Adds a segment on one slice, and returns the annotation's description.</summary>
+    public PyObject AnnotationAddLine(
+        int layerHandle, string plane, int index,
+        int u1, int v1, int u2, int v2, string? label) =>
+        AddAnnotation(layerHandle, plane, (layer, slicePlane) =>
+            _services.Annotations.AddLine(
+                layer, slicePlane, index,
+                new AnnotationVertex(u1, v1), new AnnotationVertex(u2, v2), label));
+
+    /// <summary>
+    /// Adds a closed region on one slice from a Python sequence of <c>(u, v)</c> pairs, and returns the
+    /// annotation's description. The closing edge back to the first vertex is implicit.
+    /// </summary>
+    public PyObject AnnotationAddPolygon(
+        int layerHandle, string plane, int index, PyObject? vertices, string? label)
+    {
+        AnnotationVertex[] points;
+        using (Py.GIL())
+            points = ReadVertices(vertices);
+
+        return AddAnnotation(layerHandle, plane, (layer, slicePlane) =>
+            _services.Annotations.AddPolygon(layer, slicePlane, index, points, label));
+    }
+
+    /// <summary>Sets the caption and asks the views to redraw; returns the updated description.</summary>
+    public PyObject AnnotationSetLabel(int handle, string? label)
+    {
+        var annotation = RequireAnnotation(handle);
+
+        _invoke(() =>
+        {
+            annotation.Label = label;
+            _services.Annotations.NotifyContentChanged();
+        });
+
+        using (Py.GIL())
+            return DescribeAnnotation(annotation);
+    }
+
+    /// <summary>Removes one annotation; false when the handle was never issued.</summary>
+    public bool AnnotationRemove(int handle)
+    {
+        if (!_annotations.TryGetValue(handle, out var annotation))
+            return false;
+
+        _invoke(() => _services.Annotations.Remove(annotation));
+        _annotations.Remove(handle);
+        return true;
+    }
+
+    private PyObject AddAnnotation(
+        int layerHandle,
+        string plane,
+        Func<IAnnotationLayer, SlicePlane, IAnnotation> add)
+    {
+        var layer = RequireAnnotationLayer(layerHandle);
+        var slicePlane = ParsePlane(plane);
+
+        IAnnotation? annotation = null;
+        _invoke(() => annotation = add(layer, slicePlane));
+
+        using (Py.GIL())
+            return DescribeAnnotation(annotation!);
+    }
+
+    private PyObject DescribeAnnotationLayer(IAnnotationLayer layer)
+    {
+        var description = new PyDict();
+
+        description.SetItem("handle", HandleOf(layer).ToPython());
+        description.SetItem("name", layer.Name.ToPython());
+        description.SetItem("color", Shapes.AsTuple(layer.Color.R, layer.Color.G, layer.Color.B, layer.Color.A));
+        description.SetItem("visible", layer.IsVisible.ToPython());
+        description.SetItem("active", ReferenceEquals(layer, _services.Annotations.ActiveLayer).ToPython());
+
+        var annotations = new PyList();
+        foreach (var annotation in layer.Annotations)
+            annotations.Append(DescribeAnnotation(annotation));
+
+        description.SetItem("annotations", annotations);
+        return description;
+    }
+
+    private PyObject DescribeAnnotation(IAnnotation annotation)
+    {
+        var shape = annotation.Shape;
+        var description = new PyDict();
+
+        description.SetItem("handle", HandleOf(annotation).ToPython());
+        description.SetItem("kind", KindName(shape.Kind).ToPython());
+        description.SetItem("plane", PlaneName(shape.Plane).ToPython());
+        description.SetItem("index", shape.Index.ToPython());
+        description.SetItem("label", annotation.Label is null ? PyObject.None : annotation.Label.ToPython());
+
+        var vertices = new PyList();
+        foreach (var vertex in shape.Vertices)
+            vertices.Append(Shapes.AsTuple(vertex.U, vertex.V));
+
+        description.SetItem("vertices", vertices);
+        return description;
+    }
+
+    /// <summary>
+    /// The handle for an annotation layer, creating one the first time. Overload resolution keeps layer
+    /// and annotation handles in separate maps, so the same number can never address both.
+    /// </summary>
+    private int HandleOf(IAnnotationLayer layer)
+    {
+        foreach (var (handle, existing) in _annotationLayers)
+            if (ReferenceEquals(existing, layer))
+                return handle;
+
+        var assigned = _nextHandle++;
+        _annotationLayers[assigned] = layer;
+        return assigned;
+    }
+
+    private int HandleOf(IAnnotation annotation)
+    {
+        foreach (var (handle, existing) in _annotations)
+            if (ReferenceEquals(existing, annotation))
+                return handle;
+
+        var assigned = _nextHandle++;
+        _annotations[assigned] = annotation;
+        return assigned;
+    }
+
+    private IAnnotationLayer RequireAnnotationLayer(int handle) =>
+        _annotationLayers.TryGetValue(handle, out var layer)
+            ? layer
+            : throw new ArgumentException(
+                $"No annotation layer with handle {handle}. It may have been removed.", nameof(handle));
+
+    private IAnnotation RequireAnnotation(int handle) =>
+        _annotations.TryGetValue(handle, out var annotation)
+            ? annotation
+            : throw new ArgumentException(
+                $"No annotation with handle {handle}. It may have been removed.", nameof(handle));
+
+    /// <summary>Drops handles for layers and annotations the session no longer holds.</summary>
+    private void PruneAnnotations()
+    {
+        var layers = _services.Annotations.Layers;
+        var liveLayers = new HashSet<IAnnotationLayer>(layers);
+        var liveAnnotations = new HashSet<IAnnotation>(layers.SelectMany(layer => layer.Annotations));
+
+        foreach (var (handle, layer) in _annotationLayers.ToArray())
+            if (!liveLayers.Contains(layer))
+                _annotationLayers.Remove(handle);
+
+        foreach (var (handle, annotation) in _annotations.ToArray())
+            if (!liveAnnotations.Contains(annotation))
+                _annotations.Remove(handle);
+    }
+
+    /// <summary>Reads a Python sequence of <c>(u, v)</c> pairs into vertices.</summary>
+    private static AnnotationVertex[] ReadVertices(PyObject? source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        var length = (int)source.Length();
+        var vertices = new AnnotationVertex[length];
+
+        for (var i = 0; i < length; i++)
+        {
+            using var item = source[i];
+
+            if ((int)item.Length() != 2)
+                throw new ArgumentException($"Vertex {i} is not a (u, v) pair.", nameof(source));
+
+            using var u = item[0];
+            using var v = item[1];
+            vertices[i] = new AnnotationVertex(u.As<int>(), v.As<int>());
+        }
+
+        return vertices;
+    }
+
+    private static SlicePlane ParsePlane(string plane) => plane.ToLowerInvariant() switch
+    {
+        "xy" => SlicePlane.XY,
+        "xz" => SlicePlane.XZ,
+        "yz" => SlicePlane.YZ,
+        _ => throw new ArgumentException($"Plane must be 'xy', 'xz' or 'yz', not '{plane}'.", nameof(plane))
+    };
+
+    private static string PlaneName(SlicePlane plane) => plane switch
+    {
+        SlicePlane.XY => "xy",
+        SlicePlane.XZ => "xz",
+        _ => "yz"
+    };
+
+    private static string KindName(AnnotationKind kind) => kind switch
+    {
+        AnnotationKind.Point => "point",
+        AnnotationKind.Line => "line",
+        AnnotationKind.Polygon => "polygon",
+        _ => kind.ToString().ToLowerInvariant()
+    };
 
     /// <summary>
     /// Creates the layer and puts it in the mask list straight away, so that a handle addresses something the

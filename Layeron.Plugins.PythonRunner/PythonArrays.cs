@@ -212,6 +212,10 @@ internal static class Shapes
     public static PyTuple AsTuple(byte r, byte g, byte b) =>
         new([r.ToPython(), g.ToPython(), b.ToPython()]);
 
+    /// <summary>A Python tuple of RGBA values; the alpha channel is a layer's opacity.</summary>
+    public static PyTuple AsTuple(byte r, byte g, byte b, byte a) =>
+        new([r.ToPython(), g.ToPython(), b.ToPython(), a.ToPython()]);
+
     /// <summary>Reshapes a flat bool buffer into the 2-D array the bitmap slice setters take.</summary>
     public static bool[,] AsMatrix(bool[] flat, int[] shape) => Arrays.AsMatrix(flat, shape);
 }

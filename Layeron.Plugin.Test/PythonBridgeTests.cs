@@ -87,11 +87,14 @@ public sealed class PythonBridgeTests
         Volumes.Replace(volume);
         Volumes.MoveCrosshair(11, 22, 33);
         Masks.Clear();
+        Annotations.Clear();
     }
 
     private static TestVolumeService Volumes => (TestVolumeService)_services.Volumes;
 
     private static TestMaskService Masks => (TestMaskService)_services.Masks;
+
+    private static TestAnnotationService Annotations => (TestAnnotationService)_services.Annotations;
 
     /// <summary>True when the interpreter printed a line containing <paramref name="fragment"/>.</summary>
     private static bool Said(string fragment)
@@ -373,6 +376,134 @@ print("wrote", bool(found[0].read_slice("xy", 5)[0, 0]))
         // The user's own voxel was replaced by the write, at the host level and not only in the interpreter.
         Assert.IsTrue(bitmap[0, 0, 5]);
         Assert.IsFalse(bitmap[3, 4, 5]);
+    }
+
+    [TestMethod]
+    public async Task Bridge_CreatesAnnotationLayersAndShapes()
+    {
+        var session = Session();
+
+        var run = await session.EvalAsync("""
+import layeron
+
+layer = layeron.annotation_layer_create("script", color=(10, 20, 30, 204))
+print("layer", layer.name, layer.color, layer.visible, layer.active)
+
+point = layer.add_point("xy", 33, 11, 22, label="landmark")
+line = layer.add_line("xz", 22, 1, 2, 3, 4)
+polygon = layer.add_polygon("yz", 11, [(1, 2), (3, 2), (2, 4)], label="roi")
+
+print("point", point.kind, point.plane, point.index, point.vertices, point.label)
+print("line", line.kind, line.plane, line.index, line.vertices, line.label)
+print("polygon", polygon.kind, polygon.plane, polygon.index, polygon.vertices, polygon.label)
+print("count", len(layer.annotations))
+""");
+
+        Assert.IsTrue(run.Ok, run.Error);
+        Assert.IsTrue(Said("layer script (10, 20, 30, 204) True True"), Describe());
+        Assert.IsTrue(Said("point point xy 33 [(11, 22)] landmark"), Describe());
+        Assert.IsTrue(Said("line line xz 22 [(1, 2), (3, 4)] None"), Describe());
+        Assert.IsTrue(Said("polygon polygon yz 11 [(1, 2), (3, 2), (2, 4)] roi"), Describe());
+        Assert.IsTrue(Said("count 3"), Describe());
+
+        // The host must hold ordinary app annotations, not a Python-only copy.
+        var layer = Annotations.Layers.Single(l => l.Name == "script");
+        Assert.AreEqual(new MaskColor(10, 20, 30, 204), layer.Color);
+        Assert.AreEqual(3, layer.Annotations.Count);
+
+        var point = layer.Annotations[0].Shape;
+        Assert.AreEqual(AnnotationKind.Point, point.Kind);
+        Assert.AreEqual(SlicePlane.XY, point.Plane);
+        Assert.AreEqual(33, point.Index);
+        Assert.AreEqual(new AnnotationVertex(11, 22), ((PointAnnotationShape)point).Position);
+
+        var polygon = layer.Annotations[2].Shape;
+        Assert.AreEqual(AnnotationKind.Polygon, polygon.Kind);
+        Assert.AreEqual(SlicePlane.YZ, polygon.Plane);
+        Assert.AreEqual(11, polygon.Index);
+        CollectionAssert.AreEqual(
+            new[] { new AnnotationVertex(1, 2), new AnnotationVertex(3, 2), new AnnotationVertex(2, 4) },
+            polygon.Vertices.ToArray());
+    }
+
+    [TestMethod]
+    public async Task Bridge_FindsEditsAndRemovesAnnotationsItDidNotCreate()
+    {
+        var service = Annotations;
+        var layer = service.AddLayer("user", MaskColor.Green);
+        service.AddPoint(layer, SlicePlane.XY, 5, new AnnotationVertex(3, 4), "old");
+
+        var session = Session();
+
+        var run = await session.EvalAsync("""
+import layeron
+
+layer = [entry for entry in layeron.annotation_layers() if entry.name == "user"][0]
+print("found", len(layer.annotations), layer.active)
+
+annotation = layer.annotations[0]
+annotation.label = "renamed"
+print("label", annotation.label)
+print("listed", layeron.annotation_get(annotation.handle).label)
+
+layer.name = "renamed layer"
+layer.color = (1, 2, 3)
+layer.visible = False
+print("layer", layer.name, layer.color, layer.visible)
+
+print("removed", annotation.remove())
+print("count", len(layer.annotations))
+""");
+
+        Assert.IsTrue(run.Ok, run.Error);
+        Assert.IsTrue(Said("found 1 True"), Describe());
+        Assert.IsTrue(Said("label renamed"), Describe());
+        Assert.IsTrue(Said("listed renamed"), Describe());
+        Assert.IsTrue(Said("layer renamed layer (1, 2, 3, 204) False"), Describe());
+        Assert.IsTrue(Said("removed True"), Describe());
+        Assert.IsTrue(Said("count 0"), Describe());
+
+        var host = service.Layers.Single();
+        Assert.AreEqual("renamed layer", host.Name);
+        Assert.AreEqual(new MaskColor(1, 2, 3, 204), host.Color);
+        Assert.IsFalse(host.IsVisible);
+        Assert.AreEqual(0, host.Annotations.Count);
+    }
+
+    [TestMethod]
+    public async Task Bridge_RefusesAMalformedAnnotationAndAStaleLayerHandle()
+    {
+        var session = Session();
+
+        var run = await session.EvalAsync("""
+import layeron
+
+layer = layeron.annotation_layer_create("checked")
+try:
+    layer.add_polygon("xy", 0, [(1, 1), (2, 2)])
+    print("polygon accepted")
+except Exception as error:
+    print("polygon refused", "three" in str(error).lower())
+
+try:
+    layer.add_point("nope", 0, 1, 1)
+    print("plane accepted")
+except Exception as error:
+    print("plane refused", "xy" in str(error))
+
+layeron.annotation_layer_remove("checked")
+try:
+    layer.add_point("xy", 0, 1, 1)
+    print("stale accepted")
+except Exception as error:
+    print("stale refused", "No annotation layer" in str(error))
+""");
+
+        Assert.IsTrue(run.Ok, run.Error);
+        Assert.IsTrue(Said("polygon refused True"), Describe());
+        Assert.IsTrue(Said("plane refused True"), Describe());
+        Assert.IsTrue(Said("stale refused True"), Describe());
+        Assert.AreEqual(0, Annotations.Layers.Count);
     }
 
     [TestMethod]

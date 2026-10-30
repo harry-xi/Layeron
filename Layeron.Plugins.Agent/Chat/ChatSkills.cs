@@ -9,7 +9,9 @@ static class ChatSkills
             name: "layeron-skills",
             description: "The skills about how to work with the layeron app to help the user to done the task",
             instructions: "The app provide a reage of python api app for accsee the data, you can check the docs with the tool GetDocs, follow the name in folling names:\n" +
-                string.Join("\n", BuildDocsNames.Select(name => $"- {name}"))
+                string.Join("\n", BuildDocsNames.Select(name => $"- {name}")) +
+                "\n\nThe data API covers the loaded volume, mask layers and annotation layers. " +
+                "Create annotations with annotation_layer_create and its add_point/add_line/add_polygon methods."
         ));
 
     public static string[] BuildDocsNames => typeof(ChatSkills).Assembly.GetManifestResourceNames()

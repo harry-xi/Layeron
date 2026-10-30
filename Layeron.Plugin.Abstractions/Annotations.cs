@@ -59,26 +59,18 @@ public abstract class AnnotationShape
 }
 
 /// <summary>A single point annotation.</summary>
-public sealed class PointAnnotationShape : AnnotationShape
+public sealed class PointAnnotationShape(SlicePlane plane, int index, AnnotationVertex position)
+    : AnnotationShape(plane, index, [position])
 {
-    public PointAnnotationShape(SlicePlane plane, int index, AnnotationVertex position)
-        : base(plane, index, [position])
-    {
-    }
-
     public AnnotationVertex Position => Vertices[0];
 
     public override AnnotationKind Kind => AnnotationKind.Point;
 }
 
 /// <summary>A straight segment between two points in one slice.</summary>
-public sealed class LineAnnotationShape : AnnotationShape
+public sealed class LineAnnotationShape(SlicePlane plane, int index, AnnotationVertex start, AnnotationVertex end)
+    : AnnotationShape(plane, index, [start, end])
 {
-    public LineAnnotationShape(SlicePlane plane, int index, AnnotationVertex start, AnnotationVertex end)
-        : base(plane, index, [start, end])
-    {
-    }
-
     public AnnotationVertex Start => Vertices[0];
 
     public AnnotationVertex End => Vertices[1];

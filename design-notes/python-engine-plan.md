@@ -15,7 +15,7 @@
 - 交互式 REPL（底部工具面板）。
 - Python 文件编辑器（每个 `.py` 一个文档标签页）。
 - 设置窗口里的 Python 环境页（解释器 / numpy / pip 状态、安装/卸载包）。
-- 只读数据 API：当前体数据、ROI、切片、直方图、掩膜、预览。
+- 数据 API：当前体数据、ROI、切片、直方图、掩膜、标注、预览。
 - 跨插件服务 `IPythonRunnerService`。
 
 它**不提供** `IPluginSource`：工作区里的 `.py` 文件是工作文档，不会被安装成插件。C# `.csx` 的“安装为插件”由 `Layeron.Plugins.ScriptHost` 负责，两者边界不同。
@@ -72,6 +72,8 @@
 
 - `info` / `read_roi` / `read_xy_slice` / `read_xz_slice` / `read_yz_slice` / `histogram` / `crosshair`。
 - `set_volume` / `mask_create` / `mask_add` / `mask_set_slice` / `mask_publish`。
+- `annotation_layers` / `annotation_layer_create` / `annotation_layer_remove` / 标注图层属性设置。
+- `annotation_add_point` / `annotation_add_line` / `annotation_add_polygon` / `annotation_set_label` / `annotation_remove`。
 - 所有读取都是**拷贝**，不把主卷的可变视图交给脚本。
 - 越界/维度/元素类型不匹配会拒绝并给出原因，而不是静默截断。
 
@@ -103,6 +105,16 @@ layeron.mask_create(name, color=None)
 layeron.mask_add(name, array, color=None)
 layeron.mask_set_slice(handle, z, plane, array)
 layeron.mask_publish(handle)
+
+# 标注：图层 + 每条标注只属于一个切片
+layer = layeron.annotation_layer_create("ROI", color=(255, 200, 0, 204))
+point = layer.add_point("xy", 33, 11, 22, label="landmark")
+line = layer.add_line("xz", 22, 1, 2, 40, 60)
+polygon = layer.add_polygon("xy", 33, [(10, 10), (90, 10), (50, 70)], label="lesion")
+polygon.label = "renamed"      # 改标签会立即重绘
+for existing in layeron.annotation_layers():
+    print(existing.name, existing.active, len(existing.annotations))
+layeron.annotation_layer_remove("ROI")
 ```
 
 实现位于 `Resources/layeron.py`（公开 API）与 `Resources/bootstrap.py`（stdio / REPL 初始化），两者都作为嵌入资源随程序集发布。

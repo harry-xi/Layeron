@@ -63,3 +63,18 @@
 | `YZ`（矢状位） | Y | Z | X |
 
 插件与脚本创建标注的方式见[宿主服务](/plugin/services#标注-iannotationservice)。
+
+## Python 脚本
+
+Python 脚本用 `layeron` 模块创建标注，坐标与上表相同：
+
+```python
+import layeron
+
+layer = layeron.annotation_layer_create("ROI", color=(255, 200, 0, 204))
+layer.add_point("xy", 33, 120, 80, label="landmark")
+layer.add_polygon("xy", 33, [(10, 10), (90, 10), (50, 70)], label="lesion")
+```
+
+`plane` 取 `'xy'`、`'xz'` 或 `'yz'`。`name`、`color`、`visible` 可以直接赋值写回宿主，`annotation_layer_remove` 删除整层；已有的层（包括用户自己画的）用 `annotation_layers()` 找到后同样可以继续添加。
+

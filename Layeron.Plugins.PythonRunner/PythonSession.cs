@@ -1017,7 +1017,7 @@ internal sealed class PythonSession : IDisposable
     }
 
     /// <summary>
-    /// Publishes the volume/mask half of the API.
+    /// Publishes the volume/mask/annotation half of the API.
     /// <para>
     /// Every entry is a flat function whose name is already snake_case, one per bridge method. pythonnet
     /// exposes a C# method under its exact CLR name - <c>Info</c>, not <c>info</c> - so handing the bridge
@@ -1049,6 +1049,20 @@ internal sealed class PythonSession : IDisposable
         _bridge.SetAttr("mask_set_slice", new Func<int, string, int, PyObject?, PyObject>(bridge.MaskSetSlice).ToPython());
         _bridge.SetAttr("mask_publish", new Func<int, PyObject>(bridge.MaskPublish).ToPython());
         _bridge.SetAttr("mask_remove", new Func<string, int>(bridge.MaskRemove).ToPython());
+
+        _bridge.SetAttr("annotation_layers", new Func<PyObject>(bridge.AnnotationLayers).ToPython());
+        _bridge.SetAttr("annotation_layer_create", new Func<string, int, int, int, int, PyObject>(bridge.AnnotationLayerCreate).ToPython());
+        _bridge.SetAttr("annotation_layer_remove", new Func<string, int>(bridge.AnnotationLayerRemove).ToPython());
+        _bridge.SetAttr("annotation_layer_set_name", new Action<int, string>(bridge.AnnotationLayerSetName).ToPython());
+        _bridge.SetAttr("annotation_layer_set_color", new Action<int, int, int, int, int>(bridge.AnnotationLayerSetColor).ToPython());
+        _bridge.SetAttr("annotation_layer_set_visible", new Action<int, bool>(bridge.AnnotationLayerSetVisible).ToPython());
+        _bridge.SetAttr("annotation_layer_set_active", new Action<int>(bridge.AnnotationLayerSetActive).ToPython());
+
+        _bridge.SetAttr("annotation_add_point", new Func<int, string, int, int, int, string?, PyObject>(bridge.AnnotationAddPoint).ToPython());
+        _bridge.SetAttr("annotation_add_line", new Func<int, string, int, int, int, int, int, string?, PyObject>(bridge.AnnotationAddLine).ToPython());
+        _bridge.SetAttr("annotation_add_polygon", new Func<int, string, int, PyObject?, string?, PyObject>(bridge.AnnotationAddPolygon).ToPython());
+        _bridge.SetAttr("annotation_set_label", new Func<int, string?, PyObject>(bridge.AnnotationSetLabel).ToPython());
+        _bridge.SetAttr("annotation_remove", new Func<int, bool>(bridge.AnnotationRemove).ToPython());
     }
 
     /// <summary>

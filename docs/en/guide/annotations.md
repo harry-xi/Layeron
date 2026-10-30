@@ -63,3 +63,18 @@ Annotation vertices use the **slice's own pixel coordinates**, exactly like a ma
 | `YZ` (sagittal) | Y | Z | X |
 
 For creating annotations from a plugin or script, see [Host Services](/en/plugin/services#annotations-iannotationservice).
+
+## Python scripts
+
+A Python script creates annotations through the `layeron` module, in the same coordinates as above:
+
+```python
+import layeron
+
+layer = layeron.annotation_layer_create("ROI", color=(255, 200, 0, 204))
+layer.add_point("xy", 33, 120, 80, label="landmark")
+layer.add_polygon("xy", 33, [(10, 10), (90, 10), (50, 70)], label="lesion")
+```
+
+`plane` is `'xy'`, `'xz'` or `'yz'`. Assigning `name`, `color` or `visible` writes the change back to the host, `annotation_layer_remove` drops a whole layer, and `annotation_layers()` gives access to existing layers — including the ones the user drew — so a script can keep adding to them.
+
