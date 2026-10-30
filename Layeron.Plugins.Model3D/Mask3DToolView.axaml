@@ -1,0 +1,105 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:m3d="clr-namespace:Layeron.Plugins.Model3D;assembly=Layeron.Plugins.Model3D"
+             mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="560"
+             x:Class="Layeron.Plugins.Model3D.Mask3DToolView">
+
+  <UserControl.Resources>
+    <m3d:RgbBrushConverter x:Key="RgbBrush" />
+  </UserControl.Resources>
+
+  <!--
+    The management panel: mask selection and surface creation, the list of models currently in the
+    3D document, and the per-model actions. The document tab is only the viewport.
+  -->
+  <ScrollViewer>
+    <StackPanel Spacing="8" Margin="8">
+
+      <TextBlock Text="3D 模型" FontWeight="SemiBold" />
+
+      <TextBlock Text="从掩膜创建" FontSize="11" Opacity="0.7" />
+
+      <Grid ColumnDefinitions="Auto,*">
+        <TextBlock Text="掩膜" VerticalAlignment="Center" Margin="0,0,6,0" />
+        <ComboBox x:Name="LayerBox" Grid.Column="1" HorizontalAlignment="Stretch" />
+      </Grid>
+
+      <Grid ColumnDefinitions="Auto,*">
+        <TextBlock Text="降采样" VerticalAlignment="Center" Margin="0,0,6,0" />
+        <ComboBox x:Name="FactorBox" Grid.Column="1" HorizontalAlignment="Stretch" />
+      </Grid>
+
+      <Grid ColumnDefinitions="Auto,*">
+        <TextBlock Text="重建方式" VerticalAlignment="Center" Margin="0,0,6,0" />
+        <ComboBox x:Name="MethodBox" Grid.Column="1" HorizontalAlignment="Stretch" />
+      </Grid>
+
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <Button x:Name="GenerateButton" Content="生成模型" />
+        <ProgressBar x:Name="Progress" Width="90" IsIndeterminate="True" IsVisible="False"
+                     VerticalAlignment="Center" />
+      </StackPanel>
+
+      <Separator />
+
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Text="模型列表" FontSize="11" Opacity="0.7" VerticalAlignment="Center" />
+        <Button x:Name="ClearButton" Grid.Column="1" Content="清空" FontSize="11"
+                IsEnabled="False" />
+      </Grid>
+
+      <TextBlock x:Name="EmptyModels" Text="还没有模型，先生成一个或导入一个。"
+                 FontSize="11" Opacity="0.6" TextWrapping="Wrap" />
+
+      <ListBox x:Name="ModelList" MaxHeight="220">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="m3d:Mask3DModel">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+              <CheckBox IsChecked="{Binding IsVisible, Mode=TwoWay}"
+                        VerticalAlignment="Center"
+                        ToolTip.Tip="显示或隐藏这个模型" />
+              <StackPanel Grid.Column="1" Margin="2,0,0,0">
+                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding Detail}" FontSize="11" Opacity="0.65"
+                           TextWrapping="Wrap" />
+              </StackPanel>
+              <Border Grid.Column="2" Width="16" Height="16" Margin="6,0,0,0"
+                      CornerRadius="3" VerticalAlignment="Center"
+                      BorderThickness="1"
+                      BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                      Background="{Binding Color, Converter={StaticResource RgbBrush}}"
+                      ToolTip.Tip="模型颜色；为空表示仍使用导入模型自带的材质" />
+            </Grid>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <Button x:Name="ExportButton" Content="导出选中…" IsEnabled="False" />
+        <Button x:Name="RemoveButton" Content="删除选中" IsEnabled="False" />
+      </StackPanel>
+
+      <Grid ColumnDefinitions="Auto,Auto,*">
+        <TextBlock Text="颜色" VerticalAlignment="Center" />
+        <ColorPicker x:Name="ModelColorPicker" Grid.Column="1" Width="52" Margin="6,0,0,0"
+                     IsEnabled="False" IsAlphaEnabled="False" IsAlphaVisible="False"
+                     ToolTip.Tip="设置选中模型的显示颜色" />
+        <TextBlock x:Name="ColorHint" Grid.Column="2" Margin="6,0,0,0"
+                   VerticalAlignment="Center" FontSize="11" Opacity="0.6"
+                   Text="选中模型后可改颜色" TextWrapping="Wrap" />
+      </Grid>
+
+      <Separator />
+
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <Button x:Name="ImportButton" Content="导入模型…" />
+        <Button x:Name="ShowViewButton" Content="打开 3D 视图" />
+      </StackPanel>
+
+      <TextBlock x:Name="StatusText" TextWrapping="Wrap" FontSize="11" Opacity="0.8" />
+
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

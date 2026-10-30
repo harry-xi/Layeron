@@ -1,4 +1,5 @@
 using System.Numerics;
+using Layeron.Big3DArray;
 using Layeron.Plugins.Model3D;
 
 namespace Layeron.Plugin.Test;
@@ -15,6 +16,70 @@ namespace Layeron.Plugin.Test;
 [TestClass]
 public sealed class Mask3DSurfaceTests
 {
+    [TestMethod]
+    public void BuiltFromAMaskAtDifferentFactors_StaysInTheSameVolumeFrame()
+    {
+        // The volume is 8^3 and only its middle 4^3 is filled. Alignment therefore cannot come from
+        // centring each object: it has to come from the volume frame. A 1x and a 2x model must occupy
+        // the same world box, so a point can be mapped back to original voxel coordinates.
+        var bitmap = new Big3DBitMap(8, 8, 8);
+        for (var z = 2; z < 6; z++)
+        for (var y = 2; y < 6; y++)
+        for (var x = 2; x < 6; x++)
+            bitmap[x, y, z] = true;
+
+        foreach (var method in new[]
+                 {
+                     Mask3DGeometry.ExtractionMethod.VoxelFaces,
+                     Mask3DGeometry.ExtractionMethod.MarchingCubes
+                 })
+        {
+            var fine = Build(bitmap, method, factor: 1);
+            var coarse = Build(bitmap, method, factor: 2);
+
+            Assert.AreEqual(fine.Center.X, coarse.Center.X, 1e-4f, $"{method}: centres differ");
+            Assert.AreEqual(fine.Center.Y, coarse.Center.Y, 1e-4f, $"{method}: centres differ");
+            Assert.AreEqual(fine.Center.Z, coarse.Center.Z, 1e-4f, $"{method}: centres differ");
+            Assert.AreEqual(fine.Radius, coarse.Radius, 1e-4f, $"{method}: radii differ");
+
+            // Both are the same 4-voxel block at original coordinates [2,6].
+            var fineBounds = Bounds(fine);
+            var coarseBounds = Bounds(coarse);
+            Assert.AreEqual(2f, fineBounds.Min.X, 1e-3f, $"{method}: fine min X");
+            Assert.AreEqual(6f, fineBounds.Max.X, 1e-3f, $"{method}: fine max X");
+            Assert.AreEqual(fineBounds.Min.X, coarseBounds.Min.X, 1e-3f, $"{method}: min X differs");
+            Assert.AreEqual(fineBounds.Min.Y, coarseBounds.Min.Y, 1e-3f, $"{method}: min Y differs");
+            Assert.AreEqual(fineBounds.Min.Z, coarseBounds.Min.Z, 1e-3f, $"{method}: min Z differs");
+            Assert.AreEqual(fineBounds.Max.X, coarseBounds.Max.X, 1e-3f, $"{method}: max X differs");
+            Assert.AreEqual(fineBounds.Max.Y, coarseBounds.Max.Y, 1e-3f, $"{method}: max Y differs");
+            Assert.AreEqual(fineBounds.Max.Z, coarseBounds.Max.Z, 1e-3f, $"{method}: max Z differs");
+        }
+    }
+
+    private static Mask3DGeometry.SurfaceMesh Build(
+        Big3DBitMap bitmap,
+        Mask3DGeometry.ExtractionMethod method,
+        int factor)
+    {
+        var grid = Mask3DGeometry.Downsample(bitmap, factor, CancellationToken.None);
+        return Mask3DGeometry.BuildSurface(grid, method, factor, CancellationToken.None);
+    }
+
+    private static (Vector3 Min, Vector3 Max) Bounds(Mask3DGeometry.SurfaceMesh mesh)
+    {
+        var min = new Vector3(float.PositiveInfinity);
+        var max = new Vector3(float.NegativeInfinity);
+
+        foreach (var vertex in mesh.Vertices)
+        {
+            var point = new Vector3(vertex.X, vertex.Y, vertex.Z);
+            min = Vector3.Min(min, point);
+            max = Vector3.Max(max, point);
+        }
+
+        return (min, max);
+    }
+
     private static Vector3 Position(in Vector4 v) => new(v.X, v.Y, v.Z);
 
     private static bool[,,] Solid(int nx, int ny, int nz)
@@ -50,7 +115,9 @@ public sealed class Mask3DSurfaceTests
             if (geometric.LengthSquared() < 1e-12f)
                 continue;
 
-            var outward = (a + b + c) / 3f; // the model is centred on the origin
+            // The mesh lives in volume coordinates now, so "outward" is relative to the volume
+            // centre that the extraction reports - not the world origin.
+            var outward = (a + b + c) / 3f - mesh.Center;
             if (Vector3.Dot(Vector3.Normalize(geometric), outward) <= 0f)
                 disagreeing++;
         }

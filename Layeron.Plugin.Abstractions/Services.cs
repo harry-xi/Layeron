@@ -64,6 +64,13 @@ public interface IVolumeService
     event Action? CrosshairChanged;
 
     /// <summary>
+    /// Moves the crosshair to a voxel index - the same state the slice views drive, so every view
+    /// follows at once. Coordinates are clamped to the current volume, and the call is a no-op when
+    /// no volume is loaded. Call it on the UI thread: the slice views are bound to this state.
+    /// </summary>
+    void SetCrosshair(int x, int y, int z);
+
+    /// <summary>
     /// Gray-level histogram of <see cref="Current"/> - <see cref="VolumeHistogram.BinCount"/> bins
     /// spanning the element type's whole value range - or null when no volume is loaded.
     /// <para>

@@ -50,17 +50,22 @@ internal static class MarchingCubes
     }
 
     /// <summary>
-    /// Extracts the <see cref="IsoLevel"/> isosurface of <paramref name="field"/>, centred on the
-    /// origin to match the voxel extractor so one camera can frame either.
+    /// Extracts the <see cref="IsoLevel"/> isosurface of <paramref name="field"/> in original volume
+    /// coordinates: field lattice point 0 is the padding sample half a downsampled voxel before the
+    /// volume, so a field coordinate <c>v</c> maps to <c>(v - 0.5) * voxelSize</c>. That puts the
+    /// result in the same frame as the voxel extractor, at any downsample factor.
     /// </summary>
-    public static Mask3DGeometry.SurfaceMesh Extract(Mask3DSignedDistanceField field, CancellationToken ct)
+    public static Mask3DGeometry.SurfaceMesh Extract(
+        Mask3DSignedDistanceField field,
+        int voxelSize,
+        CancellationToken ct)
     {
         var cellsX = field.CellCountX;
         var cellsY = field.CellCountY;
         var cellsZ = field.CellCountZ;
 
         if (cellsX <= 0 || cellsY <= 0 || cellsZ <= 0)
-            return new Mask3DGeometry.SurfaceMesh([], [], [], 0f, 0);
+            return new Mask3DGeometry.SurfaceMesh([], [], [], Vector3.Zero, 0f, 0);
 
         var bands = CreateBands(cellsZ);
         var solidVoxels = field.CountInside();
@@ -90,20 +95,26 @@ internal static class MarchingCubes
 
         ct.ThrowIfCancellationRequested();
 
-        // Centre the sampled cube on the origin, and use its own half-diagonal as the bounding
-        // radius: the surface lies inside the cube, so that sphere is guaranteed to contain it.
-        var half = new Vector3(
-            (field.SizeX - 1) * 0.5f,
-            (field.SizeY - 1) * 0.5f,
-            (field.SizeZ - 1) * 0.5f);
+        // The padded field adds one empty sample per side; the original volume is the inner box.
+        // Map the lattice into original voxel units before anything else looks at the geometry.
+        var nx = field.SizeX - 2;
+        var ny = field.SizeY - 2;
+        var nz = field.SizeZ - 2;
 
         for (var i = 0; i < vertices.Count; i++)
         {
             var v = vertices[i];
-            vertices[i] = new Vector4(v.X - half.X, v.Y - half.Y, v.Z - half.Z, 1f);
+            vertices[i] = new Vector4(
+                (v.X - 0.5f) * voxelSize,
+                (v.Y - 0.5f) * voxelSize,
+                (v.Z - 0.5f) * voxelSize,
+                1f);
         }
 
-        return new Mask3DGeometry.SurfaceMesh(vertices, normals, indices, half.Length(), solidVoxels);
+        var center = new Vector3(nx, ny, nz) * (voxelSize * 0.5f);
+        var radius = 0.5f * new Vector3(nx, ny, nz).Length() * voxelSize;
+
+        return new Mask3DGeometry.SurfaceMesh(vertices, normals, indices, center, radius, solidVoxels);
     }
 
     /// <summary>

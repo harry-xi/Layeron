@@ -30,11 +30,30 @@ Hold `Ctrl` and drag with the left button on any slice view to paint into the **
 
 ## Generating a 3D model from a mask
 
-The `layeron.model3d` sample plugin contributes a "mask 3D model" document tab: it turns a chosen mask layer into an interactive three-dimensional surface, shown alongside the slice views in the centre document area.
+The `layeron.model3d` sample plugin contributes two surfaces:
 
-::: tip Pure CPU rendering
-The 3D view uses the plugin's in-house CPU rasteriser. It needs no GPU, Vulkan or specific driver, and works on machines with no graphics device.
+- A **"3D Model" tool panel** (plugin menu → tools) owns creation and management: pick a mask layer, a downsample factor
+  and a rebuild method, then click "Generate". "Import model…" loads a glTF/GLB instead. Every generated or imported model
+  appears in the panel's list, where it can be shown/hidden, removed, or cleared. Selecting a model lets you change its
+  display colour below the list (mask models start with the layer colour; recolouring an import replaces its material
+  colour). A selected model can be exported as binary STL or GLB.
+- A **"mask 3D model" document tab** only displays: it draws every visible model in the list, opens automatically for the
+  first model, and can stay open for comparison. Drag to orbit (drag right turns the model right), `Shift`+drag to pan,
+  wheel to zoom (wheel up zooms in). Clicking a mask surface moves the crosshair. The camera frames the union of the
+  visible models.
+
+::: tip GPU rendering without a private graphics stack
+The 3D view uses the plugin's Aura3D engine through the OpenGL context Avalonia already hosts — no Vulkan initialisation, and no in-house rasteriser to maintain.
 :::
+
+Model vertices use the original volume's voxel coordinates: the origin is the corner of the sampled box and one
+world unit is one original voxel. The same mask generated at different downsample factors therefore occupies the
+same region (models are not individually centred), which makes it possible to map a point back to a voxel.
+Imported glTF models keep the coordinate system from their file.
+
+**Left-click a mask surface** in the 3D view to move the shared crosshair to the voxel under the cursor; all three
+slice views follow. Dragging still orbits, `Shift`+drag pans, and a click must stay within 4 DIPs so an orbit never
+triggers a jump. Imported models are ignored because they are not in volume coordinates.
 
 ## Who owns a mask
 

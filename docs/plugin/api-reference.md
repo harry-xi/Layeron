@@ -230,6 +230,7 @@ public interface IVolumeService
     int CurrentY { get; }
     int CurrentZ { get; }
     event Action? CrosshairChanged;
+    void SetCrosshair(int x, int y, int z);
 
     long[]? ComputeHistogram(CancellationToken ct = default, Action<double>? progress = null);
 }

@@ -7,29 +7,24 @@
              x:Class="Layeron.Plugins.Model3D.Mask3DView">
 
   <!--
-    A toolbar over the 3D viewport. The viewport rasterises on the CPU and presents through a
-    WriteableBitmap, so it draws as an ordinary Avalonia visual and needs no GPU interop.
+    The document is only the 3D view. Creation, import and the model list live in the "3D 模型" tool
+    panel; this tab renders whatever that panel's model manager holds.
   -->
-  <Grid RowDefinitions="Auto,*">
+  <Grid>
 
-    <Border Grid.Row="0" Padding="8" Background="{DynamicResource SukiControlBackground}">
-      <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-        <TextBlock Text="掩膜" VerticalAlignment="Center" />
-        <ComboBox x:Name="LayerBox" Width="150" />
+    <m3d:Mask3DViewport x:Name="Viewport" />
 
-        <TextBlock Text="降采样" VerticalAlignment="Center" />
-        <ComboBox x:Name="FactorBox" Width="80" />
-
-        <TextBlock Text="重建方式" VerticalAlignment="Center" />
-        <ComboBox x:Name="MethodBox" Width="150" />
-
-        <Button x:Name="GenerateButton" Content="生成模型" />
-        <ProgressBar x:Name="Progress" Width="90" IsIndeterminate="True" IsVisible="False" />
-        <TextBlock x:Name="StatusText" VerticalAlignment="Center" TextWrapping="NoWrap" />
+    <Border x:Name="EmptyHint"
+            HorizontalAlignment="Center" VerticalAlignment="Center"
+            Padding="16,12" CornerRadius="6"
+            Background="{DynamicResource SukiControlBackground}"
+            IsHitTestVisible="False">
+      <StackPanel Spacing="4">
+        <TextBlock Text="没有模型" FontWeight="SemiBold" HorizontalAlignment="Center" />
+        <TextBlock Text="在“3D 模型”面板中生成或导入模型。" FontSize="12" Opacity="0.7"
+                   HorizontalAlignment="Center" />
       </StackPanel>
     </Border>
-
-    <m3d:Mask3DViewport Grid.Row="1" x:Name="Viewport" />
 
   </Grid>
 </UserControl>

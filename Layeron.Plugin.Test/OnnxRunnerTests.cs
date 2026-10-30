@@ -559,12 +559,16 @@ public sealed class OnnxRunnerTests
         Assert.IsTrue(IsHostShared(host, host.GetName().Name!));
 
         // The other direction: a name the process does not carry is left to the plugin's own folder, because a
-        // deferred name has no fallback - returning null hands the lookup to a context that has no copy. The test
-        // host references neither Roslyn nor Avalonia, so each is a plugin's to provide here.
+        // deferred name has no fallback - returning null hands the lookup to a context that has no copy. This test
+        // host references no Roslyn (the script host is only built, not referenced), so the script host's private
+        // compiler is the case to assert here.
+        //
+        // Avalonia is not a valid example any more: referencing the 3D plugin pulls its Aura3D dependency graph in,
+        // which carries the ordinary Avalonia UI base stack. That is the intended split - Avalonia (a common base
+        // dependency of any UI) is shared with whatever process already carries it, while a plugin-specific engine
+        // stays private - so deferring it here is correct, not a regression.
         Assert.IsFalse(IsHostShared(host, "Microsoft.CodeAnalysis"),
             "the script host ships Roslyn privately; deferring it would make it permanently unresolvable");
-        Assert.IsFalse(IsHostShared(host, "Avalonia.Base"),
-            "this host does not carry Avalonia, so a plugin must be able to ship its own copy");
 
         // A missing name is never carried.
         Assert.IsFalse(IsHostShared(host, null!));

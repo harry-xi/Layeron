@@ -150,7 +150,9 @@ internal sealed class TestVolumeService : IVolumeService
         Replaced?.Invoke(Version);
     }
 
-    public void MoveCrosshair(int x, int y, int z)
+    public void MoveCrosshair(int x, int y, int z) => SetCrosshair(x, y, z);
+
+    public void SetCrosshair(int x, int y, int z)
     {
         CurrentX = x;
         CurrentY = y;

@@ -1,67 +1,104 @@
-using System.Diagnostics;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
+using Aura3D.Avalonia;
+using Aura3D.Core.Nodes;
+using Aura3D.Core.Resources;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Media;
-using Avalonia.Media.Imaging;
-using Avalonia.Platform;
-using Avalonia.Threading;
+using AuraColor = System.Drawing.Color;
+using AuraTexture = Aura3D.Core.Resources.Texture;
 using Mask3DGeometry = Layeron.Plugins.Model3D.Mask3DGeometry;
 
 namespace Layeron.Plugins.Model3D;
 
 /// <summary>
-/// The 3D viewport: owns a <see cref="Mask3DRenderer"/>, an orbit camera, and the bitmap the rasterised
-/// frame is presented through.
+/// The 3D viewport: an <see cref="Aura3DView"/> (OpenGL through Avalonia) with an orbit camera and the
+/// nodes the model manager owns.
 /// <para>
-/// Drawing is <em>on demand</em>. A static model does not need a continuous render loop, so the
-/// control redraws when something actually changes - a new mesh, a resize, a camera drag or a wheel
-/// zoom - and stays idle otherwise. That keeps a fully static scene at zero CPU and still feels
-/// immediate, because every interaction is followed by exactly one redraw.
+/// Rendering is <em>on demand</em>. A static model does not need a continuous render loop, so
+/// <see cref="Aura3DViewBase.AutoRequestNextFrameRendering"/> is off and a frame is requested exactly
+/// when something changes - a new mesh, a resize, a camera drag or a wheel zoom - which keeps an idle
+/// scene at zero GPU work.
 /// </para>
 /// <para>
-/// Rasterising tens of thousands of triangles on the UI thread would stall input, so the frame is
-/// produced on a worker and only the finished bitmap is handed back to the compositor.
+/// The projection stays <b>orthographic</b>: a mask is inspected for its shape, and perspective would
+/// make equal voxel cells look unequal. Zooming therefore changes
+/// <see cref="Camera.OrthographicSize"/> rather than moving the camera closer. The scene content and
+/// the framing maths live in <see cref="Mask3DScene"/>, which needs no control or GL context.
+/// </para>
+/// <para>
+/// The viewport draws whatever <see cref="Mask3DModelManager"/> currently holds. It keys the scene
+/// nodes by model id, so a visibility toggle flips <see cref="Node.Enable"/> instead of rebuilding
+/// geometry, and the camera frames the union of the visible models only when the model list itself
+/// changed (add/remove) - zooming and toggling keep the current framing.
 /// </para>
 /// </summary>
-public sealed class Mask3DViewport : Control
+public sealed class Mask3DViewport : Aura3DView
 {
     private const double RotateRadiansPerPixel = 0.008;
-    private const double ZoomPerWheelDelta = 0.0015;
+    private const double ZoomPerWheelDelta = 0.0090;
 
-    private readonly Mask3DRenderer _renderer = new();
+    /// <summary>Pointer travel under this many DIPs still counts as a click, not an orbit.</summary>
+    private const double ClickSlop = 4;
 
-    // The renderer owns mutable scratch (colour, depth, clipping polygons) and is NOT thread safe.
-    // Every call into it - Resize, SetMesh, SetLightDirection, Render - is funnelled onto this one
-    // thread by RenderAsync, so a drag can never race a frame that is still rasterising.
-    private readonly TaskQueue _renderQueue = new();
+    private readonly Dictionary<string, Node> _nodes = [];
 
-    private WriteableBitmap? _bitmap;
-    private int _bitmapWidth;
-    private int _bitmapHeight;
+    /// <summary>The model list this viewport mirrors, copied so it never enumerates a live collection.</summary>
+    private IReadOnlyList<Mask3DModel> _models = [];
+
+    /// <summary>Ids of the models the camera was last framed on; add/remove triggers a reframe.</summary>
+    private string _framedSignature = string.Empty;
+
+    /// <summary>
+    /// Set when the scene content changed. The first frame after new content can be drawn before the
+    /// engine's first-use uploads/shader recompilation have settled (the model then looks unlit until
+    /// something else causes a redraw), so one follow-up frame is requested after that render.
+    /// </summary>
+    private bool _needsFollowUpFrame;
+
+    /// <summary>The key light, kept at a fixed angle to the camera (see <see cref="ApplyCamera"/>).</summary>
+    private DirectionalLight? _keyLight;
 
     private Vector3 _target = Vector3.Zero;
+    private float _radius = 1f;
 
-    /// <summary>Visible world height. Zooming changes this, which keeps the projection orthographic.</summary>
+    /// <summary>Visible world height; zooming changes this, which keeps the projection orthographic.</summary>
     private double _viewHeight = 2;
 
-    /// <summary>How far the camera sits from the target; kept large so it is never inside the model.</summary>
-    private double _orbitDistance = 1000;
-
+    private double _orbitDistance = 5;
     private double _yaw;
     private double _pitch = 0.35;
+
     private bool _dragging;
     private bool _panning;
     private Point _lastPointer;
-    private bool _renderPending;
-    private bool _dirty;
-    private int _renderGeneration;
+    private Point _pressPosition;
 
-    /// <summary>Bounding radius of the most recently supplied mesh, kept so framing stays on the UI thread.</summary>
-    private float _pendingRadius;
+    /// <summary>
+    /// Raised for a click (not a drag) that hits a model, with the point in that model's own
+    /// coordinates. The document turns this into a crosshair move; the viewport stays free of host
+    /// services.
+    /// </summary>
+    internal event Action<Mask3DModel, Vector3>? SurfacePicked;
 
-    /// <summary>Camera azimuth in radians; 0 looks down -Z, the engine's forward direction.</summary>
+    public Mask3DViewport()
+    {
+        // A static scene is redrawn on demand (see the type remarks), not at the display refresh rate.
+        AutoRequestNextFrameRendering = false;
+
+        // Clicking the surface is not a gesture this view assigns a meaning to, and picking would run
+        // a full ray/triangle pass on every press.
+        EnablePicking = false;
+
+        ClipToBounds = true;
+        SceneInitialized += OnSceneInitialized;
+        SceneUpdated += OnSceneUpdated;
+    }
+
+    /// <summary>Camera azimuth in radians; 0 looks down -Z.</summary>
     public double Yaw
     {
         get => _yaw;
@@ -70,7 +107,7 @@ public sealed class Mask3DViewport : Control
             if (Math.Abs(_yaw - value) < 1e-9)
                 return;
             _yaw = value;
-            RequestRedraw();
+            ApplyCamera();
         }
     }
 
@@ -84,7 +121,7 @@ public sealed class Mask3DViewport : Control
             if (Math.Abs(_pitch - clamped) < 1e-9)
                 return;
             _pitch = clamped;
-            RequestRedraw();
+            ApplyCamera();
         }
     }
 
@@ -94,90 +131,182 @@ public sealed class Mask3DViewport : Control
         get => _viewHeight;
         set
         {
-            var clamped = Math.Clamp(value, 0.005, 1_000_000);
+            var clamped = Math.Clamp(value, Mask3DScene.ZoomMinViewHeight, Mask3DScene.ZoomMaxViewHeight);
             if (Math.Abs(_viewHeight - clamped) < 1e-9)
                 return;
             _viewHeight = clamped;
-            RequestRedraw();
+            ApplyCamera();
         }
     }
 
-    public Mask3DViewport()
+    /// <summary>
+    /// Mirrors the manager's model list into the scene: new models are added, removed ones are taken
+    /// out, and the camera reframes only when the list of ids changed.
+    /// </summary>
+    internal void ShowModels(IReadOnlyList<Mask3DModel> models)
     {
-        // The rasteriser draws the full surface on both sides, so the default key light is fixed and
-        // only exists to give the extracted faces a readable sense of orientation.
-        _renderer.SetLightDirection(Vector3.Normalize(new Vector3(-0.45f, -1f, -0.6f)));
+        _models = [.. models];
 
-        ClipToBounds = true;
-        Focusable = true;
+        // Add/remove/visibility/colour all end in a frame; ask for the follow-up here so the result
+        // does not depend on what the user happens to do next.
+        _needsFollowUpFrame = true;
+
+        ApplyModels();
     }
 
     /// <summary>
-    /// Replaces the displayed surface and reframes the camera onto it.
-    /// <para>
-    /// The framing uses a distance derived from the model's bounding radius and the vertical field of
-    /// view, so the same model fills a similar fraction of the tab whatever its size or the tab's
-    /// aspect ratio.
-    /// </para>
+    /// Runs after a frame has been rendered. One extra frame is scheduled when content changed, so
+    /// the first frame's first-use work (shader variant, buffer upload) cannot leave the model looking
+    /// flat until the user drags.
     /// </summary>
-    internal void SetMesh(Mask3DGeometry.SurfaceMesh mesh, Rgb color)
+    private void OnSceneUpdated(object? sender, UpdateRoutedEventArgs e)
     {
-        // Queued rather than applied inline: the renderer is owned by the render thread, and this
-        // method is called from the UI thread when a model finishes building.
-        _renderQueue.Enqueue(() =>
-        {
-            _renderer.SetMesh(mesh, color);
-            _renderer.SetLightDirection(Vector3.Normalize(new Vector3(-0.45f, -1f, -0.6f)));
-        });
-
-        _pendingRadius = mesh.Radius;
-        FrameMesh();
-        RequestRedraw();
-    }
-
-    /// <summary>Recentres and re-scales the view so the whole model is visible.</summary>
-    internal void FrameMesh()
-    {
-        // The radius comes from the mesh the caller already holds, not from the renderer: the renderer
-        // belongs to the render thread and must not be read from here.
-        var radius = _pendingRadius;
-        if (radius <= 0f)
+        if (!_needsFollowUpFrame)
             return;
 
-        _target = Vector3.Zero;
-
-        // Under an orthographic projection the framing is the visible world height, not a camera
-        // distance: frame the bounding sphere with a small margin and leave it at that.
-        _viewHeight = Math.Clamp(radius * 2.3f, 0.01f, 1_000_000f);
-
-        RequestRedraw();
+        _needsFollowUpFrame = false;
+        RequestNextFrameRendering();
     }
 
-    public override void Render(DrawingContext context)
+    /// <summary>
+    /// Builds the fixed part of the scene once the engine has created it: background, key light and
+    /// whatever the manager already holds (the tab can be created after models exist).
+    /// </summary>
+    private void OnSceneInitialized(object? sender, InitializedRoutedEventArgs e)
     {
-        base.Render(context);
+        if (e.Scene is not { } scene)
+            return;
 
-        // Fill the bounds so the control is hit-testable even before the first frame lands; without
-        // rendered content of its own Avalonia would not route pointer events here.
-        context.FillRectangle(Brushes.Transparent, new Rect(Bounds.Size));
+        // A mask is inspected against a neutral backdrop; a grid and a gizmo would compete with it.
+        scene.ShowGrid = false;
+        scene.ShowAxisGizmo = false;
 
-        if (_bitmap is not null)
-            context.DrawImage(_bitmap, new Rect(Bounds.Size));
+        var background = AuraTexture.CreateFromColor(AuraColor.FromArgb(255, 28, 30, 34));
+        background.SetIsGammaSpace(true);
+        scene.Background = background;
+
+        // The engine's default ambient of 0.1 is too dark for faces turned away from the key light.
+        scene.PipelineSettings.AmbientIntensity = Mask3DScene.AmbientIntensity;
+
+        // Key light from above and slightly in front of the viewer. Its direction is refreshed with
+        // the camera, so it does not stay behind in world space while the model turns.
+        var light = new DirectionalLight
+        {
+            Name = "Key light",
+            Irradiance = Mask3DScene.KeyLightIrradiance,
+        };
+        scene.AddNode(light);
+        scene.MainDirectionalLight = light;
+        _keyLight = light;
+
+        ApplyModels();
+        ApplyCamera();
     }
 
-    protected override Size MeasureOverride(Size availableSize)
+    /// <summary>Syncs the scene's node set with <see cref="_models"/> and applies visibility.</summary>
+    private void ApplyModels()
     {
-        // Claim all the space offered: the rasterised image is stretched to fill whatever we get.
-        return availableSize;
+        if (Scene is not { } scene)
+            return;
+
+        var present = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var model in _models)
+        {
+            present.Add(model.Id);
+
+            if (_nodes.ContainsKey(model.Id))
+            {
+                model.Content.Enable = model.IsVisible;
+                continue;
+            }
+
+            scene.AddNode(model.Content);
+            _nodes[model.Id] = model.Content;
+            model.Content.Enable = model.IsVisible;
+        }
+
+        foreach (var id in _nodes.Keys.Where(id => !present.Contains(id)).ToArray())
+        {
+            scene.RemoveNode(_nodes[id]);
+            _nodes.Remove(id);
+        }
+
+        // Reframe on add/remove only: hiding a model or zooming should not throw away the camera the
+        // user just set up.
+        var signature = string.Join('|', _models.Select(model => model.Id));
+        if (!string.Equals(signature, _framedSignature, StringComparison.Ordinal))
+        {
+            _framedSignature = signature;
+            FrameVisible();
+        }
+
+        // Visibility changes still need a frame, and the first models can arrive after the scene was
+        // initialized (the tab was created from a restored layout), so push the camera every time.
+        ApplyCamera();
     }
 
-    protected override Size ArrangeOverride(Size finalSize)
-        => finalSize;
+    /// <summary>Frames the union of the visible models, leaving the camera alone when everything is hidden.</summary>
+    private void FrameVisible()
+    {
+        var visible = _models.Where(model => model.IsVisible).ToArray();
+        if (visible.Length == 0)
+            return;
+
+        var bounds = Mask3DScene.UnionBounds(
+            visible.Select(model => (model.Center, model.Radius)));
+
+        _radius = bounds.Radius;
+        _target = bounds.Center;
+        _viewHeight = Mask3DScene.ViewHeightForRadius(_radius);
+        _orbitDistance = Mask3DScene.OrbitDistanceForRadius(_radius);
+    }
+
+    /// <summary>Pushes the orbit camera onto the scene camera and asks for one frame.</summary>
+    private void ApplyCamera()
+    {
+        if (Scene is not { } scene)
+            return;
+
+        var direction = new Vector3(
+            (float)(Math.Sin(_yaw) * Math.Cos(_pitch)),
+            (float)Math.Sin(_pitch),
+            (float)(Math.Cos(_yaw) * Math.Cos(_pitch)));
+
+        var camera = scene.MainCamera;
+        Mask3DScene.ConfigureCamera(
+            camera,
+            _target,
+            direction,
+            (float)_viewHeight,
+            _radius,
+            (float)_orbitDistance);
+
+        if (_keyLight is { } light)
+            light.RotationDegrees = Mask3DScene.RotationDegreesFor(
+                Mask3DScene.LightForwardFor(direction, camera.Up, camera.Right));
+
+        RequestNextFrameRendering();
+    }
+
+    /// <summary>Pan in the camera's own screen plane; the world-per-pixel ratio is constant here.</summary>
+    private void Pan(double deltaX, double deltaY)
+    {
+        if (Scene is not { } scene)
+            return;
+
+        var camera = scene.MainCamera;
+        var scale = (float)(_viewHeight / Math.Max(1, Bounds.Height));
+        _target -= (camera.Right * (float)deltaX + camera.Up * (float)deltaY) * scale;
+        ApplyCamera();
+    }
 
     protected override void OnSizeChanged(SizeChangedEventArgs e)
     {
         base.OnSizeChanged(e);
-        RequestRedraw();
+
+        // With on-demand rendering the control has to ask for the frame that resizes the viewport.
+        RequestNextFrameRendering();
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
@@ -190,6 +319,7 @@ public sealed class Mask3DViewport : Control
         _dragging = true;
         _panning = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
         _lastPointer = e.GetPosition(this);
+        _pressPosition = _lastPointer;
         e.Pointer.Capture(this);
     }
 
@@ -206,27 +336,68 @@ public sealed class Mask3DViewport : Control
 
         if (_panning)
         {
-            // Pan in the camera's own screen plane. Under an orthographic projection the world-per-pixel
-            // ratio is constant, so the scale depends only on the visible height - not on any distance.
-            var scale = (float)(_viewHeight / Math.Max(1, Bounds.Height));
-            _target -= (_right * (float)delta.X + _up * (float)delta.Y) * scale;
+            Pan(delta.X, delta.Y);
         }
         else
         {
-            Yaw += delta.X * RotateRadiansPerPixel;
+            // Horizontal drag follows the surface: dragging right turns the model right, which means
+            // moving the camera the other way around the target. Vertical drag keeps the usual
+            // "drag down to look from above" feel.
+            Yaw -= delta.X * RotateRadiansPerPixel;
             Pitch += delta.Y * RotateRadiansPerPixel;
         }
-
-        RequestRedraw();
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
 
+        var position = e.GetPosition(this);
+        var deltaX = position.X - _pressPosition.X;
+        var deltaY = position.Y - _pressPosition.Y;
+
+        // A press that barely moved is a click; anything else was an orbit or a pan. Picking on
+        // release (rather than enabling the base class's press-time picking) is what keeps an orbit
+        // from moving the crosshair on every mouse-down.
+        var wasClick = !_panning
+            && e.InitialPressMouseButton == MouseButton.Left
+            && deltaX * deltaX + deltaY * deltaY <= ClickSlop * ClickSlop;
+
         _dragging = false;
         _panning = false;
         e.Pointer.Capture(null);
+
+        if (wasClick)
+            PickSurface(position);
+    }
+
+    /// <summary>Picks the closest surface at a click and reports which model it belongs to.</summary>
+    private void PickSurface(Point position)
+    {
+        if (Scene is null || PickClosestAt(position.X, position.Y) is not { } hit)
+            return;
+
+        if (FindOwner(hit.Node) is { } model)
+            SurfacePicked?.Invoke(model, hit.WorldPosition);
+    }
+
+    /// <summary>
+    /// Finds the model that owns a picked node. A mask surface is itself the node; a glTF mesh is
+    /// reported as its parent model by the engine, but walking the parents keeps this correct if a
+    /// model nests one level deeper.
+    /// </summary>
+    private Mask3DModel? FindOwner(Node? node)
+    {
+        for (var current = node; current is not null; current = current.Parent)
+        {
+            foreach (var model in _models)
+            {
+                if (ReferenceEquals(model.Content, current))
+                    return model;
+            }
+        }
+
+        return null;
     }
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
@@ -234,184 +405,10 @@ public sealed class Mask3DViewport : Control
         base.OnPointerWheelChanged(e);
 
         // Multiplicative zoom: each notch scales the visible world height, so the perceived step is
-        // the same whether you are zoomed in or out. This is the orthographic equivalent of moving the
-        // camera closer, and unlike moving the camera it cannot introduce any perspective.
-        ViewHeight = _viewHeight * Math.Exp(e.Delta.Y * ZoomPerWheelDelta);
+        // the same whether the model is nearly filling the tab or a dot in the middle of it. A
+        // positive Delta.Y (wheel up) shrinks the height - i.e. zooms in, matching the rest of the
+        // application's "up means closer" convention.
+        ViewHeight = _viewHeight * Math.Exp(-e.Delta.Y * ZoomPerWheelDelta);
         e.Handled = true;
-    }
-
-    private Vector3 _cameraPosition
-    {
-        get
-        {
-            // The orbit distance only sets the viewing direction and the eye's position relative to
-            // the target; the apparent size is governed entirely by the orthographic view height.
-            var cosPitch = MathF.Cos((float)_pitch);
-            return _target + new Vector3(
-                (float)(Math.Sin(_yaw) * cosPitch),
-                MathF.Sin((float)_pitch),
-                (float)(Math.Cos(_yaw) * cosPitch)) * (float)_orbitDistance;
-        }
-    }
-
-    private Vector3 _right
-    {
-        get
-        {
-            var right = Vector3.Cross(new Vector3(0, 1, 0), _cameraPosition - _target);
-            return right.LengthSquared() < 1e-8f ? Vector3.UnitX : Vector3.Normalize(right);
-        }
-    }
-
-    private Vector3 _up
-    {
-        get
-        {
-            var up = Vector3.Cross(_right, _cameraPosition - _target);
-            return up.LengthSquared() < 1e-8f ? Vector3.UnitY : Vector3.Normalize(up);
-        }
-    }
-
-    /// <summary>
-    /// Queues a redraw at UI-thread priority. Coalesced: many requests in one dispatcher pass produce
-    /// exactly one rasterisation, which is what keeps a fast drag from queueing a backlog of frames.
-    /// </summary>
-    private void RequestRedraw()
-    {
-        // A request that arrives while a frame is rasterising is remembered rather than dropped:
-        // dropping it would leave the viewport showing a stale frame with no further input to wake it.
-        if (_renderPending)
-        {
-            _dirty = true;
-            return;
-        }
-
-        _renderPending = true;
-        Dispatcher.UIThread.Post(RenderFrame, DispatcherPriority.Render);
-    }
-
-    private void RenderFrame()
-    {
-        _dirty = false;
-
-        var width = (int)Math.Max(1, Bounds.Width);
-        var height = (int)Math.Max(1, Bounds.Height);
-
-        var view = ViewProjection.LookAt(_cameraPosition, _target, width, height, (float)_viewHeight);
-        var generation = ++_renderGeneration;
-
-        // The pending flag stays set until the frame has actually been rasterised. Clearing it when
-        // the request is *scheduled* would let the next pointer move start a second frame while this
-        // one is still running, and the two would share the renderer's scratch buffers.
-        _renderQueue.Enqueue(() =>
-        {
-            try
-            {
-                _renderer.Resize(width, height);
-                _renderer.Render(view);
-
-                var pixels = new byte[_renderer.Stride * height];
-                _renderer.CopyPixelsTo(pixels);
-
-                Dispatcher.UIThread.Post(() =>
-                {
-                    // This frame is now the current one: release the flag and, if further requests
-                    // arrived while it was rasterising, immediately start the next frame.
-                    _renderPending = false;
-
-                    if (generation != _renderGeneration)
-                    {
-                        RequestRedraw();
-                        return;
-                    }
-
-                    ApplyPixels(pixels, width, height);
-                    InvalidateVisual();
-
-                    if (_dirty)
-                    {
-                        _dirty = false;
-                        RequestRedraw();
-                    }
-                }, DispatcherPriority.Render);
-            }
-            catch (Exception)
-            {
-                // Clear the flag so the viewport still responds to later input.
-                Dispatcher.UIThread.Post(() => _renderPending = false, DispatcherPriority.Render);
-            }
-        });
-    }
-
-    private void ApplyPixels(byte[] pixels, int width, int height)
-    {
-        if (_bitmap is null || _bitmapWidth != width || _bitmapHeight != height)
-        {
-            _bitmap?.Dispose();
-            _bitmap = new WriteableBitmap(
-                new PixelSize(width, height),
-                new Avalonia.Vector(96, 96),
-                PixelFormat.Bgra8888,
-                AlphaFormat.Premul);
-            _bitmapWidth = width;
-            _bitmapHeight = height;
-        }
-
-        using var framebuffer = _bitmap.Lock();
-        var length = Math.Min(pixels.Length, framebuffer.RowBytes * height);
-
-        // The framebuffer address is a native pointer into the GPU-visible bitmap, so the copy has to
-        // go through unsafe memory rather than a Span over managed memory.
-        unsafe
-        {
-            var destination = new Span<byte>(framebuffer.Address.ToPointer(), length);
-            pixels.AsSpan(0, length).CopyTo(destination);
-        }
-    }
-
-
-    /// <summary>
-    /// A single-threaded work queue: everything enqueued runs in order on one dedicated thread and
-    /// never concurrently.
-    /// <para>
-    /// It exists because <see cref="Mask3DRenderer"/> is not thread safe - it keeps colour, depth and
-    /// clipping scratch buffers as mutable state. Running one <c>Task.Run</c> per frame would let two
-    /// frames overlap on different pool threads and corrupt each other, which is what made dragging
-    /// unusable. Serialising through one thread makes the renderer single-threaded by construction.
-    /// </para>
-    /// </summary>
-    private sealed class TaskQueue
-    {
-        private readonly System.Collections.Concurrent.BlockingCollection<Action> _queue = new();
-
-        public TaskQueue()
-        {
-            var thread = new Thread(Pump)
-            {
-                IsBackground = true,
-                Name = "Mask3D.Render"
-            };
-
-            thread.Start();
-        }
-
-        /// <summary>Queues work; it runs on the render thread after everything already queued.</summary>
-        public void Enqueue(Action work) => _queue.Add(work);
-
-        private void Pump()
-        {
-            foreach (var work in _queue.GetConsumingEnumerable())
-            {
-                try
-                {
-                    work();
-                }
-                catch
-                {
-                    // A fault is reported through the callback that scheduled the work; the pump must
-                    // survive so one bad frame does not stop all later rendering.
-                }
-            }
-        }
     }
 }
