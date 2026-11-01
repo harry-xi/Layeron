@@ -126,6 +126,12 @@ internal sealed class PythonSession : IDisposable
 
     /// <summary>Raised when a script reports what it is doing.</summary>
     public event Action<string>? Status;
+
+    /// <summary>
+    /// Raised when a script reports a fraction in [0, 1] through <c>layeron.progress</c>. UI only: a
+    /// caller that captures stdout, such as an agent tool, does not receive it.
+    /// </summary>
+    public event Action<double>? Progress;
     /// <summary>
     /// The most recent interpreter output, oldest first.
     /// <para>
@@ -1001,7 +1007,12 @@ internal sealed class PythonSession : IDisposable
             _log.Debug("[script] {Message}", message);
         }).ToPython());
 
-        _bridge.SetAttr("progress", new Action<double>(_ => { }).ToPython());
+        _bridge.SetAttr("progress", new Action<double>(fraction =>
+        {
+            // The UI draws it as a fraction; a script that passes something outside [0, 1] is clamped
+            // rather than allowed to push a progress bar past its maximum.
+            Progress?.Invoke(Math.Clamp(fraction, 0d, 1d));
+        }).ToPython());
         _bridge.SetAttr("result", new Action<string, string>((label, value) => _log.Info("[script] {Label}: {Value}", label, value)).ToPython());
         _bridge.SetAttr("log", new Action<string>(message => _log.Info("[script] {Message}", message)).ToPython());
 

@@ -101,10 +101,10 @@ layeron.log("...")
 layeron.check_cancelled()
 
 layeron.set_volume(array)      # dtype 决定 byte / ushort，整卷原子替换
-layeron.mask_create(name, color=None)
+mask = layeron.mask_create(name, color=None)
+mask.set_slice("xy", z, plane) # 返回写入后 mask 的 voxel 数
+mask.publish()                 # 返回 occupied block 数
 layeron.mask_add(name, array, color=None)
-layeron.mask_set_slice(handle, z, plane, array)
-layeron.mask_publish(handle)
 
 # 标注：图层 + 每条标注只属于一个切片
 layer = layeron.annotation_layer_create("ROI", color=(255, 200, 0, 204))

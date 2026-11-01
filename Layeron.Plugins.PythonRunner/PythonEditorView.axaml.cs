@@ -77,6 +77,20 @@ internal sealed partial class PythonEditorView : UserControl, IPythonDocumentVie
         SetRunning(true);
         SetStatus($"Running {name}…");
 
+        // The script's progress is UI state, so it is subscribed only for the duration of this run: a
+        // console session has no bar of its own, and a view that stayed subscribed would update a bar for
+        // somebody else's script.
+        void OnProgress(double fraction) => Dispatcher.UIThread.Post(() =>
+        {
+            if (_progress is null)
+                return;
+
+            _progress.IsIndeterminate = false;
+            _progress.Value = fraction;
+        });
+
+        engine.Progress += OnProgress;
+
         try
         {
             var run = await engine.EvalAsync(code, _document?.Path, _runCts.Token);
@@ -98,6 +112,7 @@ internal sealed partial class PythonEditorView : UserControl, IPythonDocumentVie
         }
         finally
         {
+            engine.Progress -= OnProgress;
             _runCts.Dispose();
             _runCts = null;
             SetRunning(false);
@@ -204,6 +219,14 @@ internal sealed partial class PythonEditorView : UserControl, IPythonDocumentVie
     {
         _cancelButton?.SetCurrentValue(IsVisibleProperty, running);
         _progress?.SetCurrentValue(IsVisibleProperty, running);
+
+        // A fresh run starts at zero; without this the previous run's final fraction is shown until the
+        // script reports its first value.
+        if (running && _progress is not null)
+        {
+            _progress.IsIndeterminate = false;
+            _progress.Value = 0;
+        }
     }
 
     private void SetStatus(string text)

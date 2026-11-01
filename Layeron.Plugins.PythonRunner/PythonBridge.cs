@@ -47,6 +47,15 @@ internal sealed class PythonBridge
     private readonly Dictionary<int, IMaskLayer> _masks = [];
 
     /// <summary>
+    /// Set-voxel counts for the mask layers this bridge has handed out. `set_slice` returns the whole
+    /// mask's voxel count, and the bitmap exposes only block occupancy, so the bridge keeps the running
+    /// total: a created mask starts at zero, an added mask starts from the array it was built from, and a
+    /// mask the user made is counted once, on first write. The count is adjusted by the difference of the
+    /// plane written, never by rescanning the volume.
+    /// </summary>
+    private readonly Dictionary<int, long> _voxelCounts = [];
+
+    /// <summary>
     /// Annotation layers and annotations this session handed a handle to, so a script can address a layer
     /// the user created as well as the ones it made itself.
     /// </summary>
@@ -246,8 +255,10 @@ internal sealed class PythonBridge
     {
         var volume = RequireVolume();
         var layer = NewLayer(name, new Big3DBitMap(volume.X, volume.Y, volume.Z), new MaskColor((byte)r, (byte)g, (byte)b, (byte)a));
+        var handle = HandleOf(layer);
 
-        return HandleOf(layer);
+        _voxelCounts[handle] = 0;
+        return handle;
     }
 
     /// <summary>
@@ -265,9 +276,11 @@ internal sealed class PythonBridge
             var volume = RequireVolume();
             var mask = new Big3DBitMap(volume.X, volume.Y, volume.Z);
 
-            FillMask(mask, source, volume);
+            var voxels = FillMask(mask, source, volume);
+            var handle = HandleOf(NewLayer(name, mask, new MaskColor((byte)r, (byte)g, (byte)b, (byte)a)));
 
-            return HandleOf(NewLayer(name, mask, new MaskColor((byte)r, (byte)g, (byte)b, (byte)a)));
+            _voxelCounts[handle] = voxels;
+            return handle;
         }
     }
 
@@ -290,12 +303,19 @@ internal sealed class PythonBridge
     }
 
     /// <summary>
-    /// Writes one plane of a mask from a bool array, and returns how many voxels the mask now holds. The
-    /// buffer's shape must match the plane, so a transposed array is refused instead of being written skewed.
+    /// Writes one plane of a mask from a bool array, and reports both the number of voxels the mask now
+    /// holds and its occupied block count. The buffer's shape must match the plane, so a transposed array is
+    /// refused instead of being written skewed.
     /// <para>
     /// Writes are staged: the change is visible to <see cref="Masks"/> and to the slice readers immediately,
     /// but the views are only told once, by <see cref="MaskPublish"/>. Filling a mask slice by slice therefore
     /// costs one refresh instead of one per slice.
+    /// </para>
+    /// <para>
+    /// The voxel count is what the public <c>MaskLayer.set_slice</c> returns, because that is the question a
+    /// caller actually has; the block count is still reported because <c>occupied_blocks</c> exposes the
+    /// sparse layout. The voxel total is kept as a running count and adjusted by the written plane's old and
+    /// new population, so a script that fills a mask slice by slice never causes a volume rescan.
     /// </para>
     /// </summary>
     public PyObject MaskSetSlice(int handle, string plane, int index, PyObject? values)
@@ -304,26 +324,37 @@ internal sealed class PythonBridge
         {
             var mask = RequireMask(handle).Bitmap;
             var bits = Arrays.ReadBools(values, out var shape);
+            var total = VoxelCountOf(handle, mask);
 
+            long before;
             switch (plane)
             {
                 case "xy":
                     Expect(shape, mask.SizeY, mask.SizeX, "[y, x]");
+                    before = CountSet(mask.GetXYSlice(index));
                     SetXYPlane(mask, index, bits, shape);
                     break;
                 case "xz":
                     Expect(shape, mask.SizeZ, mask.SizeX, "[z, x]");
+                    before = CountSet(mask.GetXZSlice(index));
                     SetXZPlane(mask, index, bits, shape);
                     break;
                 case "yz":
                     Expect(shape, mask.SizeZ, mask.SizeY, "[z, y]");
+                    before = CountSet(mask.GetYZSlice(index));
                     SetYZPlane(mask, index, bits, shape);
                     break;
                 default:
                     throw new ArgumentException($"Plane must be 'xy', 'xz' or 'yz', not '{plane}'.", nameof(plane));
             }
 
-            return mask.OccupiedBlockCount.ToPython();
+            total += CountSet(bits) - before;
+            _voxelCounts[handle] = total;
+
+            var result = new PyDict();
+            result.SetItem("voxels", total.ToPython());
+            result.SetItem("occupied_blocks", mask.OccupiedBlockCount.ToPython());
+            return result;
         }
     }
 
@@ -366,7 +397,10 @@ internal sealed class PythonBridge
 
         foreach (var (handle, layer) in _masks.ToArray())
             if (matches.Contains(layer))
+            {
                 _masks.Remove(handle);
+                _voxelCounts.Remove(handle);
+            }
 
         return matches.Length;
     }
@@ -699,6 +733,42 @@ internal sealed class PythonBridge
             // silently writing into nothing is the worst way to find that out.
             : throw new ArgumentException($"No mask layer with handle {handle}. It may have been removed.", nameof(handle));
 
+    /// <summary>
+    /// The set-voxel total for a mask, counted once if this bridge has not seen the layer before. A layer
+    /// created by <c>mask_create</c> starts at zero and one added by <c>mask_add</c> starts from its input
+    /// array, so this scan only happens for a layer the user drew or loaded outside Python.
+    /// </summary>
+    private long VoxelCountOf(int handle, Big3DBitMap mask)
+    {
+        if (_voxelCounts.TryGetValue(handle, out var total))
+            return total;
+
+        total = 0;
+        for (var z = 0; z < mask.SizeZ; z++)
+            total += CountSet(mask.GetXYSlice(z));
+
+        _voxelCounts[handle] = total;
+        return total;
+    }
+
+    private static long CountSet(bool[,] values)
+    {
+        long count = 0;
+        foreach (var value in values)
+            if (value)
+                count++;
+        return count;
+    }
+
+    private static long CountSet(bool[] values)
+    {
+        long count = 0;
+        foreach (var value in values)
+            if (value)
+                count++;
+        return count;
+    }
+
     private static void Expect(int[] shape, int rows, int columns, string expected)
     {
         if (shape.Length != 2 || shape[0] != rows || shape[1] != columns)
@@ -764,7 +834,7 @@ internal sealed class PythonBridge
     /// is built from bulk writes. The buffer is cleared first, which is what keeps an edge block's padding -
     /// memory that holds no voxel - from marking anything.
     /// </summary>
-    private static void FillMask(Big3DBitMap mask, PyObject? source, ReadonlyBig3DArray volume)
+    private static long FillMask(Big3DBitMap mask, PyObject? source, ReadonlyBig3DArray volume)
     {
         var values = Arrays.ReadBools(source, out var shape);
 
@@ -778,6 +848,7 @@ internal sealed class PythonBridge
 
         var edge = ReadonlyBig3DArray.BlockEdge;
         var buffer = new bool[ReadonlyBig3DArray.BlockVolumeElements];
+        long setCount = 0;
 
         for (var bz = 0; bz < volume.BlocksZ; bz++)
         for (var by = 0; by < volume.BlocksY; by++)
@@ -797,11 +868,18 @@ internal sealed class PythonBridge
                 var columns = Math.Min(edge, volume.X - originX);
 
                 for (var lx = 0; lx < columns; lx++)
-                    buffer[destination + lx] = values[rowStart + lx];
+                {
+                    var value = values[rowStart + lx];
+                    buffer[destination + lx] = value;
+                    if (value)
+                        setCount++;
+                }
             }
 
             mask.SetBlock(bx, by, bz, buffer);
         }
+
+        return setCount;
     }
 
     /// <summary>

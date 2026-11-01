@@ -1,8 +1,8 @@
 """Layeron's Python API.
 
-Every function forwards to the private bridge module the engine registers before any user code runs. One
-surface rather than reaching into the runtime directly: the boundary gets one place to live, and one place to
-look at when it breaks.
+Import this module (`import layeron`). It forwards to the private bridge the engine registers before any user
+code runs; that bridge is an implementation detail, not a second API, and its function names are not the ones
+documented here.
 
 The data functions work in numpy arrays. A volume or a mask is shaped [z, y, x] - the same order the host uses
 - so `read_roi(x, y, z, sx, sy, sz)` comes back as an array you index as `roi[lz, ly, lx]`. Everything here
@@ -29,7 +29,11 @@ engine_version = _clr.engine_version
 
 
 def status(message):
-    """Reports what the running script is doing, as a line in the editor's status area."""
+    """Reports what the running script is doing, as a line in the editor's status area.
+
+    UI only: the message is not written to stdout, so a caller that captures interpreter output does not
+    see it.
+    """
     _clr.status(str(message))
 
 
@@ -39,10 +43,10 @@ def progress(fraction):
 
 
 def result(label, value):
-    """Publishes a labelled result to the log window.
+    """Publishes a labelled result to the host's log window.
 
-    Use this rather than print for anything worth keeping: a result survives the run, which is the point of a
-    computation.
+    This is a UI channel: it is not written to stdout, so a caller that captures interpreter output (for
+    example an agent tool) does not see it. Use ``print`` when the value itself is the output.
     """
     _clr.result(str(label), str(value))
 
@@ -114,7 +118,12 @@ def volume():
 
 
 def histogram():
-    """Gray-level histogram of the loaded volume, one bin per value, or ``None`` when there is no data."""
+    """Gray-level histogram of the loaded volume, or ``None`` when there is no data.
+
+    There are at most 256 bins spanning the element type's whole value range: one bin per value for an
+    8-bit volume, and one bin per 256 values for a 16-bit one - bin ``i`` counts voxels whose value shifted
+    right by 8 equals ``i``.
+    """
     return _clr.data_histogram()
 
 
@@ -193,8 +202,9 @@ class MaskLayer:
         A wrong shape is refused rather than cropped, because a transposed array would otherwise be written
         skewed and look almost right. Returns the number of voxels the mask now holds.
         """
-        self.occupied_blocks = _clr.mask_set_slice(self._handle, str(plane), int(index), values)
-        return self.occupied_blocks
+        updated = _clr.mask_set_slice(self._handle, str(plane), int(index), values)
+        self.occupied_blocks = updated["occupied_blocks"]
+        return updated["voxels"]
 
     def array(self):
         """The whole mask as a bool array shaped [z, y, x], read one XY plane at a time.
@@ -268,7 +278,9 @@ def mask_create(name, color=None):
     r, g, b, a = _rgba(color, (255, 200, 0, 102))
     handle = _clr.mask_create(str(name), int(r), int(g), int(b), int(a))
 
-    return mask_get(handle) or MaskLayer(handle, str(name), (r, g, b, a), (0, 0, 0), 0)
+    # The layer is in the manager before the handle comes back, so this is only a fallback for a host
+    # that cannot describe it yet. It still has to be a usable object, with the current volume's shape.
+    return mask_get(handle) or MaskLayer(handle, str(name), (r, g, b, a), tuple(info()["shape"]), 0)
 
 
 def mask_add(name, mask, color=None):
@@ -286,7 +298,9 @@ def mask_add(name, mask, color=None):
     r, g, b, a = _rgba(color, (255, 200, 0, 102))
     handle = _clr.mask_add(str(name), mask, int(r), int(g), int(b), int(a))
 
-    return mask_get(handle) or MaskLayer(handle, str(name), (r, g, b), 0.4, (0, 0, 0), 0)
+    # Same fallback as mask_create, and the same rule: a MaskLayer with a usable shape and colour, not a
+    # placeholder with the wrong number of constructor arguments.
+    return mask_get(handle) or MaskLayer(handle, str(name), (r, g, b, a), tuple(info()["shape"]), 0)
 
 
 def mask_remove(name):

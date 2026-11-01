@@ -8,9 +8,10 @@ static class ChatSkills
         new(new AgentInlineSkill(
             name: "layeron-skills",
             description: "The skills about how to work with the layeron app to help the user to done the task",
-            instructions: "The app provide a reage of python api app for accsee the data, you can check the docs with the tool GetDocs, follow the name in folling names:\n" +
+            instructions: "The app provides a Python API for accessing the data. Read the docs with the GetDocs tool; the available documents are:\n" +
                 string.Join("\n", BuildDocsNames.Select(name => $"- {name}")) +
-                "\n\nThe data API covers the loaded volume, mask layers and annotation layers. " +
+                "\n\nAlways use the public module (`import layeron`). `_layeron_clr` is a private bridge and is not the documented API. " +
+                "The API covers the loaded volume, mask layers and annotation layers. " +
                 "Create annotations with annotation_layer_create and its add_point/add_line/add_polygon methods."
         ));
 

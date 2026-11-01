@@ -186,6 +186,7 @@ import layeron
 
 print("dtype", layeron.info()["dtype"])
 print("slice dtype", layeron.read_xy_slice(0).dtype)
+print("bins", len(layeron.histogram()))
 layeron.set_volume(np.full((16, 18, 20), 40000, dtype=np.uint16))
 print("after", layeron.info()["dtype"], layeron.read_xy_slice(0).max())
 """);
@@ -194,6 +195,7 @@ print("after", layeron.info()["dtype"], layeron.read_xy_slice(0).max())
 
         // 40000 does not fit in a byte: if the 16-bit path were really an 8-bit one, this would not survive.
         Assert.IsTrue(Said("dtype uint16"), Describe());
+        Assert.IsTrue(Said("bins 256"), Describe());
         Assert.IsTrue(Said("after uint16 40000"), Describe());
         Assert.IsInstanceOfType<Big3DArray<ushort>>(Volumes.Current);
     }
@@ -376,6 +378,120 @@ print("wrote", bool(found[0].read_slice("xy", 5)[0, 0]))
         // The user's own voxel was replaced by the write, at the host level and not only in the interpreter.
         Assert.IsTrue(bitmap[0, 0, 5]);
         Assert.IsFalse(bitmap[3, 4, 5]);
+    }
+
+    [TestMethod]
+    public async Task Bridge_SetSliceReturnsTheVoxelCountTheDocumentationPromises()
+    {
+        var session = Session();
+
+        var run = await session.EvalAsync("""
+import numpy as np
+import layeron
+
+layeron.mask_remove("counted")
+mask = layeron.mask_create("counted")
+plane = np.zeros((mask.y, mask.x), dtype=np.bool_)
+plane[1:11, 1:11] = True
+
+returned = mask.set_slice("xy", 0, plane)
+print("returned", returned)
+print("readback", int(mask.read_slice("xy", 0).sum()))
+print("blocks", mask.occupied_blocks)
+""");
+
+        Assert.IsTrue(run.Ok, run.Error);
+
+        // The return value is a voxel count, not the count of 64^3 storage blocks that happen to be
+        // occupied: 100 written voxels sit in one block, and the two numbers used to be confusable.
+        Assert.IsTrue(Said("returned 100"), Describe());
+        Assert.IsTrue(Said("readback 100"), Describe());
+        Assert.IsTrue(Said("blocks 1"), Describe());
+    }
+
+    [TestMethod]
+    public async Task Bridge_AcceptsNegativeInt8VoxelsAsTheDocumentationSays()
+    {
+        var session = Session();
+
+        var run = await session.EvalAsync("""
+import numpy as np
+import layeron
+
+layeron.set_volume(np.full((4, 5, 6), -1, dtype=np.int8))
+print("dtype", layeron.info()["dtype"])
+print("voxel", int(layeron.read_xy_slice(0)[0, 0]))
+""");
+
+        Assert.IsTrue(run.Ok, run.Error);
+
+        // -1 is the two's-complement bit pattern of an 8-bit 255. The old path asked the runtime for a
+        // byte directly and failed on any negative value, even though int8 is an accepted volume dtype.
+        Assert.IsTrue(Said("dtype uint8"), Describe());
+        Assert.IsTrue(Said("voxel 255"), Describe());
+    }
+
+    [TestMethod]
+    public async Task Bridge_ReportsProgressToTheHost()
+    {
+        var session = Session();
+        var fractions = new List<double>();
+
+        void OnProgress(double fraction)
+        {
+            lock (fractions)
+                fractions.Add(fraction);
+        }
+
+        session.Progress += OnProgress;
+        try
+        {
+            var run = await session.EvalAsync("""
+import layeron
+
+layeron.progress(0.25)
+layeron.progress(2.0)
+""");
+
+            Assert.IsTrue(run.Ok, run.Error);
+        }
+        finally
+        {
+            session.Progress -= OnProgress;
+        }
+
+        lock (fractions)
+        {
+            CollectionAssert.AreEqual(new[] { 0.25, 1.0 }, fractions.ToArray());
+        }
+    }
+
+    [TestMethod]
+    public async Task Bridge_MaskAddFallbackReturnsAUsableLayer()
+    {
+        var session = Session();
+
+        // The fallback only runs when the host cannot describe the layer it just created. The old
+        // fallback called MaskLayer with the wrong number of arguments, so the failure surfaced as a
+        // TypeError instead of a layer; this pins the object it returns.
+        var run = await session.EvalAsync("""
+import numpy as np
+import layeron
+
+layeron.mask_remove("fallback")
+original = layeron.mask_get
+layeron.mask_get = lambda handle: None
+try:
+    mask = layeron.mask_add("fallback", np.zeros(layeron.info()["shape"], dtype=np.bool_))
+    print("fallback", mask.name, mask.shape, mask.color)
+finally:
+    layeron.mask_get = original
+""");
+
+        Assert.IsTrue(run.Ok, run.Error);
+        Assert.IsTrue(
+            Said($"fallback fallback ({SizeZ}, {SizeY}, {SizeX}) (255, 200, 0, 102)"),
+            Describe());
     }
 
     [TestMethod]

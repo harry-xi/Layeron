@@ -1,6 +1,6 @@
 # Layeron's Python API
 
-Every function forwards to the private bridge module the engine registers before any user code runs. One surface rather than reaching into the runtime directly: the boundary gets one place to live, and one place to look at when it breaks.
+Start with `import layeron`. Every function forwards to a private bridge module the engine registers before any user code runs. That bridge (`_layeron_clr`) is an implementation detail, not a second API: its function names are not the names documented here, and it should not be imported directly.
 
 The data functions work in numpy arrays. A volume or a mask is shaped `[z, y, x]` — the same order the host uses — so `read_roi(x, y, z, sx, sy, sz)` comes back as an array you index as `roi[lz, ly, lx]`. Everything here copies: nothing returns a live view of the loaded volume, so a computation cannot corrupt what is on screen by accident. To put something back, use `set_volume`, `mask_add`, or the `MaskLayer` returned by `mask_create`; `annotation_layer_create` and its `add_*` methods create vector annotations instead.
 
@@ -22,19 +22,23 @@ Version of the Python interpreter itself.
 
 Reports what the running script is doing, as a line in the editor's status area.
 
+UI only: this does not write to stdout, so an agent tool that captures interpreter output does not see it.
+
 ### `progress(fraction)`
 
-Reports progress as a fraction in `[0, 1]`.
+Reports progress as a fraction in `[0, 1]`, shown by the editor's progress bar.
+
+UI only: this does not write to stdout either.
 
 ### `result(label, value)`
 
 Publishes a labelled result to the log window.
 
-Use this rather than `print` for anything worth keeping: a result survives the run, which is the point of a computation.
+UI only: this is not written to stdout, so an agent tool does not receive it. Use `print` when the value itself is the output the next step has to read.
 
 ### `log(message)`
 
-Writes a line to the application log.
+Writes a line to the application log. UI only, like `result`.
 
 ### `check_cancelled()`
 
@@ -76,7 +80,9 @@ For anything larger than a modest volume prefer `read_xy_slice` or `read_roi`: t
 
 ### `histogram()`
 
-Gray-level histogram of the loaded volume, one bin per value, or `None` when there is no data.
+Gray-level histogram of the loaded volume, or `None` when there is no data.
+
+There are at most 256 bins spanning the element type's whole value range: one bin per value for an 8-bit volume, and one bin per 256 values for a 16-bit one — bin `i` counts voxels whose value shifted right by 8 equals `i`.
 
 ### `crosshair()`
 
@@ -88,7 +94,7 @@ The crosshair position as `(x, y, z)` — the slice the user is looking at.
 
 Replaces the loaded volume with `array`, shaped `[z, y, x]`.
 
-The dtype decides the storage depth: `uint8` — or `int8`/`bool` — makes an 8-bit volume, `uint16` — or `int16` — a 16-bit one. Any other dtype is refused rather than converted, so a float array is an error instead of a silently truncated volume.
+The dtype decides the storage depth: `uint8` — or `int8`/`bool` — makes an 8-bit volume, `uint16` — or `int16` — a 16-bit one. Any other dtype is refused rather than converted, so a float array is an error instead of a silently truncated volume. Signed values are stored as their two's-complement bit pattern: `-1` in an `int8` array becomes `255`, just as `-1` in an `int16` array becomes `65535`.
 
 The replacement is atomic and goes down the same path a file load takes, so masks are re-validated against the new dimensions and stale results are invalidated.
 

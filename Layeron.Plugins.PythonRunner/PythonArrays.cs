@@ -124,12 +124,18 @@ internal static class Arrays
 
         var values = kind switch
         {
-            "uint8" or "int8" or "bool" => (Array)ReadFlat(source, shape, static item => item.As<byte>()),
+            "bool" => (Array)ReadFlat(source, shape, static item => item.As<bool>() ? (byte)1 : (byte)0),
+
+            // As<long> rather than As<byte>: an int8 array is documented as 8-bit storage, and the runtime
+            // rejects a negative value when asked for a byte directly. Narrowing from a wide integer keeps
+            // the two's-complement bit pattern, so -1 becomes 255 - the same rule the 16-bit path below
+            // already follows. Unsigned values in 0..255 are unchanged.
+            "uint8" or "int8" => ReadFlat(source, shape, static item => unchecked((byte)item.As<long>())),
 
             // Not As<ushort>(): the runtime's type table maps an unsigned 16-bit request onto Int16 and then
             // fails the cast on a value above 32767. Reading as a wide integer and narrowing is exact, and a
             // 16-bit voxel always fits.
-            "uint16" or "int16" => ReadFlat(source, shape, static item => (ushort)item.As<long>()),
+            "uint16" or "int16" => ReadFlat(source, shape, static item => unchecked((ushort)item.As<long>())),
             _ => throw new ArgumentException(
                 $"A volume must be uint8, uint16, int8, int16 or bool, but this array is '{kind}'.",
                 nameof(source))
