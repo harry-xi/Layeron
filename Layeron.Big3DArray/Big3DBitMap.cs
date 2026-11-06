@@ -1,4 +1,8 @@
-﻿using System.Collections;
+﻿using System.Buffers.Binary;
+using System.Collections;
+using System.IO.Compression;
+using System.Numerics;
+using System.Runtime.InteropServices;
 
 namespace Layeron.Big3DArray
 {
@@ -452,12 +456,36 @@ namespace Layeron.Big3DArray
             lz = z - bz * BlockSize;
         }
 
+        /// <summary>
+        /// Bytes needed to store one packed block (one bit per element).
+        /// </summary>
+        private const int PackedBlockBytes = BlockVolume / 8;
+
+        /// <summary>
+        /// Marker that starts a compressed bitmap stream. A legacy (uncompressed) stream starts
+        /// with the int32 X size instead, which can never equal this marker in practice.
+        /// </summary>
+        private static ReadOnlySpan<byte> CompressedMagic => "B3MC"u8;
+
+        /// <summary>
+        /// Serialise to <paramref name="stream"/>: a 4-byte marker followed by a gzip-compressed
+        /// body (dimensions + block table). <see cref="LoadStream"/> still reads the legacy
+        /// uncompressed layout, so older files stay loadable.
+        /// </summary>
         public void SaveStream(Stream stream)
+        {
+            stream.Write(CompressedMagic);
+            using (var gz = new GZipStream(stream, CompressionLevel.Optimal, leaveOpen: true))
+                WriteBody(gz);
+        }
+
+        private void WriteBody(Stream stream)
         {
             using var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true);
             writer.Write(_sizeX);
             writer.Write(_sizeY);
             writer.Write(_sizeZ);
+            var bytes = new byte[PackedBlockBytes];
             for (var x = 0; x < _blocksX; x++)
             for (var y = 0; y < _blocksY; y++)
             for (var z = 0; z < _blocksZ; z++)
@@ -474,13 +502,7 @@ namespace Layeron.Big3DArray
                 else
                 {
                     writer.Write((byte)2); // normal
-                    var bits = new BitArray(BlockVolume);
-                    for (var lz = 0; lz < BlockSize; lz++)
-                    for (var ly = 0; ly < BlockSize; ly++)
-                    for (var lx = 0; lx < BlockSize; lx++)
-                        bits.Set((lz << 12) | (ly << 6) | lx, block[lx, ly, lz]);
-                    var bytes = new byte[(BlockVolume + 7) / 8];
-                    bits.CopyTo(bytes, 0);
+                    block.CopyPacked(bytes);
                     writer.Write(bytes);
                 }
             }
@@ -488,38 +510,50 @@ namespace Layeron.Big3DArray
 
         public static Big3DBitMap LoadStream(Stream stream)
         {
-            using var reader = new BinaryReader(stream, System.Text.Encoding.UTF8, leaveOpen: true);
-            var sizeX = reader.ReadInt32();
-            var sizeY = reader.ReadInt32();
-            var sizeZ = reader.ReadInt32();
+            // The first 4 bytes are either the compressed marker (the gzip stream follows) or the
+            // start of a legacy uncompressed stream, whose remaining 8 header bytes follow.
+            Span<byte> header = stackalloc byte[12];
+            stream.ReadExactly(header[..4]);
+
+            if (header[..4].SequenceEqual(CompressedMagic))
+            {
+                using var gz = new GZipStream(stream, CompressionMode.Decompress, leaveOpen: true);
+                gz.ReadExactly(header);
+                return ReadBody(gz, header);
+            }
+
+            stream.ReadExactly(header[4..]);
+            return ReadBody(stream, header);
+        }
+
+        private static Big3DBitMap ReadBody(Stream stream, ReadOnlySpan<byte> header)
+        {
+            var sizeX = BinaryPrimitives.ReadInt32LittleEndian(header[..4]);
+            var sizeY = BinaryPrimitives.ReadInt32LittleEndian(header[4..8]);
+            var sizeZ = BinaryPrimitives.ReadInt32LittleEndian(header[8..12]);
+
             var bitmap = new Big3DBitMap(sizeX, sizeY, sizeZ);
+            var payload = new byte[PackedBlockBytes];
             for (var x = 0; x < bitmap._blocksX; x++)
             for (var y = 0; y < bitmap._blocksY; y++)
             for (var z = 0; z < bitmap._blocksZ; z++)
             {
-                var state = reader.ReadByte();
-                if (state == 0)
+                switch (stream.ReadByte())
                 {
-                    bitmap._array[x, y, z] = null;
-                }
-                else if (state == 1)
-                {
-                    bitmap._array[x, y, z] = Block.Full;
-                }
-                else if (state == 2)
-                {
-                    var bytes = reader.ReadBytes((BlockVolume + 7) / 8);
-                    var bits = new BitArray(bytes);
-                    var block = Block.CreateEmpty();
-                    for (var lz = 0; lz < BlockSize; lz++)
-                    for (var ly = 0; ly < BlockSize; ly++)
-                    for (var lx = 0; lx < BlockSize; lx++)
-                        block[lx, ly, lz] = bits.Get((lz << 12) | (ly << 6) | lx);
-                    bitmap._array[x, y, z] = block;
-                }
-                else
-                {
-                    throw new InvalidDataException($"Invalid block state {state}");
+                    case 0:
+                        bitmap._array[x, y, z] = null;
+                        break;
+                    case 1:
+                        bitmap._array[x, y, z] = Block.Full;
+                        break;
+                    case 2:
+                        stream.ReadExactly(payload);
+                        bitmap._array[x, y, z] = Block.FromPackedBytes(payload);
+                        break;
+                    case -1:
+                        throw new EndOfStreamException("Unexpected end of bitmap stream.");
+                    default:
+                        throw new InvalidDataException("Invalid block state in bitmap stream.");
                 }
             }
             return bitmap;
@@ -567,6 +601,34 @@ namespace Layeron.Big3DArray
                         bits.Set(i, true);
                 return new Block(2, bits, setCount);
             }
+
+            /// <summary>
+            /// Create a block from its packed bit layout: bit <c>(lz &lt;&lt; 12) | (ly &lt;&lt; 6) | lx</c>
+            /// of byte <c>index / 8</c> (least significant bit first), which is exactly what
+            /// <see cref="Big3DBitMap.SaveStream"/> writes. Returns <c>null</c> for an all-zero
+            /// block and <see cref="Full"/> for an all-one block. The buffer's contents are copied, so
+            /// the caller may reuse <paramref name="packed"/>.
+            /// </summary>
+            public static Block? FromPackedBytes(byte[] packed)
+            {
+                if (packed.Length != PackedBlockBytes)
+                    throw new ArgumentException($"Packed block must hold {PackedBlockBytes} bytes.", nameof(packed));
+
+                var setCount = 0;
+                var words = MemoryMarshal.Cast<byte, ulong>(packed);
+                foreach (var word in words)
+                    setCount += BitOperations.PopCount(word);
+
+                if (setCount == 0) return null;
+                if (setCount == BlockVolume) return Full;
+                return new Block(2, new BitArray(packed), setCount);
+            }
+
+            /// <summary>
+            /// Write the block's bits into <paramref name="destination"/> in the packed layout used
+            /// by <see cref="FromPackedBytes"/>.
+            /// </summary>
+            public void CopyPacked(byte[] destination) => _bits!.CopyTo(destination, 0);
 
             /// <summary>
             /// Copy-on-write: materialize a private mutable block from the shared

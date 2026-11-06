@@ -166,13 +166,18 @@ internal sealed class AppVolumeService : IVolumeService, IDisposable
 /// Adapter over the session's mask manager. Added layers become ordinary <c>MaskLayer</c> instances,
 /// so a mask a plugin produces behaves exactly like one the user created in the mask manager - it
 /// persists after the plugin unloads, which is what you want for a segmentation result.
+/// <para>
+/// <see cref="Layers"/> is a view over the manager's own collection and the manager's change events
+/// are forwarded, so a mask the user draws or loads from disk is visible to plugins and scripts just
+/// like one a plugin added.
+/// </para>
 /// </summary>
 internal sealed class AppMaskService : IMaskService, IDisposable
 {
     private readonly ISessionManager _sessions;
     private readonly AppVolumeService _volumes;
     private readonly IDisposable? _sessionSubscription;
-    private readonly List<IMaskLayer> _layers = [];
+    private MaskManagerViewModel? _manager;
 
     public AppMaskService(ISessionManager sessions, AppVolumeService volumes)
     {
@@ -181,7 +186,8 @@ internal sealed class AppMaskService : IMaskService, IDisposable
         _sessionSubscription = _sessions.CurrentSession.Subscribe(Attach);
     }
 
-    public IReadOnlyList<IMaskLayer> Layers => _layers;
+    public IReadOnlyList<IMaskLayer> Layers =>
+        _manager is { } manager ? [.. manager.Masks.Cast<IMaskLayer>()] : [];
 
     public event Action? Changed;
 
@@ -209,45 +215,51 @@ internal sealed class AppMaskService : IMaskService, IDisposable
         };
 
         manager.AddLayer(layer);
-        _layers.Add(layer);
-        Changed?.Invoke();
         return layer;
     }
 
     public void Remove(IMaskLayer layer)
     {
-        if (layer is not MaskLayer typed)
-            return;
-
-        _sessions.Current?.MaskManager.RemoveLayer(typed);
-        _layers.Remove(layer);
-        Changed?.Invoke();
+        if (layer is MaskLayer typed)
+            _manager?.RemoveLayer(typed);
     }
 
-    public void NotifyContentChanged()
-    {
-        _sessions.Current?.MaskManager.RaiseMasksContentChanged();
-        ContentChanged?.Invoke();
-    }
+    public void NotifyContentChanged() => _manager?.RaiseMasksContentChanged();
 
     private void Attach(ISession? session)
     {
-        _layers.Clear();
-
-        if (session?.MaskManager is { } manager)
+        if (_manager != null)
         {
-            foreach (var layer in manager.Masks)
-                _layers.Add(layer);
+            _manager.MasksCollectionChanged -= OnMasksCollectionChanged;
+            _manager.MasksContentChanged -= OnMasksContentChanged;
+        }
+
+        _manager = session?.MaskManager;
+
+        if (_manager != null)
+        {
+            _manager.MasksCollectionChanged += OnMasksCollectionChanged;
+            _manager.MasksContentChanged += OnMasksContentChanged;
         }
 
         // Layers are owned by the session: a new session starts with none of them.
         Changed?.Invoke();
     }
 
+    private void OnMasksCollectionChanged() => Changed?.Invoke();
+
+    private void OnMasksContentChanged() => ContentChanged?.Invoke();
+
     public void Dispose()
     {
         _sessionSubscription?.Dispose();
-        _layers.Clear();
+
+        if (_manager != null)
+        {
+            _manager.MasksCollectionChanged -= OnMasksCollectionChanged;
+            _manager.MasksContentChanged -= OnMasksContentChanged;
+            _manager = null;
+        }
     }
 }
 

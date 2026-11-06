@@ -367,4 +367,96 @@ public class Big3DBitMapTest
         // Neighboring block must remain intact throughout.
         Assert.IsTrue(map[191, 191, 191]);
     }
+
+    // ---- Serialization ----
+
+    /// <summary>
+    /// Builds a map that exercises every block state: empty blocks, the shared all-one
+    /// block and normal blocks with sparse contents.
+    /// </summary>
+    private static Big3DBitMap NewSerializationMap()
+    {
+        const int size = 130; // 3x3x3 blocks, with edge blocks that are not block-aligned
+        var map = new Big3DBitMap(size, size, size);
+        for (var z = 0; z < 64; z++)
+        for (var y = 0; y < 64; y++)
+        for (var x = 0; x < 64; x++)
+            map[x, y, z] = true; // block (0,0,0) becomes all-one
+
+        for (var i = 0; i < size; i++)
+        {
+            map[64 + i % 64, 64 + (i * 7) % 64, 64 + (i * 13) % 64] = true;
+            map[129, i, 64 + i % 64] = true;
+            map[i, 129, 129] = true;
+        }
+        return map;
+    }
+
+    private static void AssertSameContent(Big3DBitMap expected, Big3DBitMap actual)
+    {
+        Assert.AreEqual(expected.SizeX, actual.SizeX);
+        Assert.AreEqual(expected.SizeY, actual.SizeY);
+        Assert.AreEqual(expected.SizeZ, actual.SizeZ);
+        for (var z = 0; z < expected.SizeZ; z++)
+        for (var y = 0; y < expected.SizeY; y++)
+        for (var x = 0; x < expected.SizeX; x++)
+            Assert.AreEqual(expected[x, y, z], actual[x, y, z], $"[{x},{y},{z}]");
+    }
+
+    [TestMethod]
+    public void SaveLoad_Compressed_RoundTrips()
+    {
+        var map = NewSerializationMap();
+        using var ms = new MemoryStream();
+        map.SaveStream(ms);
+
+        CollectionAssert.AreEqual("B3MC"u8.ToArray(), ms.ToArray()[..4], "stream must carry the format marker");
+
+        ms.Position = 0;
+        var loaded = Big3DBitMap.LoadStream(ms);
+        AssertSameContent(map, loaded);
+    }
+
+    [TestMethod]
+    public void LoadStream_ReadsLegacyUncompressedLayout()
+    {
+        // Format written by earlier versions: int32 dimensions followed by one state byte per
+        // block and, for normal blocks, 64^3 bits packed least-significant-bit first.
+        var map = NewSerializationMap();
+        using var ms = new MemoryStream();
+        using (var writer = new BinaryWriter(ms, System.Text.Encoding.UTF8, leaveOpen: true))
+        {
+            writer.Write(map.SizeX);
+            writer.Write(map.SizeY);
+            writer.Write(map.SizeZ);
+            for (var bx = 0; bx < map.BlocksX; bx++)
+            for (var by = 0; by < map.BlocksY; by++)
+            for (var bz = 0; bz < map.BlocksZ; bz++)
+            {
+                var bits = new System.Collections.BitArray(64 * 64 * 64);
+                var any = false;
+                var all = true;
+                for (var lz = 0; lz < 64; lz++)
+                for (var ly = 0; ly < 64; ly++)
+                for (var lx = 0; lx < 64; lx++)
+                {
+                    var v = bx * 64 + lx < map.SizeX && by * 64 + ly < map.SizeY && bz * 64 + lz < map.SizeZ
+                        && map[bx * 64 + lx, by * 64 + ly, bz * 64 + lz];
+                    if (v) { any = true; bits.Set((lz << 12) | (ly << 6) | lx, true); }
+                    else all = false;
+                }
+
+                if (!any) { writer.Write((byte)0); continue; }
+                if (all) { writer.Write((byte)1); continue; }
+                writer.Write((byte)2);
+                var bytes = new byte[64 * 64 * 64 / 8];
+                bits.CopyTo(bytes, 0);
+                writer.Write(bytes);
+            }
+        }
+
+        ms.Position = 0;
+        var loaded = Big3DBitMap.LoadStream(ms);
+        AssertSameContent(map, loaded);
+    }
 }

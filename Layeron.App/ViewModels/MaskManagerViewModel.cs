@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -98,11 +99,19 @@ public class MaskManagerViewModel : Tool
         var ay = _sharedData.Array.Y;
         var az = _sharedData.Array.Z;
 
+        var removed = false;
         for (var i = Masks.Count - 1; i >= 0; i--)
         {
             if (!Masks[i].MatchesDimensions(ax, ay, az))
+            {
                 Masks.RemoveAt(i);
+                removed = true;
+            }
         }
+
+        // Layers that do not fit the new volume disappear from the panel; listeners must see that too.
+        if (removed)
+            MasksCollectionChanged?.Invoke();
 
         if (ActiveMask != null && !Masks.Contains(ActiveMask))
             ActiveMask = Masks.FirstOrDefault(); // [TEMP-DEMO] keep active mask valid
@@ -170,24 +179,44 @@ public class MaskManagerViewModel : Tool
 
         if (files.Count == 0) return;
 
+        var path = files[0].Path.LocalPath;
+
         try
         {
-            var path = files[0].Path.LocalPath;
-            MaskLayer? layer;
-            await using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
-                             bufferSize: 1024 * 1024, FileOptions.SequentialScan))
+            var (x, y, z) = (ax.X, ax.Y, ax.Z);
+            var started = Stopwatch.StartNew();
+            // Decoding a large mask takes long enough to notice; keep it off the UI thread the
+            // same way the volume loader does.
+            var layer = await Task.Run(() =>
             {
-                layer = MaskLayer.LoadStream(fs, ax.X, ax.Y, ax.Z);
+                using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
+                    bufferSize: 1024 * 1024, FileOptions.SequentialScan);
+                return MaskLayer.LoadStream(fs, x, y, z);
+            });
+            var decodeMs = started.ElapsedMilliseconds;
+
+            if (layer == null)
+            {
+                // LoadStream returns null only for a dimensions mismatch. Saying so is the difference
+                // between "the file is fine, the data changed" and a load button that appears to do
+                // nothing.
+                Log.Warn("Masks",
+                    "Mask '{Path}' does not match the current volume {SizeX}x{SizeY}x{SizeZ}.",
+                    path, ax.X, ax.Y, ax.Z);
+                return;
             }
 
-            if (layer == null) return;
-            Masks.Add(layer);
-            ActiveMask = layer; // [TEMP-DEMO]
-            MasksCollectionChanged?.Invoke();
+            // Same path as every other layer, so the plugin mask service and the slice views learn about
+            // a loaded mask exactly as they do about one drawn or produced by a plugin.
+            AddLayer(layer);
+            Log.Info("Masks", "Loaded {Name} in {Decode} ms decode + {Refresh} ms UI refresh",
+                layer.Name, decodeMs, started.ElapsedMilliseconds - decodeMs);
         }
-        catch
+        catch (Exception ex)
         {
-            // swallow load errors silently
+            // A malformed or truncated .b3m used to disappear without a trace. It stays non-fatal - the
+            // session is untouched - but it is no longer invisible in the log.
+            Log.Error("Masks", ex, "Could not load mask from {Path}", path);
         }
     }
 
@@ -212,9 +241,15 @@ public class MaskManagerViewModel : Tool
 
         try
         {
-            await using var fs = new FileStream(file.Path.LocalPath, FileMode.Create, FileAccess.Write, FileShare.None,
-                bufferSize: 1024 * 1024, FileOptions.SequentialScan);
-            layer.SaveStream(fs);
+            var started = Stopwatch.StartNew();
+            // Compression + disk I/O would otherwise freeze the UI while saving a large mask.
+            await Task.Run(() =>
+            {
+                using var fs = new FileStream(file.Path.LocalPath, FileMode.Create, FileAccess.Write, FileShare.None,
+                    bufferSize: 1024 * 1024, FileOptions.SequentialScan);
+                layer.SaveStream(fs);
+            });
+            Log.Info("Masks", "Saved {Name} in {Elapsed} ms", layer.Name, started.ElapsedMilliseconds);
         }
         catch
         {
