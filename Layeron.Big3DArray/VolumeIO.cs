@@ -1,4 +1,4 @@
-using System.Runtime.CompilerServices;
+using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 
 namespace Layeron.Big3DArray
@@ -27,11 +27,18 @@ namespace Layeron.Big3DArray
         /// </summary>
         internal static T[] ReadBlock<T>(BinaryReader reader) where T : unmanaged
         {
-            var bytes = reader.ReadBytes(BlockVolume * Unsafe.SizeOf<T>());
-            if (bytes.Length != BlockVolume * Unsafe.SizeOf<T>())
-                throw new InvalidDataException("Unexpected end of stream while reading a data block.");
+            // Read straight into the block's own storage: the previous implementation allocated a
+            // byte[] through ReadBytes, allocated the block, and then copied one into the other,
+            // which doubled the allocations and cost of loading a large volume.
             var block = new T[BlockVolume];
-            MemoryMarshal.Cast<byte, T>(bytes).CopyTo(block);
+            try
+            {
+                reader.BaseStream.ReadExactly(MemoryMarshal.AsBytes(block.AsSpan()));
+            }
+            catch (EndOfStreamException)
+            {
+                throw new InvalidDataException("Unexpected end of stream while reading a data block.");
+            }
             return block;
         }
 
@@ -50,6 +57,9 @@ namespace Layeron.Big3DArray
     /// </summary>
     internal readonly struct VolumeHeader
     {
+        /// <summary>Serialized size of the header: magic, version, element type and six int32s.</summary>
+        internal const int Size = 33;
+
         internal VolumeHeader(PixelElementType elementType, int x, int y, int z, int blocksX, int blocksY, int blocksZ)
         {
             ElementType = elementType;
@@ -82,25 +92,31 @@ namespace Layeron.Big3DArray
             writer.Write(header.BlocksZ);
         }
 
-        internal static VolumeHeader Read(BinaryReader reader)
+        /// <summary>
+        /// Parse a header that has already been read from the stream, so callers can inspect the
+        /// first bytes to detect the stream encoding before handing the rest over.
+        /// </summary>
+        internal static VolumeHeader Parse(ReadOnlySpan<byte> header)
         {
-            if (reader.ReadInt32() != VolumeIO.Magic)
+            if (header.Length < Size)
+                throw new InvalidDataException("Volume header is truncated.");
+            if (BinaryPrimitives.ReadInt32LittleEndian(header) != VolumeIO.Magic)
                 throw new InvalidDataException("Unsupported data format: magic value mismatch.");
-            if (reader.ReadInt32() != VolumeIO.Version)
+            if (BinaryPrimitives.ReadInt32LittleEndian(header[4..]) != VolumeIO.Version)
                 throw new InvalidDataException("Unsupported data format: version mismatch.");
 
-            var elementType = (PixelElementType)reader.ReadByte();
+            var elementType = (PixelElementType)header[8];
             if (!Enum.IsDefined(elementType))
                 throw new InvalidDataException($"Unsupported data format: unknown element type {(int)elementType}.");
 
             return new VolumeHeader(
                 elementType,
-                reader.ReadInt32(),
-                reader.ReadInt32(),
-                reader.ReadInt32(),
-                reader.ReadInt32(),
-                reader.ReadInt32(),
-                reader.ReadInt32());
+                BinaryPrimitives.ReadInt32LittleEndian(header[9..]),
+                BinaryPrimitives.ReadInt32LittleEndian(header[13..]),
+                BinaryPrimitives.ReadInt32LittleEndian(header[17..]),
+                BinaryPrimitives.ReadInt32LittleEndian(header[21..]),
+                BinaryPrimitives.ReadInt32LittleEndian(header[25..]),
+                BinaryPrimitives.ReadInt32LittleEndian(header[29..]));
         }
     }
 }

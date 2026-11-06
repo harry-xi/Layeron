@@ -23,7 +23,10 @@
                 <MenuItem Header="加载数据" Command="{Binding SharedData.LoadCommand}"/>
                 <!-- Filled from code: the built-in readers plus every loader a plugin contributed. -->
                 <MenuItem x:Name="ImportMenu" Header="从数据源加载"/>
-                <MenuItem Header="保存数据" Command="{Binding SharedData.SaveCommand}"/>
+                <MenuItem Header="保存数据">
+                    <MenuItem Header="不压缩（加载最快）" Command="{Binding SharedData.SaveCommand}"/>
+                    <MenuItem Header="压缩 GZip（便于传输）" Command="{Binding SharedData.SaveCompressedCommand}"/>
+                </MenuItem>
                 <Separator/>
                 <MenuItem Header="生成演示数据" Command="{Binding SharedData.GenerateDemoCommand}"/>
                 <MenuItem Header="生成16位演示数据" Command="{Binding SharedData.GenerateDemo16Command}"/>

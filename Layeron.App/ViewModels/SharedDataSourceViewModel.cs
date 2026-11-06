@@ -25,13 +25,15 @@ public class SharedDataSourceViewModel : ViewModelBase
     public SharedDataSourceViewModel()
     {
         LoadCommand = ReactiveCommand.CreateFromTask(LoadAsync);
-        SaveCommand = ReactiveCommand.CreateFromTask(SaveAsync);
+        SaveCommand = ReactiveCommand.CreateFromTask(() => SaveAsync(VolumeCompression.None));
+        SaveCompressedCommand = ReactiveCommand.CreateFromTask(() => SaveAsync(VolumeCompression.GZip));
         GenerateDemoCommand = ReactiveCommand.Create(GenerateDemoData);
         GenerateDemo16Command = ReactiveCommand.Create(GenerateDemoData16);
         CreateFromImagesCommand = ReactiveCommand.CreateFromTask(CreateFromImagesAsync);
 
         LoadCommand.ThrownExceptions.Subscribe(OnDataCommandError);
         SaveCommand.ThrownExceptions.Subscribe(OnDataCommandError);
+        SaveCompressedCommand.ThrownExceptions.Subscribe(OnDataCommandError);
         GenerateDemoCommand.ThrownExceptions.Subscribe(OnDataCommandError);
         GenerateDemo16Command.ThrownExceptions.Subscribe(OnDataCommandError);
         CreateFromImagesCommand.ThrownExceptions.Subscribe(OnDataCommandError);
@@ -148,6 +150,7 @@ public class SharedDataSourceViewModel : ViewModelBase
 
     public ReactiveCommand<RxVoid, RxVoid> LoadCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> SaveCommand { get; }
+    public ReactiveCommand<RxVoid, RxVoid> SaveCompressedCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> GenerateDemoCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> GenerateDemo16Command { get; }
     public ReactiveCommand<RxVoid, RxVoid> CreateFromImagesCommand { get; }
@@ -192,16 +195,17 @@ public class SharedDataSourceViewModel : ViewModelBase
         }
     }
 
-    private async Task SaveAsync()
+    private async Task SaveAsync(VolumeCompression compression)
     {
-        if (_array == null) return;
+        var array = _array;
+        if (array == null) return;
 
         var topLevel = GetTopLevel();
         if (topLevel == null) return;
 
         var file = await topLevel.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
-            Title = "Save 3D Array File",
+            Title = compression == VolumeCompression.GZip ? "Save 3D Array File (GZip)" : "Save 3D Array File",
             SuggestedFileName = Path.GetFileName(FilePath ?? "volume.b3d"),
             FileTypeChoices =
             [
@@ -212,18 +216,20 @@ public class SharedDataSourceViewModel : ViewModelBase
         if (file != null)
         {
             var path = file.Path.LocalPath;
-            StatusText = "Saving...";
+            StatusText = compression == VolumeCompression.GZip ? "Saving (GZip)..." : "Saving...";
             try
             {
                 await Task.Run(() =>
                 {
                     using var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None,
                         bufferSize: 1024 * 1024, FileOptions.SequentialScan);
-                    _array.SaveStream(fs);
+                    array.SaveStream(fs, compression);
                 });
                 FilePath = path;
-                StatusText = $"Saved to {Path.GetFileName(path)}";
-                Log.Info("Data", "Volume saved to {Path}", path);
+                StatusText = compression == VolumeCompression.GZip
+                    ? $"Saved (GZip) to {Path.GetFileName(path)}"
+                    : $"Saved to {Path.GetFileName(path)}";
+                Log.Info("Data", "Volume saved to {Path} ({Compression})", path, compression);
             }
             catch (Exception ex)
             {

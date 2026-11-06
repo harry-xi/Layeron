@@ -223,6 +223,58 @@
             Assert.AreEqual(10, slice[127, 127]);
         }
 
+        /// <summary>
+        /// The write side must place columns at the same coordinates the read side reads them from,
+        /// including when a slice row spans more than one storage block (X &gt; BlockEdge).
+        /// </summary>
+        [TestMethod]
+        public void SetXYSlice_WidthSpanningMultipleBlocks_RoundTrips()
+        {
+            const int X = 130, Y = 129, Z = 3;
+            var array = new Big3DArray<byte>(X, Y, Z);
+
+            for (var z = 0; z < Z; z++)
+            {
+                var slice = new byte[Y, X];
+                for (var y = 0; y < Y; y++)
+                    for (var x = 0; x < X; x++)
+                        slice[y, x] = (byte)(z * 67 + y * 31 + x * 3);
+
+                array.SetXYSlice(z, slice);
+
+                var readBack = array.GetXYSlice(z);
+                for (var y = 0; y < Y; y++)
+                    for (var x = 0; x < X; x++)
+                        Assert.AreEqual(slice[y, x], readBack[y, x], $"z={z} y={y} x={x}");
+            }
+        }
+
+        /// <summary>
+        /// Image import goes through the same bulk path as <see cref="Big3DArray{T}.SetXYSlice"/>;
+        /// this covers slices wider than one storage block.
+        /// </summary>
+        [TestMethod]
+        public void FromImages_BuildsVolumeFromFullSizeSlices()
+        {
+            const int X = 130, Y = 131, Z = 4;
+            var images = new Dictionary<string, byte[,]>();
+            for (var z = 0; z < Z; z++)
+            {
+                var image = new byte[Y, X];
+                for (var y = 0; y < Y; y++)
+                    for (var x = 0; x < X; x++)
+                        image[y, x] = (byte)(z * 53 + y * 17 + x * 5);
+                images[$"slice{z}"] = image;
+            }
+
+            var array = Big3DArray<byte>.FromImages(images.Keys, path => images[path], X, Y, Z);
+
+            for (var z = 0; z < Z; z++)
+                for (var y = 0; y < Y; y++)
+                    for (var x = 0; x < X; x++)
+                        Assert.AreEqual(images[$"slice{z}"][y, x], array[x, y, z], $"z={z} y={y} x={x}");
+        }
+
         [TestMethod]
         public void UInt16_SliceXY()
         {
@@ -350,6 +402,106 @@
             Assert.AreEqual((ushort)(60 * 100 + 60 * 50 + 60), loaded[60, 60, 60]);
             Assert.AreEqual(0, loaded[0, 0, 0]);
             Assert.AreEqual(100, loaded[1, 0, 0]);
+        }
+
+        // ---- Stream encoding (raw by default, gzip for transfer) ----
+
+        [TestMethod]
+        public void SaveStream_DefaultIsRaw_AndRoundTrips()
+        {
+            var source = new Big3DArray<byte>(130, 66, 70);
+            source.Fill((x, y, z) => (byte)(x ^ y ^ z));
+
+            using var ms = new MemoryStream();
+            source.SaveStream(ms);
+            var bytes = ms.ToArray();
+
+            // Raw volumes start with the little-endian "L3D2" magic.
+            CollectionAssert.AreEqual("L3D2"u8.ToArray(), bytes[..4]);
+
+            ms.Position = 0;
+            var loaded = (ReadonlyBig3DArray<byte>)Big3DArrayFactory.LoadStream(ms);
+            AssertSameVolume(source, loaded);
+        }
+
+        [TestMethod]
+        public void SaveStream_GZip_RoundTrips()
+        {
+            var source = new Big3DArray<ushort>(130, 66, 70);
+            source.Fill((x, y, z) => (ushort)(x * 3 + y * 5 + z * 7));
+
+            using var ms = new MemoryStream();
+            source.SaveStream(ms, VolumeCompression.GZip);
+            var bytes = ms.ToArray();
+
+            Assert.AreEqual(0x1F, bytes[0]);
+            Assert.AreEqual(0x8B, bytes[1]);
+
+            ms.Position = 0;
+            var loaded = (ReadonlyBig3DArray<ushort>)Big3DArrayFactory.LoadStream(ms);
+            AssertSameVolume(source, loaded);
+        }
+
+        [TestMethod]
+        public void LoadStream_AcceptsBothEncodings()
+        {
+            var source = new Big3DArray<byte>(70, 70, 70);
+            source.Fill((x, y, z) => (byte)(x + y + z));
+
+            using var raw = new MemoryStream();
+            source.SaveStream(raw, VolumeCompression.None);
+
+            using var compressed = new MemoryStream();
+            source.SaveStream(compressed, VolumeCompression.GZip);
+
+            // A highly compressible volume must actually shrink; otherwise the option is pointless.
+            Assert.IsLessThan(raw.Length, compressed.Length, "gzip output should be smaller");
+
+            raw.Position = 0;
+            compressed.Position = 0;
+            AssertSameVolume(source, (ReadonlyBig3DArray<byte>)Big3DArrayFactory.LoadStream(raw));
+            AssertSameVolume(source, (ReadonlyBig3DArray<byte>)Big3DArrayFactory.LoadStream(compressed));
+        }
+
+        [TestMethod]
+        public void PeekElementType_HandlesBothEncodings()
+        {
+            var path = Path.Combine(Path.GetTempPath(), $"layeron-peek-{Guid.NewGuid():N}.b3d");
+            try
+            {
+                foreach (var compression in new[] { VolumeCompression.None, VolumeCompression.GZip })
+                {
+                    var source = new Big3DArray<ushort>(8, 8, 8);
+                    source.Save(path, compression);
+
+                    Assert.AreEqual(PixelElementType.UInt16, Big3DArrayFactory.PeekElementType(path), compression.ToString());
+
+                    var loaded = Big3DArrayFactory.Load(path);
+                    Assert.AreEqual(PixelElementType.UInt16, loaded.ElementType);
+                }
+            }
+            finally
+            {
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
+        private static void AssertSameVolume<T>(ReadonlyBig3DArray<T> expected, ReadonlyBig3DArray<T> actual)
+            where T : unmanaged
+        {
+            Assert.AreEqual(expected.X, actual.X);
+            Assert.AreEqual(expected.Y, actual.Y);
+            Assert.AreEqual(expected.Z, actual.Z);
+            Assert.AreEqual(expected.ElementType, actual.ElementType);
+
+            for (var z = 0; z < expected.Z; z++)
+            {
+                var a = expected.GetXYSlice(z);
+                var b = actual.GetXYSlice(z);
+                for (var y = 0; y < expected.Y; y++)
+                    for (var x = 0; x < expected.X; x++)
+                        Assert.AreEqual(a[y, x], b[y, x], $"z={z} y={y} x={x}");
+            }
         }
     }
 }

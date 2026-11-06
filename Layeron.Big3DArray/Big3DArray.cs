@@ -117,19 +117,35 @@ namespace Layeron.Big3DArray
             BlocksZ = (z + VolumeIO.BlockSize - 1) / VolumeIO.BlockSize;
         }
 
-        public void Save(string filePath)
+        /// <summary>
+        /// Save the volume to a file. <paramref name="compression"/> defaults to <see cref="VolumeCompression.None"/>
+        /// because compression costs more CPU than the I/O it saves on modern storage; use
+        /// <see cref="VolumeCompression.GZip"/> when the file is meant for transfer or archival.
+        /// </summary>
+        public void Save(string filePath, VolumeCompression compression = VolumeCompression.None)
         {
-            using var fs = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None);
-            using var gz = new GZipStream(fs, CompressionLevel.Fastest);
-            using var writer = new BinaryWriter(gz, System.Text.Encoding.UTF8, leaveOpen: true);
-            WriteCore(writer);
+            using var fs = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None,
+                bufferSize: 1024 * 1024);
+            SaveStream(fs, compression);
         }
 
-        public void SaveStream(Stream stream)
+        /// <summary>
+        /// Save the volume to an already-open stream, optionally gzip-compressed. Loading detects
+        /// the encoding automatically.
+        /// </summary>
+        public void SaveStream(Stream stream, VolumeCompression compression = VolumeCompression.None)
         {
-            using var gz = new GZipStream(stream, CompressionLevel.Fastest, leaveOpen: true);
-            using var writer = new BinaryWriter(gz, System.Text.Encoding.UTF8, leaveOpen: true);
-            WriteCore(writer);
+            if (compression == VolumeCompression.GZip)
+            {
+                using var gz = new GZipStream(stream, CompressionLevel.Fastest, leaveOpen: true);
+                using var writer = new BinaryWriter(gz, System.Text.Encoding.UTF8, leaveOpen: true);
+                WriteCore(writer);
+            }
+            else
+            {
+                using var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true);
+                WriteCore(writer);
+            }
         }
 
         void WriteCore(BinaryWriter writer)
@@ -464,13 +480,22 @@ namespace Layeron.Big3DArray
             {
                 if (z >= Z)
                     break;
-                var height = Math.Min(image.GetLength(0), Y);
-                var width = Math.Min(image.GetLength(1), X);
-                for (var y = 0; y < height; y++)
+
+                if (image.GetLength(0) >= Y && image.GetLength(1) >= X)
                 {
-                    for (var x = 0; x < width; x++)
+                    // Full-size slice: one row-wise copy per row instead of a per-voxel loop.
+                    SetXYSlice(z, image);
+                }
+                else
+                {
+                    var height = Math.Min(image.GetLength(0), Y);
+                    var width = Math.Min(image.GetLength(1), X);
+                    for (var y = 0; y < height; y++)
                     {
-                        this[x, y, z] = image[y, x];
+                        for (var x = 0; x < width; x++)
+                        {
+                            this[x, y, z] = image[y, x];
+                        }
                     }
                 }
                 z++;
@@ -516,7 +541,9 @@ namespace Layeron.Big3DArray
                         values,
                         source + written * elementSize,
                         Blocks[blockX + BlocksX * (y / VolumeIO.BlockSize + BlocksY * blockZ)],
-                        (rowBase + written) * elementSize,
+                        // Destination is block-local: every block starts at local x = 0, while
+                        // `written` is the offset inside the whole slice row.
+                        rowBase * elementSize,
                         columns * elementSize);
                     written += columns;
                 }
@@ -564,11 +591,19 @@ namespace Layeron.Big3DArray
             {
                 if (z >= depth) break;
                 var img = imageToValues(path);
-                var h = Math.Min(img.GetLength(0), height);
-                var w = Math.Min(img.GetLength(1), width);
-                for (var y = 0; y < h; y++)
-                    for (var x = 0; x < w; x++)
-                        array[x, y, z] = img[y, x];
+                if (img.GetLength(0) >= height && img.GetLength(1) >= width)
+                {
+                    // Full-size image (the normal case): bulk row copy instead of per-voxel writes.
+                    array.SetXYSlice(z, img);
+                }
+                else
+                {
+                    var h = Math.Min(img.GetLength(0), height);
+                    var w = Math.Min(img.GetLength(1), width);
+                    for (var y = 0; y < h; y++)
+                        for (var x = 0; x < w; x++)
+                            array[x, y, z] = img[y, x];
+                }
                 z++;
             }
             return array;

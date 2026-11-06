@@ -704,9 +704,11 @@ public abstract class ReadonlyBig3DArray
     public bool IsBlockFullyInside(int blockIndex);
     public void ForEachInVolumeRange(int blockIndex, Action<int, int> range);
 
-    public void Save(string filePath);
-    public void SaveStream(Stream stream);
+    public void Save(string filePath, VolumeCompression compression = VolumeCompression.None);
+    public void SaveStream(Stream stream, VolumeCompression compression = VolumeCompression.None);
 }
+
+public enum VolumeCompression { None, GZip }   // 读取时自动识别，两种格式都能打开
 ```
 
 ### ReadonlyBig3DArray&lt;T&gt;
