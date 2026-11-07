@@ -2,6 +2,12 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
+    <!--
+      Native and framework-dependent assets must follow the host's RID. Without this a RID-specific
+      build (for example -r win-x64) still deploys this plugin's every-platform untimes folder,
+      which is what made the Windows package carry macOS/Linux Skia binaries and PDBs.
+    -->
+    <IsRidAgnostic>false</IsRidAgnostic>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>Layeron.Plugins.ScriptHost</AssemblyName>

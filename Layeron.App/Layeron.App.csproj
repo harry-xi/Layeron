@@ -73,25 +73,30 @@
       before the installed one, so a locally built plugin shadows an installed copy with the same id.
       The whole plugin output is copied because a plugin may ship private dependencies (Roslyn, for the
       script host) that its own load context resolves from its folder and .deps.json.
+
+      $(RuntimeIdentifier) is part of the source path so a RID-specific build (for example
+      `-r win-x64`) deploys the plugin's RID-specific output. Without it the plugins would still be
+      copied from a RID-less folder and drag every platform's native assets into the packaged app.
+      It is empty for an ordinary build, where the path stays bin/<Configuration>/net10.0/.
     -->
     <Target Name="DeploySamplePlugins" AfterTargets="Build">
         <ItemGroup>
-            <SamplePluginFile Include="..\Layeron.Plugins.Threshold\bin\$(Configuration)\net10.0\**\*.*">
+            <SamplePluginFile Include="..\Layeron.Plugins.Threshold\bin\$(Configuration)\net10.0\$(RuntimeIdentifier)\**\*.*">
                 <PluginFolder>layeron.threshold</PluginFolder>
             </SamplePluginFile>
-            <SamplePluginFile Include="..\Layeron.Plugins.ScriptHost\bin\$(Configuration)\net10.0\**\*.*">
+            <SamplePluginFile Include="..\Layeron.Plugins.ScriptHost\bin\$(Configuration)\net10.0\$(RuntimeIdentifier)\**\*.*">
                 <PluginFolder>layeron.scripthost</PluginFolder>
             </SamplePluginFile>
-            <SamplePluginFile Include="..\Layeron.Plugins.Model3D\bin\$(Configuration)\net10.0\**\*.*">
+            <SamplePluginFile Include="..\Layeron.Plugins.Model3D\bin\$(Configuration)\net10.0\$(RuntimeIdentifier)\**\*.*">
                 <PluginFolder>layeron.model3d</PluginFolder>
             </SamplePluginFile>
-            <SamplePluginFile Include="..\Layeron.Plugins.PythonRunner\bin\$(Configuration)\net10.0\**\*.*">
+            <SamplePluginFile Include="..\Layeron.Plugins.PythonRunner\bin\$(Configuration)\net10.0\$(RuntimeIdentifier)\**\*.*">
                 <PluginFolder>layeron.pythonrunner</PluginFolder>
             </SamplePluginFile>
-            <SamplePluginFile Include="..\Layeron.Plugins.Agent\bin\$(Configuration)\net10.0\**\*.*">
+            <SamplePluginFile Include="..\Layeron.Plugins.Agent\bin\$(Configuration)\net10.0\$(RuntimeIdentifier)\**\*.*">
                 <PluginFolder>layeron.agent</PluginFolder>
             </SamplePluginFile>
-            <SamplePluginFile Include="..\Layeron.Plugins.OnnxRuntime\bin\$(Configuration)\net10.0\**\*.*">
+            <SamplePluginFile Include="..\Layeron.Plugins.OnnxRuntime\bin\$(Configuration)\net10.0\$(RuntimeIdentifier)\**\*.*">
                 <PluginFolder>layeron.onnxruntime</PluginFolder>
             </SamplePluginFile>
         </ItemGroup>
