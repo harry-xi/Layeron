@@ -7,11 +7,10 @@ using Avalonia.Platform.Storage;
 using Layeron.Big3DArray;
 using Layeron.App.Logging;
 using Layeron.App.Plugins;
+using Layeron.App.Service;
 using Layeron.Plugin.Abstractions;
 using ReactiveUI;
 using RxVoid = ReactiveUI.Primitives.RxVoid;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 
 namespace Layeron.App.ViewModels;
 
@@ -300,39 +299,24 @@ public class SharedDataSourceViewModel : ViewModelBase
         {
             var imagePaths = files.Select(f => f.Path.LocalPath).ToList();
 
-            var array = await Task.Run(() =>
+            var (array, info) = await Task.Run(() =>
             {
-                using var first = Image.Load<L8>(imagePaths[0]);
-                return Big3DArray<byte>.FromImages(imagePaths, ImageToBytes, first.Width, first.Height, imagePaths.Count);
+                var set = ImageVolumeLoader.Probe(imagePaths);
+                return (ImageVolumeLoader.Load(imagePaths, set), set);
             });
 
             Array = array;
             FilePath = null;
+            StatusText = info.Is16Bit
+                ? $"Loaded {info.BitsPerComponent}-bit volume from {imagePaths.Count} images"
+                : $"Loaded volume from {imagePaths.Count} images";
+            Log.Info("Data", "Built a {Bits}-bit volume {X}x{Y}x{Z} from {Count} image(s)",
+                info.BitsPerComponent, info.Width, info.Height, imagePaths.Count);
         }
         catch (Exception ex)
         {
             StatusText = $"Error: {ex.Message}";
             Log.Error("Data", ex, "Failed to build a volume from images");
-        }
-
-        return;
-
-        byte[,] ImageToBytes(string path)
-        {
-            using var image = Image.Load<L8>(path);
-            var w = image.Width;
-            var h = image.Height;
-            var data = new byte[h, w];
-            image.ProcessPixelRows(accessor =>
-            {
-                for (var y = 0; y < h; y++)
-                {
-                    var row = accessor.GetRowSpan(y);
-                    for (var x = 0; x < w; x++)
-                        data[y, x] = row[x].PackedValue;
-                }
-            });
-            return data;
         }
     }
 
