@@ -26,16 +26,10 @@ public class ViewLocator : IDataTemplate
         // paths that do come through the locator, and an opaque payload is shown as text rather than
         // silently rendering nothing.
         if (param is PluginToolViewModel plugin)
-        {
-            return plugin.Content as Control
-                ?? new TextBlock { Text = plugin.Content.ToString() ?? "" };
-        }
+            return PluginHost(plugin.Content);
 
         if (param is PluginDocumentViewModel document)
-        {
-            return document.Content as Control
-                ?? new TextBlock { Text = document.Content.ToString() ?? "" };
-        }
+            return PluginHost(document.Content);
 
         var name = param.GetType().FullName!.Replace("ViewModel", "View", StringComparison.Ordinal);
         var type = Type.GetType(name);
@@ -52,4 +46,13 @@ public class ViewLocator : IDataTemplate
     {
         return data is ViewModelBase || data is IDockable;
     }
+
+    /// <summary>
+    /// Wraps a plugin control in the host that moves it between Dock views; returning the control
+    /// itself would break as soon as the panel is shown in a second window (see PluginContentHost).
+    /// </summary>
+    private static Control PluginHost(object content)
+        => content is Control control
+            ? new Controls.PluginContentHost { Content = control }
+            : new TextBlock { Text = content.ToString() ?? "" };
 }

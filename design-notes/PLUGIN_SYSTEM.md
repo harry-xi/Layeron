@@ -125,6 +125,7 @@ manager.VerifyUnloaded();                                          // 返回仍�
 
 - 插件的 View/ViewModel 只在插件 ALC 内创建，宿主只见 `object`（`ToolContribution.ContentFactory` 的返回值）；
 - 面板在 `Dispose` 里解绑宿主服务事件，关闭面板时释放内容，卸载插件时关闭该插件的所有面板。
+- `ContentFactory` 的结果是**一个控件**，宿主只创建一次（`PluginToolViewModel` / `PluginDocumentViewModel` 惰性缓存）。Dock 把同一 dockable 拖成浮动窗口时会再建一个视图，而 Avalonia 的控件只能有一个视觉父级；`PluginContentHost` 于是在换视图时把控件从旧宿主摘下、挂到新宿主，而不是为第二个窗口再造一份控件——后者会让 GPU 资源和 `Dispose` 语义翻倍，且与插件的生命周期不符。
 
 ---
 
