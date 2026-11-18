@@ -1,0 +1,42 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="using:System">
+
+    <!--
+        Layeron 的非主题标记：字体、字号、控件高度、圆角、滚动条尺寸。
+
+        这些值在明暗两套主题中相同，因此放在普通字典里。颜色见
+        LayeronPalette.Light.axaml / LayeronPalette.Dark.axaml。
+
+        尺寸目标是贴近 Simple：基础字号 12，控件高度 28，滚动条槽 12 / 滑块 6。
+        比 Simple 多的只是圆角、层次和少量留白，不会把界面撑大。
+    -->
+
+    <FontFamily x:Key="ContentControlThemeFontFamily">fonts:Inter#Inter, $Default</FontFamily>
+    <Thickness x:Key="ThemeBorderThickness">1</Thickness>
+    <sys:Double x:Key="ThemeDisabledOpacity">0.5</sys:Double>
+
+    <sys:Double x:Key="FontSizeSmall">11</sys:Double>
+    <sys:Double x:Key="FontSizeNormal">12</sys:Double>
+    <sys:Double x:Key="FontSizeLarge">16</sys:Double>
+
+    <sys:Double x:Key="ScrollBarThickness">12</sys:Double>
+    <sys:Double x:Key="ScrollBarThumbThickness">6</sys:Double>
+    <sys:Double x:Key="IconElementThemeHeight">20</sys:Double>
+    <sys:Double x:Key="IconElementThemeWidth">20</sys:Double>
+    <sys:Double x:Key="TextControlPlaceholderOpacity">0.5</sys:Double>
+
+    <!-- Layeron 尺寸标记 -->
+    <sys:Double x:Key="LayeronControlHeight">28</sys:Double>
+    <sys:Double x:Key="LayeronSmallControlHeight">24</sys:Double>
+    <sys:Double x:Key="LayeronFontSizeTab">13</sys:Double>
+    <sys:Double x:Key="LayeronScrollBarThickness">12</sys:Double>
+    <sys:Double x:Key="LayeronScrollBarThumbThickness">6</sys:Double>
+    <Thickness x:Key="LayeronControlPadding">10,3</Thickness>
+    <Thickness x:Key="LayeronInputPadding">8,5</Thickness>
+    <Thickness x:Key="LayeronMenuItemPadding">8,5</Thickness>
+    <CornerRadius x:Key="LayeronControlCornerRadius">4</CornerRadius>
+    <CornerRadius x:Key="LayeronSmallCornerRadius">3</CornerRadius>
+    <CornerRadius x:Key="LayeronPopupCornerRadius">8</CornerRadius>
+    <CornerRadius x:Key="LayeronCardCornerRadius">8</CornerRadius>
+</ResourceDictionary>

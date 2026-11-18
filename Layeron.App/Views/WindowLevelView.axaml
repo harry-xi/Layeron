@@ -12,7 +12,7 @@
         <vm:WindowLevelViewModel/>
     </Design.DataContext>
 
-    <Border Background="{DynamicResource SukiCardBackground}"
+    <Border Background="{DynamicResource LayeronCardBrush}"
             CornerRadius="8"
             Padding="12"
             Margin="8">

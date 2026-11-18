@@ -32,12 +32,54 @@
         <local:ViewLocator/>
     </Application.DataTemplates>
   
+    <Application.Resources>
+        <ResourceDictionary>
+            <!--
+                主题字典必须直接声明在 Application.Resources 上。把带 ThemeDictionaries
+                的字典用 ResourceInclude 引进来，Avalonia 只会保留可直接命中的那一份，
+                深色/浅色切换会失效。因此每个主题是一个普通 ResourceDictionary，
+                再由这里按 ThemeVariant 各包含一次。
+            -->
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Default">
+                    <ResourceDictionary.MergedDictionaries>
+                        <ResourceInclude Source="avares://Layeron.App/Styles/LayeronPalette.Light.axaml" />
+                    </ResourceDictionary.MergedDictionaries>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <ResourceDictionary.MergedDictionaries>
+                        <ResourceInclude Source="avares://Layeron.App/Styles/LayeronPalette.Light.axaml" />
+                    </ResourceDictionary.MergedDictionaries>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <ResourceDictionary.MergedDictionaries>
+                        <ResourceInclude Source="avares://Layeron.App/Styles/LayeronPalette.Dark.axaml" />
+                    </ResourceDictionary.MergedDictionaries>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
+            <ResourceDictionary.MergedDictionaries>
+                <!-- 非主题标记（尺寸、字体）。 -->
+                <ResourceInclude Source="avares://Layeron.App/Styles/LayeronMetrics.axaml" />
+                <!--
+                    控件主题放在 Application.Resources 而不是 Styles：Avalonia 查找资源时
+                    先看 Application.Resources，再看 Styles。放在这里才能稳定覆盖 SimpleTheme
+                    的 {x:Type Xxx} 隐式主题。
+                -->
+                <ResourceInclude Source="avares://Layeron.App/Styles/LayeronControls.axaml" />
+                <ResourceInclude Source="avares://Layeron.App/Styles/LayeronDock.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+
     <Application.Styles>
-        
+        <!-- 保留 Simple 作为兜底：没有单独覆盖的控件仍然可用，只是使用新调色板。 -->
         <SimpleTheme />
         <StyleInclude Source="avares://Avalonia.Controls.ColorPicker/Themes/Simple/Simple.xaml"/>
         <StyleInclude Source="avares://AvaloniaEdit/Themes/Simple/AvaloniaEdit.xaml"/>
         <DockSimpleTheme/>
-        
+
+        <!-- 最后加载：普通 Style 的优先级高于 ControlTheme。 -->
+        <StyleInclude Source="avares://Layeron.App/Styles/LayeronStyles.axaml"/>
     </Application.Styles>
 </Application>

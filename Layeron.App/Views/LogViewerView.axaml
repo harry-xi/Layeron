@@ -85,7 +85,7 @@
         </Style>
     </UserControl.Styles>
 
-    <Border Background="{DynamicResource SukiCardBackground}" Margin="4">
+    <Border Background="{DynamicResource LayeronCardBrush}" Margin="4">
         <DockPanel>
 
             <!-- ── Toolbar ────────────────────────────────────────────────────────
@@ -93,14 +93,14 @@
                  take all the leftover width instead of being squeezed to make room. -->
             <Border DockPanel.Dock="Top"
                     Padding="{StaticResource PanePadding}"
-                    Background="{DynamicResource SukiControlBackground}">
+                    Background="{DynamicResource LayeronSurfaceRaisedBrush}">
                 <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="6">
 
                     <!-- Filter: level and text read as one field. The border, the corner radius and the
                          divider are what make two controls look like a single input. -->
                     <Border Grid.Column="0"
-                            Background="{DynamicResource SukiCardBackground}"
-                            BorderBrush="{DynamicResource SukiControlBackground}"
+                            Background="{DynamicResource LayeronCardBrush}"
+                            BorderBrush="{DynamicResource LayeronSurfaceRaisedBrush}"
                             BorderThickness="1"
                             CornerRadius="4"
                             MinWidth="220"
@@ -127,7 +127,7 @@
                             <Rectangle Grid.Column="1"
                                        Width="1"
                                        Margin="0,3"
-                                       Fill="{DynamicResource SukiControlBackground}"
+                                       Fill="{DynamicResource LayeronSurfaceRaisedBrush}"
                                        Opacity="0.6"/>
 
                             <TextBox Grid.Column="2"
@@ -172,7 +172,7 @@
                     IsVisible="{Binding HasSelection}"
                     Width="340"
                     Padding="{StaticResource PanePadding}"
-                    Background="{DynamicResource SukiControlBackground}">
+                    Background="{DynamicResource LayeronSurfaceRaisedBrush}">
                 <DockPanel>
                     <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="6">
                         <TextBlock Grid.Column="0"

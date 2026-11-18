@@ -1,0 +1,307 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ae="using:AvaloniaEdit"
+        xmlns:aeedit="using:AvaloniaEdit.Editing"
+        xmlns:dock="using:Dock.Avalonia.Controls">
+
+    <!--
+        只改属性、不换模板的控件，以及外部库的适配。
+
+        放在 Application.Styles 的最后：普通 Style 的优先级高于 ControlTheme，
+        所以这里可以细化 Simple 仍有用的模板（TextBox 的占位符、NumericUpDown 的
+        ButtonSpinner、ProgressBar 的指示条），而不需要复制它们。
+    -->
+
+    <!-- ============================ 输入类 ============================ -->
+
+    <Style Selector="TextBox">
+        <Setter Property="Background" Value="{DynamicResource ThemeControlLowBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderMidBrush}" />
+        <Setter Property="BorderThickness" Value="{DynamicResource ThemeBorderThickness}" />
+        <Setter Property="Foreground" Value="{DynamicResource ThemeForegroundBrush}" />
+        <Setter Property="CaretBrush" Value="{DynamicResource ThemeForegroundBrush}" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource LayeronAccentBrush}" />
+        <Setter Property="SelectionForegroundBrush" Value="{DynamicResource HighlightForegroundBrush}" />
+        <Setter Property="PlaceholderForeground" Value="{DynamicResource ThemeForegroundLowBrush}" />
+        <Setter Property="CornerRadius" Value="{StaticResource LayeronControlCornerRadius}" />
+        <Setter Property="Padding" Value="{StaticResource LayeronInputPadding}" />
+        <Setter Property="MinHeight" Value="{StaticResource LayeronControlHeight}" />
+    </Style>
+    <Style Selector="TextBox:pointerover /template/ Border#border">
+        <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderHighBrush}" />
+    </Style>
+    <Style Selector="TextBox:focus /template/ Border#border">
+        <Setter Property="BorderBrush" Value="{DynamicResource LayeronAccentBrush}" />
+    </Style>
+    <Style Selector="TextBox:error /template/ Border#border">
+        <Setter Property="BorderBrush" Value="{DynamicResource ErrorBrush}" />
+    </Style>
+
+    <Style Selector="NumericUpDown">
+        <Setter Property="MinHeight" Value="{StaticResource LayeronControlHeight}" />
+        <!--
+            Simple 的 NumericUpDown 模板会把 Padding 同时用作内嵌 TextBox 的 Margin 与 Padding。
+            这里只保留横向留白，纵向交给 28px 的控件高度，避免数字框比普通 TextBox 更高。
+        -->
+        <Setter Property="Padding" Value="4,0" />
+        <Setter Property="Background" Value="{DynamicResource ThemeControlLowBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderMidBrush}" />
+        <Setter Property="BorderThickness" Value="{DynamicResource ThemeBorderThickness}" />
+        <Setter Property="CornerRadius" Value="{StaticResource LayeronControlCornerRadius}" />
+        <Setter Property="Foreground" Value="{DynamicResource ThemeForegroundBrush}" />
+        <!-- 设置页的右侧单元格会纵向拉伸；数字框保持 28px 并居中，不要跟着行高变高。 -->
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="NumericUpDown /template/ ButtonSpinner#PART_Spinner">
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="CornerRadius" Value="{StaticResource LayeronControlCornerRadius}" />
+        <Setter Property="Background" Value="{DynamicResource ThemeControlLowBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderMidBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <!-- 内嵌 TextBox 只负责文本；外框、圆角和高度都由 ButtonSpinner 控制。 -->
+    <Style Selector="NumericUpDown /template/ TextBox">
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="CornerRadius" Value="0" />
+    </Style>
+    <!-- 数字调节按钮：给右侧按钮列一条分隔线和独立的悬停/按下反馈。 -->
+    <Style Selector="NumericUpDown /template/ ButtonSpinner#PART_Spinner /template/ UniformGrid#PART_SpinnerPanel">
+        <Setter Property="Width" Value="22" />
+    </Style>
+    <Style Selector="NumericUpDown /template/ ButtonSpinner#PART_Spinner /template/ RepeatButton">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderLowBrush}" />
+        <Setter Property="BorderThickness" Value="1,0,0,0" />
+        <Setter Property="CornerRadius" Value="0" />
+    </Style>
+    <Style Selector="NumericUpDown /template/ ButtonSpinner#PART_Spinner /template/ RepeatButton:pointerover">
+        <Setter Property="Background" Value="{DynamicResource ThemeControlMidBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderLowBrush}" />
+    </Style>
+    <Style Selector="NumericUpDown /template/ ButtonSpinner#PART_Spinner /template/ RepeatButton:pressed">
+        <Setter Property="Background" Value="{DynamicResource ThemeControlHighBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderLowBrush}" />
+    </Style>
+    <Style Selector="NumericUpDown:pointerover /template/ ButtonSpinner#PART_Spinner /template/ Border#border">
+        <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderHighBrush}" />
+    </Style>
+    <Style Selector="NumericUpDown:focus /template/ ButtonSpinner#PART_Spinner /template/ Border#border">
+        <Setter Property="BorderBrush" Value="{DynamicResource LayeronAccentBrush}" />
+    </Style>
+
+    <!-- ============================ 列表与进度 ============================ -->
+
+    <Style Selector="ListBox">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="2" />
+        <Setter Property="CornerRadius" Value="6" />
+    </Style>
+
+    <Style Selector="ProgressBar">
+        <Setter Property="MinHeight" Value="6" />
+        <Setter Property="MinWidth" Value="120" />
+        <Setter Property="Background" Value="{DynamicResource LayeronAccentSubtleBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource LayeronAccentBrush}" />
+        <Setter Property="CornerRadius" Value="3" />
+    </Style>
+    <Style Selector="ProgressBar /template/ Border#PART_Indicator">
+        <Setter Property="CornerRadius" Value="3" />
+    </Style>
+    <Style Selector="ProgressBar /template/ Border#PART_IndeterminateIndicator">
+        <Setter Property="CornerRadius" Value="3" />
+    </Style>
+
+    <!-- ============================ 容器 ============================ -->
+
+    <Style Selector="Expander">
+        <Setter Property="Background" Value="{DynamicResource LayeronCardBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderLowBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource LayeronCardCornerRadius}" />
+    </Style>
+
+    <!-- ============================ AvaloniaEdit ============================ -->
+
+    <Style Selector="ae|TextEditor">
+        <Setter Property="Background" Value="{DynamicResource LayeronEditorBackgroundBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource ThemeForegroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderLowBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource LayeronControlCornerRadius}" />
+        <Setter Property="Padding" Value="6,4" />
+        <Setter Property="LineNumbersForeground" Value="{DynamicResource ThemeForegroundLowBrush}" />
+    </Style>
+    <Style Selector="aeedit|TextArea">
+        <Setter Property="Foreground" Value="{DynamicResource ThemeForegroundBrush}" />
+        <Setter Property="CaretBrush" Value="{DynamicResource ThemeForegroundBrush}" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource LayeronAccentBrush}" />
+        <Setter Property="SelectionForeground" Value="{DynamicResource HighlightForegroundBrush}" />
+        <Setter Property="SelectionCornerRadius" Value="2" />
+    </Style>
+
+    <!-- ============================ ColorPicker ============================ -->
+
+    <Style Selector="ColorPicker">
+        <Setter Property="Height" Value="{StaticResource LayeronControlHeight}" />
+        <Setter Property="MinHeight" Value="{StaticResource LayeronControlHeight}" />
+        <Setter Property="CornerRadius" Value="{StaticResource LayeronControlCornerRadius}" />
+    </Style>
+    <Style Selector="ColorView">
+        <Setter Property="CornerRadius" Value="6" />
+    </Style>
+    <Style Selector="ColorSpectrum">
+        <Setter Property="CornerRadius" Value="4" />
+    </Style>
+
+    <!-- ============================ Dock 文档区 与 拖放 ============================ -->
+
+    <!--
+        活动文档页只通过背景/前景 token 区分，不修改 BorderThickness，也不改字重：
+        否则选中时标签内容会重新排版，看起来像“边框变粗”。
+    -->
+
+    <!-- 工具面板标签：保留“与内容面板同色”的选中逻辑，只强化边界。 -->
+    <Style Selector="dock|ToolTabStripItem:selected">
+        <Setter Property="BorderBrush" Value="{DynamicResource LayeronDockDocumentBorderBrush}" />
+        <!--
+            Thickness 顺序是 左、上、右、下。
+            选中标签：左右各 1px，底部保留 1px（只画在选中标签下面），
+            顶部不画线，保持与工具窗内容连通。
+        -->
+        <Setter Property="BorderThickness" Value="1,0,1,1" />
+    </Style>
+
+    <!-- 工具窗底边不画线：底部保持干净，不再额外补一条 1px 边框。 -->
+    <Style Selector="dock|ToolTabStrip">
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+
+    <!--
+        标签栏上边缘：默认由 PART_BorderLeftFill / RightFill 用较暗的 DockSeparatorBrush 画。
+        这里改成和工具窗边界同一条线；选中标签自身不画上边框，会盖住这条线。
+    -->
+    <Style Selector="dock|ToolTabStrip /template/ Border#PART_BorderLeftFill">
+        <Setter Property="BorderBrush" Value="{DynamicResource LayeronDockDocumentBorderBrush}" />
+        <Setter Property="BorderThickness" Value="0,1,0,0" />
+    </Style>
+    <Style Selector="dock|ToolTabStrip /template/ Border#PART_BorderRightFill">
+        <Setter Property="BorderBrush" Value="{DynamicResource LayeronDockDocumentBorderBrush}" />
+        <Setter Property="BorderThickness" Value="0,1,0,0" />
+    </Style>
+
+    <!--
+        选中工具标签和工具窗边框使用同一条主题边界线。
+        两者都是 1px；之前工具窗用的是更暗的 DockBorderSubtleBrush，
+        视觉上会被看成“更细/更弱”，和选中标签对不上。
+    -->
+    <Style Selector="dock|ToolControl /template/ Border#PART_Border">
+        <Setter Property="BorderBrush" Value="{DynamicResource LayeronDockDocumentBorderBrush}" />
+    </Style>
+    <Style Selector="dock|ToolChromeControl">
+        <Setter Property="BorderBrush" Value="{DynamicResource LayeronDockDocumentBorderBrush}" />
+    </Style>
+    <Style Selector="dock|ToolChromeControl /template/ Border#PART_Border">
+        <Setter Property="BorderBrush" Value="{DynamicResource LayeronDockDocumentBorderBrush}" />
+    </Style>
+    <!-- 工具窗标题栏与内容之间的分隔线：和工具窗外框使用同一条线。 -->
+    <Style Selector="dock|ToolChromeControl /template/ Panel#PART_Panel">
+        <Setter Property="Background" Value="{DynamicResource LayeronDockDocumentBorderBrush}" />
+        <Setter Property="Height" Value="1" />
+    </Style>
+
+    <!--
+        Dock 的工具窗标题栏按钮从 Layeron 的 Button 主题继承了 28px 的 MinHeight，
+        会把 16×14 的按钮撑大，固定图标因此变得巨大。这里只约束标题栏模板里的按钮。
+    -->
+    <Style Selector="dock|ToolChromeControl /template/ Button">
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="Width" Value="16" />
+        <Setter Property="Height" Value="14" />
+        <Setter Property="Padding" Value="2" />
+        <Setter Property="CornerRadius" Value="2" />
+    </Style>
+
+    <!--
+        Dock 的拖放提示默认是一整块强调色。这里按方向改成“边缘实、内部渐隐”的
+        渐变，既保留可落点提示，又不会在深色界面里变成刺眼的蓝色色块。
+        DockTarget 用于面板/标签内部，GlobalDockTarget 用于窗口四周的全局停靠。
+    -->
+    <Style Selector="dock|DockTarget /template/ Panel#PART_TopIndicator">
+        <Setter Property="Background" Value="{DynamicResource LayeronDockDropTopBrush}" />
+    </Style>
+    <Style Selector="dock|DockTarget /template/ Panel#PART_BottomIndicator">
+        <Setter Property="Background" Value="{DynamicResource LayeronDockDropBottomBrush}" />
+    </Style>
+    <Style Selector="dock|DockTarget /template/ Panel#PART_LeftIndicator">
+        <Setter Property="Background" Value="{DynamicResource LayeronDockDropLeftBrush}" />
+    </Style>
+    <Style Selector="dock|DockTarget /template/ Panel#PART_RightIndicator">
+        <Setter Property="Background" Value="{DynamicResource LayeronDockDropRightBrush}" />
+    </Style>
+    <Style Selector="dock|DockTarget /template/ Panel#PART_CenterIndicator">
+        <Setter Property="Background" Value="{DynamicResource LayeronDockDropCenterBrush}" />
+    </Style>
+
+    <Style Selector="dock|GlobalDockTarget /template/ Panel#PART_TopIndicator">
+        <Setter Property="Background" Value="{DynamicResource LayeronDockDropTopBrush}" />
+    </Style>
+    <Style Selector="dock|GlobalDockTarget /template/ Panel#PART_BottomIndicator">
+        <Setter Property="Background" Value="{DynamicResource LayeronDockDropBottomBrush}" />
+    </Style>
+    <Style Selector="dock|GlobalDockTarget /template/ Panel#PART_LeftIndicator">
+        <Setter Property="Background" Value="{DynamicResource LayeronDockDropLeftBrush}" />
+    </Style>
+    <Style Selector="dock|GlobalDockTarget /template/ Panel#PART_RightIndicator">
+        <Setter Property="Background" Value="{DynamicResource LayeronDockDropRightBrush}" />
+    </Style>
+
+    <!--
+        拖放时的五向选择器。Dock 默认使用白色底 + 橙色箭头的位图，
+        这里替换成主题化的矢量卡片。
+        视觉卡片约 30px，但 Image 控件保留原来的 40×40 命中区域；
+        同时不使用 RenderTransform，避免影响 Dock 的局部坐标命中测试。
+    -->
+    <Style Selector="dock|DockTarget /template/ Image">
+        <Setter Property="Width" Value="40" />
+        <Setter Property="Height" Value="40" />
+    </Style>
+    <Style Selector="dock|DockTarget /template/ Image#PART_TopSelector">
+        <Setter Property="Source" Value="{DynamicResource LayeronDockSelectorTopImage}" />
+    </Style>
+    <Style Selector="dock|DockTarget /template/ Image#PART_BottomSelector">
+        <Setter Property="Source" Value="{DynamicResource LayeronDockSelectorBottomImage}" />
+    </Style>
+    <Style Selector="dock|DockTarget /template/ Image#PART_LeftSelector">
+        <Setter Property="Source" Value="{DynamicResource LayeronDockSelectorLeftImage}" />
+    </Style>
+    <Style Selector="dock|DockTarget /template/ Image#PART_RightSelector">
+        <Setter Property="Source" Value="{DynamicResource LayeronDockSelectorRightImage}" />
+    </Style>
+    <Style Selector="dock|DockTarget /template/ Image#PART_CenterSelector">
+        <Setter Property="Source" Value="{DynamicResource LayeronDockSelectorCenterImage}" />
+    </Style>
+
+    <Style Selector="dock|GlobalDockTarget /template/ Image">
+        <Setter Property="Width" Value="40" />
+        <Setter Property="Height" Value="40" />
+    </Style>
+    <Style Selector="dock|GlobalDockTarget /template/ Image#PART_TopSelector">
+        <Setter Property="Source" Value="{DynamicResource LayeronDockSelectorTopImage}" />
+    </Style>
+    <Style Selector="dock|GlobalDockTarget /template/ Image#PART_BottomSelector">
+        <Setter Property="Source" Value="{DynamicResource LayeronDockSelectorBottomImage}" />
+    </Style>
+    <Style Selector="dock|GlobalDockTarget /template/ Image#PART_LeftSelector">
+        <Setter Property="Source" Value="{DynamicResource LayeronDockSelectorLeftImage}" />
+    </Style>
+    <Style Selector="dock|GlobalDockTarget /template/ Image#PART_RightSelector">
+        <Setter Property="Source" Value="{DynamicResource LayeronDockSelectorRightImage}" />
+    </Style>
+</Styles>

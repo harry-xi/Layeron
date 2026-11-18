@@ -51,7 +51,7 @@
             <MenuItem x:Name="PluginMenu" Header="插件"/>
         </Menu>
         
-        <Border DockPanel.Dock="Bottom" Padding="10,4" Background="{DynamicResource SukiCardBackground}">
+        <Border DockPanel.Dock="Bottom" Padding="10,4" Background="{DynamicResource LayeronCardBrush}">
             <Grid ColumnDefinitions="*,Auto">
                 <TextBlock Text="{Binding SharedData.StatusText}" VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis"/>

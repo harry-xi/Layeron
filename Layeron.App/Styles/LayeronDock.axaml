@@ -1,0 +1,117 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="using:System">
+
+    <!--
+        Dock.Avalonia.Themes.Simple 的适配。
+
+        Dock 的控件模板不在我们的程序集里，也不应该复制：它公开了一组 Dock* 资源键，
+        控件用 DynamicResource 取这些键。这里覆写“语义 token”（表面、边框、标签页、
+        拖拽预览、对话框），就能在不替换模板的前提下让停靠区与主界面同一套视觉。
+
+        颜色一律写成 SolidColorBrush + DynamicResource 颜色键，而不是 StaticResource
+        别名。StaticResource 会在加载时把明色定死，运行时切换 Light/Dark 就会残留旧色。
+
+        版本对应：Dock.Avalonia.Themes.Simple 12.1.0.6。
+        未覆盖的 Dock token 保持上游默认值；列表见 design-notes/THEME.md。
+    -->
+
+    <!-- 强调色：让 Dock 的选中标签、拖放指示和按钮与 Layeron 主色一致。 -->
+    <SolidColorBrush x:Key="DockApplicationAccentBrushLow" Color="{DynamicResource LayeronAccentColor}" />
+    <SolidColorBrush x:Key="DockApplicationAccentBrushMed" Color="{DynamicResource LayeronAccentColor}" />
+    <SolidColorBrush x:Key="DockApplicationAccentBrushHigh" Color="{DynamicResource LayeronAccentColor}" />
+    <SolidColorBrush x:Key="DockApplicationAccentForegroundBrush" Color="{DynamicResource HighlightForegroundColor}" />
+    <SolidColorBrush x:Key="DockApplicationAccentBrushIndicator" Color="{DynamicResource LayeronAccentColor}" />
+    <SolidColorBrush x:Key="DockTargetIndicatorBrush" Color="{DynamicResource ThemeAccentColor3}" />
+    <!-- 拖放提示的实际画笔见 LayeronStyles.axaml 的 LayeronDockDrop*Brush。 -->
+
+    <!-- 表面与边框 -->
+    <SolidColorBrush x:Key="DockThemeBorderLowBrush" Color="{DynamicResource ThemeBorderLowColor}" />
+    <SolidColorBrush x:Key="DockThemeBackgroundBrush" Color="{DynamicResource ThemeBackgroundColor}" />
+    <SolidColorBrush x:Key="DockThemeAccentBrush" Color="{DynamicResource LayeronAccentColor}" />
+    <SolidColorBrush x:Key="DockThemeForegroundBrush" Color="{DynamicResource ThemeForegroundColor}" />
+    <SolidColorBrush x:Key="DockThemeControlBackgroundBrush" Color="{DynamicResource ThemeControlLowColor}" />
+
+    <SolidColorBrush x:Key="DockSurfaceWorkbenchBrush" Color="{DynamicResource ThemeBackgroundColor}" />
+    <SolidColorBrush x:Key="DockSurfaceSidebarBrush" Color="{DynamicResource ThemeBackgroundColor}" />
+    <SolidColorBrush x:Key="DockSurfaceEditorBrush" Color="{DynamicResource ThemeControlLowColor}" />
+    <SolidColorBrush x:Key="DockSurfacePanelBrush" Color="{DynamicResource ThemeControlLowColor}" />
+    <SolidColorBrush x:Key="DockSurfaceHeaderBrush" Color="{DynamicResource ThemeControlMidColor}" />
+    <SolidColorBrush x:Key="DockSurfaceHeaderActiveBrush" Color="{DynamicResource LayeronDockTabHoverColor}" />
+
+    <SolidColorBrush x:Key="DockBorderSubtleBrush" Color="{DynamicResource ThemeBorderLowColor}" />
+    <SolidColorBrush x:Key="DockBorderStrongBrush" Color="{DynamicResource ThemeBorderMidColor}" />
+    <SolidColorBrush x:Key="DockSeparatorBrush" Color="{DynamicResource ThemeBorderLowColor}" />
+    <SolidColorBrush x:Key="DockSplitterIdleBrush" Color="{DynamicResource ThemeBorderMidColor}" />
+    <SolidColorBrush x:Key="DockSplitterHoverBrush" Color="{DynamicResource LayeronAccentColor}" />
+    <SolidColorBrush x:Key="DockSplitterDragBrush" Color="{DynamicResource LayeronAccentColor}" />
+
+    <!-- 标签页：未选中透明、悬停浮起、活动页用略亮的表面 + 强调色指示。 -->
+    <SolidColorBrush x:Key="DockTabBackgroundBrush" Color="Transparent" />
+    <SolidColorBrush x:Key="DockTabHoverBackgroundBrush" Color="{DynamicResource LayeronDockTabHoverColor}" />
+    <SolidColorBrush x:Key="DockTabActiveBackgroundBrush" Color="{DynamicResource LayeronDockTabActiveColor}" />
+    <SolidColorBrush x:Key="DockTabActiveIndicatorBrush" Color="{DynamicResource LayeronAccentColor}" />
+    <SolidColorBrush x:Key="DockTabForegroundBrush" Color="{DynamicResource ThemeForegroundLowColor}" />
+    <SolidColorBrush x:Key="DockTabSelectedForegroundBrush" Color="{DynamicResource ThemeForegroundColor}" />
+    <SolidColorBrush x:Key="DockTabActiveForegroundBrush" Color="{DynamicResource ThemeForegroundColor}" />
+    <SolidColorBrush x:Key="DockTabCloseHoverBackgroundBrush" Color="{DynamicResource ErrorLowColor}" />
+    <SolidColorBrush x:Key="DockDocumentTabStripBackgroundBrush" Color="{DynamicResource LayeronDockTabStripColor}" />
+    <SolidColorBrush x:Key="DockDocumentTabSelectedForegroundBrush" Color="{DynamicResource ThemeForegroundColor}" />
+    <SolidColorBrush x:Key="DockDocumentTabPointerOverForegroundBrush" Color="{DynamicResource ThemeForegroundColor}" />
+    <SolidColorBrush x:Key="DockDocumentTabCloseSelectedForegroundBrush" Color="{DynamicResource ThemeForegroundColor}" />
+    <SolidColorBrush x:Key="DockDocumentTabClosePointerOverForegroundBrush" Color="{DynamicResource ThemeForegroundColor}" />
+    <SolidColorBrush x:Key="DockDocumentContentBorderBrush" Color="{DynamicResource LayeronDockDocumentBorderColor}" />
+
+    <!-- 工具窗按钮与手柄 -->
+    <SolidColorBrush x:Key="DockToolChromeIconBrush" Color="{DynamicResource ThemeForegroundLowColor}" />
+    <SolidColorBrush x:Key="DockChromeButtonForegroundBrush" Color="{DynamicResource ThemeForegroundLowColor}" />
+    <SolidColorBrush x:Key="DockChromeButtonHoverBackgroundBrush" Color="{DynamicResource ThemeControlHighlightMidColor}" />
+    <SolidColorBrush x:Key="DockChromeButtonPressedBackgroundBrush" Color="{DynamicResource ThemeControlHighColor}" />
+    <SolidColorBrush x:Key="DockChromeButtonDangerHoverBrush" Color="{DynamicResource ErrorLowColor}" />
+    <SolidColorBrush x:Key="DockChromeGripBrush" Color="Transparent" />
+
+    <!-- 浮层、拖拽预览、对话框 -->
+    <SolidColorBrush x:Key="DockSelectorOverlayBackdropBrush" Color="{DynamicResource LayeronBackdropColor}" />
+    <SolidColorBrush x:Key="DockDragPreviewBackgroundBrush" Color="{DynamicResource LayeronPopupBackgroundColor}" />
+    <SolidColorBrush x:Key="DockDragPreviewBorderBrush" Color="{DynamicResource ThemeBorderMidColor}" />
+    <SolidColorBrush x:Key="DockDragPreviewForegroundBrush" Color="{DynamicResource ThemeForegroundColor}" />
+
+    <!-- 尺寸：Dock 的标题栏保持紧凑，不为了圆角牺牲可用高度。 -->
+    <sys:Double x:Key="DockFontSizeNormal">12</sys:Double>
+    <sys:Double x:Key="DockCornerRadiusSmall">4</sys:Double>
+    <sys:Double x:Key="DockHeaderHeight">24</sys:Double>
+    <sys:Double x:Key="DockTabHeight">28</sys:Double>
+    <sys:Double x:Key="DockTabHorizontalPadding">8</sys:Double>
+    <sys:Double x:Key="DockTabItemMinHeight">24</sys:Double>
+    <sys:Double x:Key="DockDocumentTabItemMinHeight">24</sys:Double>
+    <sys:Double x:Key="DockToolTabItemMinHeight">0</sys:Double>
+    <sys:Double x:Key="DockDocumentTabStripMinHeight">0</sys:Double>
+    <Thickness x:Key="DockDocumentTabItemMargin">0,0,1,0</Thickness>
+    <Thickness x:Key="DockDocumentTabItemPadding">8,0</Thickness>
+    <CornerRadius x:Key="DockDocumentTabItemCornerRadius">4</CornerRadius>
+    <CornerRadius x:Key="DockDocumentTabCreateButtonCornerRadius">4</CornerRadius>
+    <Thickness x:Key="DockToolTabItemPadding">6,1</Thickness>
+    <Thickness x:Key="DockToolTabItemSelectedPadding">6,2,6,1</Thickness>
+    <sys:Double x:Key="DockCreateButtonWidth">24</sys:Double>
+    <sys:Double x:Key="DockCreateButtonHeight">22</sys:Double>
+    <sys:Double x:Key="DockCloseButtonSize">12</sys:Double>
+    <sys:Double x:Key="DockChromeButtonWidth">16</sys:Double>
+    <sys:Double x:Key="DockChromeButtonHeight">14</sys:Double>
+    <Thickness x:Key="DockChromeButtonPadding">2</Thickness>
+    <Thickness x:Key="DockChromeButtonMargin">1,0,0,0</Thickness>
+    <sys:Double x:Key="DockTabContentSpacing">2</sys:Double>
+    <!--
+        关掉标签之间的 1px 分隔线。工具标签被选中时自身还有左右边框，
+        如果前一个标签再画一条分隔线，就会和选中标签的左边框叠成 2px，
+        而右边框仍是 1px；去掉分隔线后两侧宽度一致。
+    -->
+    <sys:Double x:Key="DockDocumentTabItemSeparatorOpacity">0</sys:Double>
+    <Thickness x:Key="DockTabContentMargin">1</Thickness>
+    <CornerRadius x:Key="DockSelectorOverlayCornerRadius">8</CornerRadius>
+    <CornerRadius x:Key="DockSelectorOverlayItemCornerRadius">4</CornerRadius>
+    <CornerRadius x:Key="DockDragPreviewCornerRadius">6</CornerRadius>
+    <CornerRadius x:Key="DockOverlayCardCornerRadius">10</CornerRadius>
+    <CornerRadius x:Key="DockDialogCornerRadius">10</CornerRadius>
+    <x:Boolean x:Key="DockDocumentTabStripSeparatorVisible">False</x:Boolean>
+    <sys:Double x:Key="DockDocumentTabStripSeparatorSize">0</sys:Double>
+</ResourceDictionary>

@@ -11,7 +11,7 @@
         <vm:MaskManagerViewModel/>
     </Design.DataContext>
 
-    <Border Background="{DynamicResource SukiCardBackground}"
+    <Border Background="{DynamicResource LayeronCardBrush}"
             CornerRadius="8"
             Margin="8">
         <DockPanel>
@@ -36,7 +36,7 @@
                     </ListBox.ItemsPanel>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <Border Background="{DynamicResource SukiControlBackground}"
+                            <Border Background="{DynamicResource LayeronSurfaceRaisedBrush}"
                                     CornerRadius="6"
                                     Padding="8"
                                     Margin="0,0,0,6">

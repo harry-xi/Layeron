@@ -17,7 +17,7 @@
     <Border x:Name="EmptyHint"
             HorizontalAlignment="Center" VerticalAlignment="Center"
             Padding="16,12" CornerRadius="6"
-            Background="{DynamicResource SukiControlBackground}"
+            Background="{DynamicResource LayeronSurfaceRaisedBrush}"
             IsHitTestVisible="False">
       <StackPanel Spacing="4">
         <TextBlock Text="没有模型" FontWeight="SemiBold" HorizontalAlignment="Center" />

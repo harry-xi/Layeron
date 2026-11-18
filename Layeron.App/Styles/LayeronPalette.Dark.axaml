@@ -1,0 +1,226 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Layeron 深色调色板。与浅色文件保持完全相同的键集合。 -->
+
+    <Color x:Key="ThemeBackgroundColor">#FF0E1117</Color>
+    <Color x:Key="ThemeBorderLowColor">#FF232B37</Color>
+    <Color x:Key="ThemeBorderMidColor">#FF2F3948</Color>
+    <Color x:Key="ThemeBorderHighColor">#FF45556C</Color>
+    <Color x:Key="ThemeControlLowColor">#FF141A23</Color>
+    <Color x:Key="ThemeControlMidColor">#FF1B222D</Color>
+    <Color x:Key="ThemeControlMidHighColor">#FF2A3442</Color>
+    <Color x:Key="ThemeControlHighColor">#FF333E4F</Color>
+    <Color x:Key="ThemeControlVeryHighColor">#FF5A6A83</Color>
+    <Color x:Key="ThemeControlHighlightLowColor">#FF171D26</Color>
+    <Color x:Key="ThemeControlHighlightMidColor">#FF222B38</Color>
+    <Color x:Key="ThemeControlHighlightHighColor">#FF2C3647</Color>
+    <Color x:Key="ThemeForegroundColor">#FFE6ECF6</Color>
+    <Color x:Key="ThemeForegroundLowColor">#FF8C98AB</Color>
+    <Color x:Key="HighlightColor">#FF4C8DFF</Color>
+    <Color x:Key="HighlightColor2">#FF3A76E0</Color>
+    <Color x:Key="HighlightForegroundColor">#FFFFFFFF</Color>
+    <Color x:Key="HyperlinkVisitedColor">#FFB69CFF</Color>
+    <Color x:Key="ErrorColor">#FFF87171</Color>
+    <Color x:Key="ErrorLowColor">#1FF87171</Color>
+
+    <SolidColorBrush x:Key="ThemeBackgroundBrush" Color="{StaticResource ThemeBackgroundColor}" />
+    <SolidColorBrush x:Key="ThemeBorderLowBrush" Color="{StaticResource ThemeBorderLowColor}" />
+    <SolidColorBrush x:Key="ThemeBorderMidBrush" Color="{StaticResource ThemeBorderMidColor}" />
+    <SolidColorBrush x:Key="ThemeBorderHighBrush" Color="{StaticResource ThemeBorderHighColor}" />
+    <SolidColorBrush x:Key="ThemeControlLowBrush" Color="{StaticResource ThemeControlLowColor}" />
+    <SolidColorBrush x:Key="ThemeControlMidBrush" Color="{StaticResource ThemeControlMidColor}" />
+    <SolidColorBrush x:Key="ThemeControlMidHighBrush" Color="{StaticResource ThemeControlMidHighColor}" />
+    <SolidColorBrush x:Key="ThemeControlHighBrush" Color="{StaticResource ThemeControlHighColor}" />
+    <SolidColorBrush x:Key="ThemeControlVeryHighBrush" Color="{StaticResource ThemeControlVeryHighColor}" />
+    <SolidColorBrush x:Key="ThemeControlHighlightLowBrush" Color="{StaticResource ThemeControlHighlightLowColor}" />
+    <SolidColorBrush x:Key="ThemeControlHighlightMidBrush" Color="{StaticResource ThemeControlHighlightMidColor}" />
+    <SolidColorBrush x:Key="ThemeControlHighlightHighBrush" Color="{StaticResource ThemeControlHighlightHighColor}" />
+    <SolidColorBrush x:Key="ThemeForegroundBrush" Color="{StaticResource ThemeForegroundColor}" />
+    <SolidColorBrush x:Key="ThemeForegroundLowBrush" Color="{StaticResource ThemeForegroundLowColor}" />
+    <SolidColorBrush x:Key="HighlightBrush" Color="{StaticResource HighlightColor}" />
+    <SolidColorBrush x:Key="HighlightBrush2" Color="{StaticResource HighlightColor2}" />
+    <SolidColorBrush x:Key="HighlightForegroundBrush" Color="{StaticResource HighlightForegroundColor}" />
+    <SolidColorBrush x:Key="HyperlinkVisitedBrush" Color="{StaticResource HyperlinkVisitedColor}" />
+    <SolidColorBrush x:Key="ErrorBrush" Color="{StaticResource ErrorColor}" />
+    <SolidColorBrush x:Key="ErrorLowBrush" Color="{StaticResource ErrorLowColor}" />
+    <SolidColorBrush x:Key="ThemeControlTransparentBrush" Color="Transparent" />
+
+    <Color x:Key="ThemeAccentColor">#FF4C8DFF</Color>
+    <Color x:Key="ThemeAccentColor2">#B34C8DFF</Color>
+    <Color x:Key="ThemeAccentColor3">#664C8DFF</Color>
+    <Color x:Key="ThemeAccentColor4">#334C8DFF</Color>
+    <SolidColorBrush x:Key="ThemeAccentBrush" Color="{StaticResource ThemeAccentColor}" />
+    <SolidColorBrush x:Key="ThemeAccentBrush2" Color="{StaticResource ThemeAccentColor2}" />
+    <SolidColorBrush x:Key="ThemeAccentBrush3" Color="{StaticResource ThemeAccentColor3}" />
+    <SolidColorBrush x:Key="ThemeAccentBrush4" Color="{StaticResource ThemeAccentColor4}" />
+
+    <!--
+        Dock 拖放提示：边缘用实色强调，向面板内部渐隐。
+        Dock 自身会把指示层再乘 0.5 透明度，所以这里的 Stop 比最终效果略强。
+    -->
+    <LinearGradientBrush x:Key="LayeronDockDropTopBrush" StartPoint="0%,0%" EndPoint="0%,100%">
+        <GradientStop Offset="0" Color="{StaticResource ThemeAccentColor}" />
+        <GradientStop Offset="0.08" Color="{StaticResource ThemeAccentColor2}" />
+        <GradientStop Offset="0.35" Color="{StaticResource ThemeAccentColor3}" />
+        <GradientStop Offset="1" Color="{StaticResource ThemeAccentColor4}" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="LayeronDockDropBottomBrush" StartPoint="0%,100%" EndPoint="0%,0%">
+        <GradientStop Offset="0" Color="{StaticResource ThemeAccentColor}" />
+        <GradientStop Offset="0.08" Color="{StaticResource ThemeAccentColor2}" />
+        <GradientStop Offset="0.35" Color="{StaticResource ThemeAccentColor3}" />
+        <GradientStop Offset="1" Color="{StaticResource ThemeAccentColor4}" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="LayeronDockDropLeftBrush" StartPoint="0%,0%" EndPoint="100%,0%">
+        <GradientStop Offset="0" Color="{StaticResource ThemeAccentColor}" />
+        <GradientStop Offset="0.08" Color="{StaticResource ThemeAccentColor2}" />
+        <GradientStop Offset="0.35" Color="{StaticResource ThemeAccentColor3}" />
+        <GradientStop Offset="1" Color="{StaticResource ThemeAccentColor4}" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="LayeronDockDropRightBrush" StartPoint="100%,0%" EndPoint="0%,0%">
+        <GradientStop Offset="0" Color="{StaticResource ThemeAccentColor}" />
+        <GradientStop Offset="0.08" Color="{StaticResource ThemeAccentColor2}" />
+        <GradientStop Offset="0.35" Color="{StaticResource ThemeAccentColor3}" />
+        <GradientStop Offset="1" Color="{StaticResource ThemeAccentColor4}" />
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="LayeronDockDropCenterBrush" Color="{StaticResource ThemeAccentColor3}" />
+
+    <!-- Dock 停靠选择器：默认是白色底 + 橙色箭头位图，这里替换成主题化的矢量卡片。 -->
+    <RectangleGeometry x:Key="LayeronDockSelectorCardGeometry" Rect="5.5,5.5,29,29" RadiusX="6" RadiusY="6" />
+    <RectangleGeometry x:Key="LayeronDockSelectorCenterGlyphGeometry" Rect="14,14,12,12" RadiusX="2" RadiusY="2" />
+    <StreamGeometry x:Key="LayeronDockSelectorTopArrowGeometry">M 20,27 L 20,13 M 14,19 L 20,13 L 26,19</StreamGeometry>
+    <StreamGeometry x:Key="LayeronDockSelectorBottomArrowGeometry">M 20,13 L 20,27 M 14,21 L 20,27 L 26,21</StreamGeometry>
+    <StreamGeometry x:Key="LayeronDockSelectorLeftArrowGeometry">M 27,20 L 13,20 M 19,14 L 13,20 L 19,26</StreamGeometry>
+    <StreamGeometry x:Key="LayeronDockSelectorRightArrowGeometry">M 13,20 L 27,20 M 21,14 L 27,20 L 21,26</StreamGeometry>
+
+    <DrawingImage x:Key="LayeronDockSelectorTopImage">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 H40 V40 H0 Z" />
+                <GeometryDrawing Brush="{StaticResource LayeronPopupBackgroundBrush}" Geometry="{StaticResource LayeronDockSelectorCardGeometry}" />
+                <GeometryDrawing Geometry="{StaticResource LayeronDockSelectorCardGeometry}">
+                    <GeometryDrawing.Pen>
+                        <Pen Brush="{StaticResource LayeronAccentBrush}" Thickness="1" />
+                    </GeometryDrawing.Pen>
+                </GeometryDrawing>
+                <GeometryDrawing Geometry="{StaticResource LayeronDockSelectorTopArrowGeometry}">
+                    <GeometryDrawing.Pen>
+                        <Pen Brush="{StaticResource LayeronAccentBrush}" Thickness="1.6" LineCap="Round" LineJoin="Round" />
+                    </GeometryDrawing.Pen>
+                </GeometryDrawing>
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+    <DrawingImage x:Key="LayeronDockSelectorBottomImage">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 H40 V40 H0 Z" />
+                <GeometryDrawing Brush="{StaticResource LayeronPopupBackgroundBrush}" Geometry="{StaticResource LayeronDockSelectorCardGeometry}" />
+                <GeometryDrawing Geometry="{StaticResource LayeronDockSelectorCardGeometry}">
+                    <GeometryDrawing.Pen>
+                        <Pen Brush="{StaticResource LayeronAccentBrush}" Thickness="1" />
+                    </GeometryDrawing.Pen>
+                </GeometryDrawing>
+                <GeometryDrawing Geometry="{StaticResource LayeronDockSelectorBottomArrowGeometry}">
+                    <GeometryDrawing.Pen>
+                        <Pen Brush="{StaticResource LayeronAccentBrush}" Thickness="1.6" LineCap="Round" LineJoin="Round" />
+                    </GeometryDrawing.Pen>
+                </GeometryDrawing>
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+    <DrawingImage x:Key="LayeronDockSelectorLeftImage">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 H40 V40 H0 Z" />
+                <GeometryDrawing Brush="{StaticResource LayeronPopupBackgroundBrush}" Geometry="{StaticResource LayeronDockSelectorCardGeometry}" />
+                <GeometryDrawing Geometry="{StaticResource LayeronDockSelectorCardGeometry}">
+                    <GeometryDrawing.Pen>
+                        <Pen Brush="{StaticResource LayeronAccentBrush}" Thickness="1" />
+                    </GeometryDrawing.Pen>
+                </GeometryDrawing>
+                <GeometryDrawing Geometry="{StaticResource LayeronDockSelectorLeftArrowGeometry}">
+                    <GeometryDrawing.Pen>
+                        <Pen Brush="{StaticResource LayeronAccentBrush}" Thickness="1.6" LineCap="Round" LineJoin="Round" />
+                    </GeometryDrawing.Pen>
+                </GeometryDrawing>
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+    <DrawingImage x:Key="LayeronDockSelectorRightImage">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 H40 V40 H0 Z" />
+                <GeometryDrawing Brush="{StaticResource LayeronPopupBackgroundBrush}" Geometry="{StaticResource LayeronDockSelectorCardGeometry}" />
+                <GeometryDrawing Geometry="{StaticResource LayeronDockSelectorCardGeometry}">
+                    <GeometryDrawing.Pen>
+                        <Pen Brush="{StaticResource LayeronAccentBrush}" Thickness="1" />
+                    </GeometryDrawing.Pen>
+                </GeometryDrawing>
+                <GeometryDrawing Geometry="{StaticResource LayeronDockSelectorRightArrowGeometry}">
+                    <GeometryDrawing.Pen>
+                        <Pen Brush="{StaticResource LayeronAccentBrush}" Thickness="1.6" LineCap="Round" LineJoin="Round" />
+                    </GeometryDrawing.Pen>
+                </GeometryDrawing>
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+    <DrawingImage x:Key="LayeronDockSelectorCenterImage">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 H40 V40 H0 Z" />
+                <GeometryDrawing Brush="{StaticResource LayeronPopupBackgroundBrush}" Geometry="{StaticResource LayeronDockSelectorCardGeometry}" />
+                <GeometryDrawing Geometry="{StaticResource LayeronDockSelectorCardGeometry}">
+                    <GeometryDrawing.Pen>
+                        <Pen Brush="{StaticResource LayeronAccentBrush}" Thickness="1" />
+                    </GeometryDrawing.Pen>
+                </GeometryDrawing>
+                <GeometryDrawing Brush="{StaticResource LayeronAccentBrush}" Geometry="{StaticResource LayeronDockSelectorCenterGlyphGeometry}" />
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
+    <SolidColorBrush x:Key="CaptionButtonForeground" Color="#FFE6ECF6" />
+    <SolidColorBrush x:Key="CaptionButtonBackground" Color="#FF1B222D" />
+    <SolidColorBrush x:Key="CaptionButtonBorderBrush" Color="#FF2F3948" />
+    <StaticResource x:Key="TitleBarBackgroundBrush" ResourceKey="ThemeBackgroundBrush" />
+    <SolidColorBrush x:Key="RefreshVisualizerForeground" Color="#FFE6ECF6" />
+    <SolidColorBrush x:Key="RefreshVisualizerBackground" Color="Transparent" />
+    <SolidColorBrush x:Key="NotificationCardBackgroundBrush" Opacity="0.92" Color="#FF1F2937" />
+    <SolidColorBrush x:Key="NotificationCardInformationBackgroundBrush" Opacity="0.92" Color="#FF2563EB" />
+    <SolidColorBrush x:Key="NotificationCardSuccessBackgroundBrush" Opacity="0.92" Color="#FF059669" />
+    <SolidColorBrush x:Key="NotificationCardWarningBackgroundBrush" Opacity="0.92" Color="#FFB45309" />
+    <SolidColorBrush x:Key="NotificationCardErrorBackgroundBrush" Opacity="0.92" Color="#FFB91C1C" />
+    <SolidColorBrush x:Key="DatePickerFlyoutPresenterHighlightFill" Opacity="0.4" Color="{StaticResource ThemeAccentColor}" />
+    <SolidColorBrush x:Key="TimePickerFlyoutPresenterHighlightFill" Opacity="0.4" Color="{StaticResource ThemeAccentColor}" />
+
+    <Color x:Key="LayeronAccentColor">#FF4C8DFF</Color>
+    <SolidColorBrush x:Key="LayeronAccentBrush" Color="{StaticResource LayeronAccentColor}" />
+    <SolidColorBrush x:Key="LayeronAccentHoverBrush" Color="#FF6FA6FF" />
+    <SolidColorBrush x:Key="LayeronAccentPressedBrush" Color="#FF3A76E0" />
+    <SolidColorBrush x:Key="LayeronAccentTextBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="LayeronAccentSubtleBrush" Color="#264C8DFF" />
+    <SolidColorBrush x:Key="LayeronSelectionBrush" Color="#3D4C8DFF" />
+    <SolidColorBrush x:Key="LayeronFocusBrush" Color="#994C8DFF" />
+    <SolidColorBrush x:Key="LayeronSurfaceBrush" Color="#FF11161F" />
+    <SolidColorBrush x:Key="LayeronSurfaceRaisedBrush" Color="#FF1A202B" />
+    <SolidColorBrush x:Key="LayeronSurfaceSunkenBrush" Color="#FF0A0D12" />
+    <SolidColorBrush x:Key="LayeronCardBrush" Color="#FF151B24" />
+    <SolidColorBrush x:Key="LayeronCardBorderBrush" Color="#FF252E3C" />
+    <SolidColorBrush x:Key="LayeronHoverBrush" Color="#FF222B38" />
+    <SolidColorBrush x:Key="LayeronPopupBackgroundBrush" Color="#FF161C26" />
+    <SolidColorBrush x:Key="LayeronTooltipBackgroundBrush" Color="#FF1B222D" />
+    <SolidColorBrush x:Key="LayeronTooltipForegroundBrush" Color="#FFE6ECF6" />
+    <SolidColorBrush x:Key="LayeronDangerBrush" Color="#FFF87171" />
+    <SolidColorBrush x:Key="LayeronWarningBrush" Color="#FFFBBF24" />
+    <SolidColorBrush x:Key="LayeronSuccessBrush" Color="#FF34D399" />
+    <SolidColorBrush x:Key="LayeronEditorBackgroundBrush" Color="#FF0B0F16" />
+    <SolidColorBrush x:Key="LayeronBackdropBrush" Color="#99000000" />
+    <Color x:Key="LayeronBackdropColor">#99000000</Color>
+    <Color x:Key="LayeronPopupBackgroundColor">#FF161C26</Color>
+    <Color x:Key="LayeronDockDocumentBorderColor">#FF44546C</Color>
+    <SolidColorBrush x:Key="LayeronDockDocumentBorderBrush" Color="{StaticResource LayeronDockDocumentBorderColor}" />
+    <Color x:Key="LayeronDockTabStripColor">#FF171D26</Color>
+    <Color x:Key="LayeronDockTabActiveColor">#FF232D3B</Color>
+    <Color x:Key="LayeronDockTabHoverColor">#FF222B38</Color>
+</ResourceDictionary>
