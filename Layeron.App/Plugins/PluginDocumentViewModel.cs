@@ -1,5 +1,6 @@
 using System;
 using Dock.Model.ReactiveUI.Controls;
+using Layeron.App.Layout;
 
 namespace Layeron.App.Plugins;
 
@@ -33,6 +34,7 @@ public sealed class PluginDocumentViewModel : Document, IDisposable
         Title = title;
         Id = typeId;
         CanClose = canClose;
+        DockGroup = DockGroups.Documents;
         TypeId = typeId;
         _contentFactory = contentFactory;
     }

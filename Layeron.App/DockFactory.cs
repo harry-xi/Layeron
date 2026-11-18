@@ -315,6 +315,7 @@ public class DockFactory : Factory
                 var dock = CreateDocumentDock();
                 dock.Id = node.Id ?? "Documents";
                 dock.Title = node.Title ?? "Documents";
+                dock.DockGroup = DockGroups.Documents;
                 dock.Proportion = node.Proportion;
                 dock.VisibleDockables = BuildChildren(node, unresolved);
                 if (node.ActiveIndex.HasValue && dock.VisibleDockables != null)

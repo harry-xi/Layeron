@@ -9,6 +9,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Dock.Model.ReactiveUI.Controls;
+using Layeron.App.Layout;
 using Layeron.App.Logging;
 using Layeron.App.Models;
 using Layeron.App.Session;
@@ -59,6 +60,7 @@ public class SliceViewerViewModel : Document
         Title = "Slice Viewer";
         Id = "SliceViewer";
         CanClose = true;
+        DockGroup = DockGroups.Documents;
         ClickCommand = ReactiveCommand.Create<Point>(OnClick);
         PaintCommand = ReactiveCommand.Create<Point>(PaintMask); // [TEMP-DEMO]
         AnnotationClickCommand = ReactiveCommand.Create<SliceClick>(OnAnnotationClick);

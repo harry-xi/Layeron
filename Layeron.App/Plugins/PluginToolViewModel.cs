@@ -34,6 +34,7 @@ public sealed class PluginToolViewModel : Tool, IDisposable
         Title = title;
         Id = typeId;
         CanClose = canClose;
+        CanDockAsDocument = false;
         TypeId = typeId;
         _contentFactory = contentFactory;
     }

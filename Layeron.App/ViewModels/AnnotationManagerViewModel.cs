@@ -59,6 +59,7 @@ public sealed class AnnotationManagerViewModel : Tool
         Title = "Annotation Manager";
         Id = "AnnotationManager";
         CanClose = true;
+        CanDockAsDocument = false;
 
         AddLayerCommand = ReactiveCommand.Create(AddLayerFromUi);
         LoadLayerCommand = ReactiveCommand.CreateFromTask(LoadLayerAsync);

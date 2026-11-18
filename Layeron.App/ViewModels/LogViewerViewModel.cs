@@ -46,6 +46,7 @@ public sealed class LogViewerViewModel : Tool, IDisposable
         Title = "Log";
         Id = DockableIds.Log;
         CanClose = true;
+        CanDockAsDocument = false;
         ClearCommand = ReactiveCommand.Create(Log.Clear);
         CopySelectedCommand = ReactiveCommand.CreateFromTask(() => CopyRecordAsync(_selected));
         OpenFolderCommand = ReactiveCommand.Create(OpenFolder);

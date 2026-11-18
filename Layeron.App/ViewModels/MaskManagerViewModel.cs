@@ -25,6 +25,7 @@ public class MaskManagerViewModel : Tool
         Title = "Mask Manager";
         Id = "MaskManager";
         CanClose = true;
+        CanDockAsDocument = false;
 
         AddMaskCommand = ReactiveCommand.Create(AddMask);
         RemoveMaskCommand = ReactiveCommand.Create<MaskLayer>(RemoveMask);

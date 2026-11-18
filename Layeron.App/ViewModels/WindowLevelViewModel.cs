@@ -29,6 +29,7 @@ public class WindowLevelViewModel : Tool
         Title = "Window Level";
         Id = "WindowLevel";
         CanClose = true;
+        CanDockAsDocument = false;
 
         ResetCommand = ReactiveCommand.Create(Reset);
 
