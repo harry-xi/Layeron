@@ -130,6 +130,7 @@ public sealed class PluginManager : IDisposable
         _points.DefinePoint<IVolumeFilter>(FilterPoints.Volume, "Volume filters");
         _points.DefinePoint<VolumeLoader>(LoaderPoints.Volume, "Volume loaders");
         _points.DefinePoint<SettingsPageContribution>(SettingsPoints.Pages, "设置页面");
+        _points.DefinePoint<SliceToolContribution>(ToolPoints.SliceTools, "切片交互工具");
     }
 
     /// <summary>The host adapter this manager drives.</summary>

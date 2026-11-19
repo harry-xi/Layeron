@@ -88,6 +88,13 @@ public sealed class PluginController : IDisposable
         _manager.PointRegistry.GetPoint<IVolumeFilter>(FilterPoints.Volume);
 
     /// <summary>
+    /// The host-owned slice-tool point. The toolbox binds to it through the tool catalog so
+    /// contributed tools follow plugin load, unload and hot reload, exactly like filters.
+    /// </summary>
+    public ExtensionPoint<SliceToolContribution>? ToolPoint =>
+        _manager.PointRegistry.GetPoint<SliceToolContribution>(ToolPoints.SliceTools);
+
+    /// <summary>
     /// The volume loaders the import menu offers: the host's built-in readers plus every one a plugin
     /// contributed. Read through the manager's point registry, so it always reflects what is loaded.
     /// </summary>

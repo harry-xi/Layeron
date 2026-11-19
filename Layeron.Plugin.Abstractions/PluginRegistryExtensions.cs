@@ -38,6 +38,35 @@ public static class PluginRegistryExtensions
     }
 
     /// <summary>
+    /// Contributes a slice interaction tool to the host-owned slice-tool point.
+    /// Tool ids must be globally unique; duplicates fail the activation.
+    /// </summary>
+    public static IDisposable AddSliceTool(this IPluginRegistry registry, ISliceTool tool)
+    {
+        ArgumentNullException.ThrowIfNull(registry);
+        ArgumentNullException.ThrowIfNull(tool);
+        ArgumentException.ThrowIfNullOrWhiteSpace(tool.Descriptor.Id);
+
+        var point = registry.GetPoint<SliceToolContribution>(ToolPoints.SliceTools);
+        if (point != null)
+        {
+            foreach (var existing in point.Items)
+            {
+                if (string.Equals(existing.Descriptor.Id, tool.Descriptor.Id, StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        $"A slice tool with id '{tool.Descriptor.Id}' is already registered. " +
+                        $"Tool ids must be globally unique; prefix yours with your plugin id.");
+            }
+        }
+
+        return registry.Contribute(ToolPoints.SliceTools, new SliceToolContribution
+        {
+            Descriptor = tool.Descriptor,
+            Factory = () => tool
+        });
+    }
+
+    /// <summary>
     /// Contributes a custom data source to the host-owned loader point.
     /// Loader ids must be globally unique; duplicates fail the activation.
     /// </summary>

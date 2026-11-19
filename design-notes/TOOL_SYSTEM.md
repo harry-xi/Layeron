@@ -382,3 +382,28 @@ P1–P3 顺序执行（P2/P3 依赖 P1 的契约冻结）；每阶段结束跑�
 6. 不新增产品级 demo 插件，扩展性由测试程序集验证；
 7. 工具箱停靠右侧工具坞置顶（默认布局 MaskManager 之前）；
 8. v1 不做工具快捷键（按钮 + Esc 取消手势），后续再排单键（B/E/W/L/M）。
+
+---
+
+## 13. 实施进度（工作断点记录，2026-11-19 深夜会话）
+
+**已完成并验证：**
+
+- **核心库修复**：`Big3DBitMap.SetXYSlice` 由错误的 `(int x, int z, ...)` 签名修正为整层写 `(int z, bool[,])`（原 `x` 参数从未使用、校验逻辑错误）；`SetXZSlice` 由 private 改 public；三者统一精确形状校验；**修复共享 `Block.Full` 单例被切片写路径原地污染的静默数据损坏 bug**（现经写时复制 + Block 索引器防御性抛错）；核心测试 92/92 通过（`Big3DBitMapSliceTest` 新增写方法与单例回归测试）。
+- **几何算法库**（`App\Tools\Geometry\`）：`SliceGeometry` / `Raster` / `FloodFill` / `ShapeInterpolation` 全部落地，38 个纯函数测试通过。已知语义：不相交形状在线性 SDF 混合下**不会**桥接（数学正确行为，有测试钉住）。
+- **插件契约**（`Plugin.Abstractions\SliceTools.cs`）：§3 全部类型定稿并编译；`AddSliceTool` 注册糖；`PluginManager` 预定义 `layeron.tools.slice` 点；`PluginController.ToolPoint` 暴露。
+- **宿主框架核心**（`App\Tools\`）：`ToolCatalog`（内置+贡献聚合、热加载增删）、`SliceToolService`（会话级：激活/实例缓存/选项值/指针与键盘路由/撤销栈）、`SliceToolContext` + `MaskEditScopeImpl`（一次手势一条命令、bbox 裁剪快照、中途 Cancel 回滚）、`MaskEditHistory`（字节预算 + Prune）、`ToolOptionValues`（描述符默认值回退）。
+- **笔刷/橡皮核心**（`App\Tools\BuiltIn\`）：`DiscStampTool`（描边插值盖章 + 深度跨层 + Esc 丢弃描边）+ `BrushTool` / `EraserTool`。
+- App 编译 0 警告 0 错误；App.Test 97/97 通过。
+
+**P1 剩余（下次会话从这里开始）：**
+
+1. 视图路由改造：`CustomImageViewer` 移除 Ctrl+左键 `[TEMP-DEMO]` 涂抹路径（`PaintCommand` / `IsPaintModifier` / `_isPainting` / 涂抹光标），新增 `ToolCommand`（参数含 `Phase`、`Point(double)`、`Modifiers`、`ClickCount`）与 `IsToolActive`；工具激活时左键归工具，平移改 Space+左拖或中键拖。
+2. `SliceViewerViewModel`：删除 `PaintMask` / `PaintCommand`，转发到 `session.ToolService.HandlePointer`（SliceAxis↔SlicePlane 映射）；`SliceViewerView.axaml` 绑定更新；`MaskManagerViewModel` 删除 `[TEMP-DEMO] BrushRadius`（注意查 MaskManagerView.axaml 的绑定）。
+3. `ToolboxViewModel` + `ToolboxView.axaml`（仿 FilterRunner 七步接入）：工具按钮网格（Group/Order、None 置顶）、声明式选项编辑（Number/Toggle/Choice）、添加/擦除共享开关、Undo/Redo 按钮、状态文本。
+4. `ToolOverlay`（`IImageOverlay`）：Path/Points 矢量绘制 + Region 半透明位图（复用 `RenderSingleMaskToBitmap` 同款路径），只渲染 Plane/Index 匹配的当前视图切片�片。
+5. 会话/停靠接线：`ISession.ToolService` + `SessionManager.CreateSession(ToolCatalog?)` + `SessionContext` 传递；`DockableIds.Toolbox`、`DefaultLayout` 右侧工具坞置顶、`DockFactory.RegisterBuiltIns` 一行、`DockViewModel.OpenToolboxCommand`、`MainWindow.axaml` 菜单项；`MainWindowViewModel`：先建 `ToolCatalog` → `CreateSession(tools)` → `tools.Attach(Plugins.ToolPoint)`（紧邻 `filters.Attach`）。
+6. 键盘：Enter/Escape 由有焦点的视图路由到活动工具；Ctrl+Z / Ctrl+Shift+Z 全局撤销重做。
+7. P1 测试：`ToolServiceTests`（headless：激活→模拟指针→掩膜断言→撤销→重做→深度→选项）；`SliceToolRegistrationTests`（插件侧真程序集注册/热移除）。
+
+**之后**：P2 区域工具（套索/多边形/矩形/椭圆 + 跨层自动连接插值）→ P3 算法工具（魔棒 3D 生长 + 磁力套索 live-wire）→ P4 插件接入验证 → P5 文档（docs/plugin 三篇；**api-reference.md 仍记着旧 `SetXYSlice(int x, int z, ...)` 签名，届时同步**；本文状态改"已实现"）。
