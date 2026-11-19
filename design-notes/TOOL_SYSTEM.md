@@ -393,8 +393,9 @@ P1–P3 顺序执行（P2/P3 依赖 P1 的契约冻结）；每阶段结束跑�
 - **几何算法库**（`App\Tools\Geometry\`）：`SliceGeometry` / `Raster` / `FloodFill` / `ShapeInterpolation` 全部落地，38 个纯函数测试通过。已知语义：不相交形状在线性 SDF 混合下**不会**桥接（数学正确行为，有测试钉住）。
 - **插件契约**（`Plugin.Abstractions\SliceTools.cs`）：§3 全部类型定稿并编译；`AddSliceTool` 注册糖；`PluginManager` 预定义 `layeron.tools.slice` 点；`PluginController.ToolPoint` 暴露。
 - **宿主框架核心**（`App\Tools\`）：`ToolCatalog`（内置+贡献聚合、热加载增删）、`SliceToolService`（会话级：激活/实例缓存/选项值/指针与键盘路由/撤销栈）、`SliceToolContext` + `MaskEditScopeImpl`（一次手势一条命令、bbox 裁剪快照、中途 Cancel 回滚）、`MaskEditHistory`（字节预算 + Prune）、`ToolOptionValues`（描述符默认值回退）。
-- **笔刷/橡皮核心**（`App\Tools\BuiltIn\`）：`DiscStampTool`（描边插值盖章 + 深度跨层 + Esc 丢弃描边）+ `BrushTool` / `EraserTool`。
-- App 编译 0 警告 0 错误；App.Test 97/97 通过。
+- **笔刷/橡皮核心**（`App\Tools\BuiltIn\`）：`DiscStampTool`（描边插值盖章 + 深度跨层 + Esc 3/16/20 丢弃描边）+ `BrushTool` / `EraserTool`。
+- **框架端到端测试**（`App.Test\ToolServiceTests.cs`，6 例全过，无需 headless）：激活→模拟指针→掩膜断言→撤销/重做→Esc 中途回滚→深度跨层→三平面映射→层删除后的命令清理。
+- App 编译 0 警告 0 错误；全量测试 App 103/103、核心库 92/92、插件 191/191 通过。
 
 **P1 剩余（下次会话从这里开始）：**
 

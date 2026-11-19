@@ -34,6 +34,7 @@ public sealed class SliceToolService : IDisposable
 
         _catalog.Changed += OnCatalogChanged;
         _masks.MasksCollectionChanged += OnMasksCollectionChanged;
+        History.Changed += OnHistoryChanged;
     }
 
     /// <summary>Undo/redo stacks for mask edits; see <see cref="MaskEditHistory"/>.</summary>
@@ -250,6 +251,8 @@ public sealed class SliceToolService : IDisposable
         History.Prune(layer => _masks.Masks.Contains(layer));
     }
 
+    private void OnHistoryChanged() => HistoryChanged?.Invoke();
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -261,5 +264,6 @@ public sealed class SliceToolService : IDisposable
         History.Clear();
         _catalog.Changed -= OnCatalogChanged;
         _masks.MasksCollectionChanged -= OnMasksCollectionChanged;
+        History.Changed -= OnHistoryChanged;
     }
 }
