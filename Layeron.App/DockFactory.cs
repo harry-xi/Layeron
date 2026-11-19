@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using Avalonia;
+using Avalonia.Controls.ApplicationLifetimes;
 using Dock.Avalonia.Controls;
 using Dock.Model.Controls;
 using Dock.Model.Core;
@@ -136,6 +138,9 @@ public class DockFactory : Factory
         var root = BuildNode(layout.Root, unresolved) as IRootDock;
         Unresolved = unresolved;
 
+        if (root != null)
+            RepairZeroProportions(root);
+
         return root;
     }
 
@@ -169,7 +174,10 @@ public class DockFactory : Factory
         // Dock.Avalonia, which Dock.Model.ReactiveUI does not reference.
         HostWindowLocator = new Dictionary<string, Func<IHostWindow?>>
         {
-            [nameof(IDockWindow)] = () => new HostWindow()
+            // A single-tab floating window normally lets the tool chrome move the whole window, which
+            // bypasses Dock's drag/drop state and therefore cannot be docked back. Keep the grip as a
+            // dock drag surface so a one-pane window behaves like a multi-tab one.
+            [nameof(IDockWindow)] = () => new HostWindow { ToolChromeControlsWholeWindow = false }
         };
 
         base.InitLayout(layout);
@@ -239,7 +247,333 @@ public class DockFactory : Factory
             SetFocusedDockable(toolDock, newTool);
             return;
         }
+
+        // No tool dock exists (for example every tool was floated out). Creating the dock before
+        // opening the pane is what keeps it docked instead of opening yet another floating window.
+        if (CreateToolDockFor(root) is { } dock)
+        {
+            Log.Debug("Dock", "AddTool {Tool}: created {Dock}", Name(newTool), Name(dock));
+            AddDockable(dock, newTool);
+            SetActiveDockable(newTool);
+            SetFocusedDockable(dock, newTool);
+            return;
+        }
+
+        Log.Debug("Dock", "AddTool {Tool}: no workspace host, opening as a floating window", Name(newTool));
         OpenAsFloatingWindow(root, newTool);
+    }
+
+    /// <summary>Adds a fresh right-hand tool dock to the workspace and returns it.</summary>
+    private IToolDock? CreateToolDockFor(IRootDock root)
+    {
+        var host = root.VisibleDockables?
+            .OfType<IDock>()
+            .FirstOrDefault(dock => dock is IProportionalDock)
+            ?? root.VisibleDockables?.OfType<IDock>().FirstOrDefault();
+
+        if (host is null)
+            return null;
+
+        var dock = CreateToolDock();
+        dock.Alignment = Alignment.Right;
+        dock.Proportion = double.NaN;
+        SplitToDock(host, dock, DockOperation.Right);
+        return dock;
+    }
+
+    /// <summary>
+    /// Splits at an attached target even when Dock has just collapsed the original target out of the
+    /// tree.
+    /// <para>
+    /// Dragging a whole tool dock to another edge moves its tools into a new dock first and splits the
+    /// target afterwards. When the dragged dock was the target's only child on that branch, moving the
+    /// last tool out collapses the target (and any single-child parents) out of the tree; the later
+    /// split then cannot find the target in its parent's list and returns without inserting the new
+    /// dock. The tools stay alive in a detached tree - no exception, nothing visible - which is the
+    /// "tool window exists but belongs to no window" symptom. Re-anchoring on the nearest ancestor that
+    /// is still attached keeps the group on screen at the requested edge.
+    /// </para>
+    /// </summary>
+    public override void SplitToDock(IDock dock, IDockable dockable, DockOperation operation)
+    {
+        var target = dock;
+        while (target.Owner is IDock owner &&
+               owner.VisibleDockables is { } siblings &&
+               !siblings.Contains(target))
+        {
+            target = owner;
+        }
+
+        if (!ReferenceEquals(target, dock))
+        {
+            Log.Warn("Dock", "SplitToDock re-anchored {Operation} from detached {Dock} to {Target} ({Dockable})",
+                operation, Name(dock), Name(target), Name(dockable));
+        }
+
+        Log.Debug("Dock", "SplitToDock {Operation}: {Dockable} -> {Target}",
+            operation, Name(dockable), Name(target));
+
+        base.SplitToDock(target, dockable, operation);
+        EnsureVisibleProportions(dockable);
+
+        Log.Debug("Dock", "SplitToDock done {Operation}: {Dockable} owner={Owner}",
+            operation, Name(dockable), Name(dockable.Owner));
+    }
+
+    private static string Name(IDockable? dockable)
+        => dockable is null
+            ? "(null)"
+            : $"{dockable.GetType().Name}({(string.IsNullOrEmpty(dockable.Id) ? dockable.Title : dockable.Id) ?? "?"})";
+
+    /// <summary>
+    /// Gives sibling docks a share when a split leaves one of them at zero.
+    /// <para>
+    /// When the target collapses, its remaining child is promoted with the target's proportion - often
+    /// 1 - while the new dock is still NaN. On the next layout pass the proportional panel treats 1 as
+    /// already allocated and assigns the remaining 0 to the new dock, so the moved group exists but has
+    /// no size. Writing a share before that pass keeps both sides visible; the panel normalizes the
+    /// total afterwards.
+    /// </para>
+    /// </summary>
+    private static void EnsureVisibleProportions(IDockable dockable)
+    {
+        if (dockable.Owner is not IProportionalDock parent ||
+            parent.VisibleDockables is not { } children)
+        {
+            return;
+        }
+
+        var peers = children
+            .Where(child => child is not ISplitter && !ReferenceEquals(child, dockable))
+            .ToList();
+        if (peers.Count == 0)
+            return;
+
+        if (double.IsNaN(dockable.Proportion) || dockable.Proportion <= 0)
+            dockable.Proportion = 1.0 / (peers.Count + 1);
+    }
+
+    /// <summary>
+    /// Dock's fallback for a rejected drop is to float the pane. With no tool dock left in the main
+    /// window there is no valid tool target: every drop over the documents is rejected and the pane is
+    /// floated again, so a group that was floated can never be docked back. When that is the case, a
+    /// floating tool (or tool group) is attached to the workspace instead.
+    /// </summary>
+    public override void FloatDockable(IDockable dockable, DockWindowOptions? options)
+    {
+        var root = FindRoot(dockable, _ => true);
+        var workspace = root is null ? null : GetWorkspaceRoot(root);
+
+        if (root is not null &&
+            workspace is not null &&
+            !ReferenceEquals(root, workspace) &&
+            (dockable is ITool or IToolDock) &&
+            (!HasVisibleToolDock(workspace) || PointerIsInsideMainWindow(dockable)))
+        {
+            Log.Debug("Dock", "Docking {Dockable} back: root={Root} workspace={Workspace}",
+                Name(dockable), Name(root), Name(workspace));
+            DockBackIntoWorkspace(workspace, dockable);
+            return;
+        }
+
+        // Dragging a floating window by its title bar is a different path (HostWindowState): when the
+        // drop is rejected it asks the factory to float the window's root again. If that release
+        // happened over the main window, dock its panes back.
+        if (dockable is IRootDock floatingRoot &&
+            workspace is not null &&
+            !ReferenceEquals(floatingRoot, workspace) &&
+            PointerIsInsideMainWindow(floatingRoot))
+        {
+            Log.Debug("Dock", "Docking floating window back: root={Root} workspace={Workspace}",
+                Name(floatingRoot), Name(workspace));
+
+            foreach (var pane in ToolPanes(floatingRoot).ToList())
+                DockBackIntoWorkspace(workspace, pane);
+
+            return;
+        }
+
+        base.FloatDockable(dockable, options);
+    }
+
+    private static bool PointerIsInsideMainWindow(IDockable dockable)
+    {
+        dockable.GetPointerScreenPosition(out var x, out var y);
+        return !double.IsNaN(x) && !double.IsNaN(y) && IsInsideMainWindow(x, y);
+    }
+
+    private static IEnumerable<IDockable> ToolPanes(IDockable node)
+    {
+        if (node is IToolDock || node is ITool)
+            yield return node;
+
+        if (node is IDock dock)
+            foreach (var child in dock.VisibleDockables ?? [])
+                foreach (var pane in ToolPanes(child))
+                    yield return pane;
+    }
+
+    private static bool IsInsideMainWindow(double x, double y)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop ||
+            desktop.MainWindow is not { } window)
+        {
+            return false;
+        }
+
+        var topLeft = window.PointToScreen(new Point(0, 0));
+        var bottomRight = window.PointToScreen(new Point(window.Bounds.Width, window.Bounds.Height));
+        return x >= topLeft.X && x <= bottomRight.X &&
+               y >= topLeft.Y && y <= bottomRight.Y;
+    }
+
+    private static IRootDock GetWorkspaceRoot(IRootDock root)
+    {
+        var seen = new HashSet<IRootDock> { root };
+        while (root.Window?.Owner is IRootDock owner && seen.Add(owner))
+            root = owner;
+
+        return root;
+    }
+
+    private static bool HasVisibleToolDock(IDockable node)
+        => node is IToolDock ||
+           (node is IDock dock && dock.VisibleDockables?.Any(HasVisibleToolDock) == true);
+
+    private void DockBackIntoWorkspace(IRootDock workspace, IDockable dockable)
+    {
+        try
+        {
+            var alignment = dockable is IToolDock toolDock ? toolDock.Alignment : Alignment.Right;
+            var operation = alignment switch
+            {
+                Alignment.Left => DockOperation.Left,
+                Alignment.Top => DockOperation.Top,
+                Alignment.Bottom => DockOperation.Bottom,
+                _ => DockOperation.Right
+            };
+
+            // Capture the source root and detach without collapsing it: collapsing would close the
+            // floating window in the middle of its own drop event, before the pane is reattached.
+            var sourceRoot = FindRoot(dockable, _ => true);
+            if (dockable.Owner is IDock owner)
+                RemoveDockable(dockable, collapse: false);
+
+            var existingToolDock = FindVisibleToolDock(workspace);
+            var host = workspace.VisibleDockables?
+                .OfType<IDock>()
+                .FirstOrDefault(dock => dock is IProportionalDock)
+                ?? workspace.VisibleDockables?.OfType<IDock>().FirstOrDefault();
+
+            if (dockable is ITool tool)
+            {
+                if (existingToolDock is not null)
+                {
+                    AddDockable(existingToolDock, tool);
+                    SetActiveDockable(tool);
+                    SetFocusedDockable(existingToolDock, tool);
+                }
+                else if (host is not null)
+                {
+                    var newToolDock = CreateToolDock();
+                    newToolDock.Alignment = alignment;
+                    newToolDock.Proportion = double.NaN;
+                    AddDockable(newToolDock, tool);
+                    SplitToDock(host, newToolDock, operation);
+                }
+                else
+                {
+                    AddDockable(workspace, dockable);
+                }
+            }
+            else if (dockable is IToolDock sourceToolDock && existingToolDock is not null &&
+                     !ReferenceEquals(sourceToolDock, existingToolDock))
+            {
+                foreach (var pane in sourceToolDock.VisibleDockables?.OfType<ITool>().ToList() ?? [])
+                {
+                    sourceToolDock.VisibleDockables!.Remove(pane);
+                    AddDockable(existingToolDock, pane);
+                }
+            }
+            else if (host is not null)
+            {
+                SplitToDock(host, dockable, operation);
+            }
+            else
+            {
+                AddDockable(workspace, dockable);
+            }
+
+            if (FindDockable(workspace, d => ReferenceEquals(d, dockable)) is null)
+                Log.Warn("Dock", "Docking {Dockable} back did not attach it to the workspace", Name(dockable));
+
+            // The pane is safe in the workspace now. Close the floating window only when it has no
+            // panes left; with several tabs in the window, the untouched tabs must stay floating.
+            if (sourceRoot is not null &&
+                !ReferenceEquals(sourceRoot, workspace) &&
+                sourceRoot.Window is { } floatingWindow &&
+                !HasPanes(sourceRoot))
+            {
+                RemoveWindow(floatingWindow);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Dock", ex, "Failed to dock {Dockable} back into the workspace", Name(dockable));
+        }
+    }
+
+    private static bool HasPanes(IDockable node)
+    {
+        if (node is ITool or IDocument)
+            return true;
+
+        return node is IDock dock && dock.VisibleDockables?.Any(HasPanes) == true;
+    }
+
+    private static IToolDock? FindVisibleToolDock(IDockable node)
+    {
+        if (node is IToolDock toolDock)
+            return toolDock;
+
+        if (node is IDock dock && dock.VisibleDockables is { } children)
+            foreach (var child in children)
+                if (FindVisibleToolDock(child) is { } found)
+                    return found;
+
+        return null;
+    }
+
+    /// <summary>
+    /// Repairs a saved layout whose pane was written with proportion 0.
+    /// <para>
+    /// A zero-proportion dock with content cannot be restored from the descriptor tree: the collapsed
+    /// flag that made it zero is not part of the saved schema, so Dock rebuilds a normal pane that the
+    /// proportional panel then sizes to nothing. Giving the affected peers a share is safe for an empty
+    /// dock (it stays collapsed through emptiness) and keeps a saved tool group visible.
+    /// </para>
+    /// </summary>
+    private static void RepairZeroProportions(IDock dock)
+    {
+        if (dock.VisibleDockables is { } children)
+        {
+            var peers = children.Where(child => child is not ISplitter).ToList();
+            if (peers.Count > 1 &&
+                peers.Any(peer => peer.Proportion <= 0 && HasContent(peer)))
+            {
+                var share = 1.0 / peers.Count;
+                foreach (var peer in peers)
+                    if (double.IsNaN(peer.Proportion) || peer.Proportion <= 0 || peer.Proportion >= 1)
+                        peer.Proportion = share;
+            }
+
+            foreach (var child in children)
+                if (child is IDock childDock)
+                    RepairZeroProportions(childDock);
+        }
+
+        static bool HasContent(IDockable dockable)
+            => dockable is IDock dock && dock.VisibleDockables?.Any(child => child is not ISplitter) == true;
     }
 
     /// <summary>
