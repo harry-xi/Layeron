@@ -9,6 +9,7 @@ using Layeron.App.Filters;
 using Layeron.App.Layout;
 using Layeron.App.Logging;
 using Layeron.App.Session;
+using Layeron.App.Tools;
 using Layeron.Plugin.Abstractions;
 using ReactiveUI;
 using RxVoid = ReactiveUI.Primitives.RxVoid;
@@ -31,11 +32,12 @@ public class DockViewModel : ViewModelBase
         NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals
     };
 
-    public DockViewModel(ISessionManager sessions, IPreviewChannel? preview = null, FilterCatalog? filters = null)
+    public DockViewModel(ISessionManager sessions, IPreviewChannel? preview = null, FilterCatalog? filters = null, ToolCatalog? tools = null)
     {
         _sessionManager = sessions;
         Filters = filters ?? new FilterCatalog();
-        Factory = new DockFactory(sessions, preview, Filters);
+        Tools = tools ?? new ToolCatalog();
+        Factory = new DockFactory(sessions, preview, Filters, Tools);
         Layout = Factory.BuildOrFallback(null);
         CreateAxialCommand = ReactiveCommand.Create(() => AddSlice(SliceAxis.Axial));
         CreateCoronalCommand = ReactiveCommand.Create(() => AddSlice(SliceAxis.Coronal));
@@ -47,6 +49,7 @@ public class DockViewModel : ViewModelBase
         OpenAnnotationManagerCommand = ReactiveCommand.Create(OpenAnnotationManager);
         OpenWindowLevelCommand = ReactiveCommand.Create(OpenWindowLevel);
         OpenFilterRunnerCommand = ReactiveCommand.Create(OpenFilterRunner);
+        OpenToolboxCommand = ReactiveCommand.Create(OpenToolbox);
         OpenLogCommand = ReactiveCommand.Create(OpenLog);
     }
 
@@ -55,6 +58,12 @@ public class DockViewModel : ViewModelBase
     /// so the catalog is created here and attached to the extension point afterwards.
     /// </summary>
     public FilterCatalog Filters { get; }
+
+    /// <summary>
+    /// The host's live view of slice tools, built-ins plus plugin contributions. Created with
+    /// the dock and attached to the extension point afterwards, exactly like <see cref="Filters"/>.
+    /// </summary>
+    public ToolCatalog Tools { get; }
 
     /// <summary>
     /// The dock factory. Exposed so the plugin host can register and unregister tool factories: every
@@ -85,6 +94,7 @@ public class DockViewModel : ViewModelBase
     public ReactiveCommand<RxVoid, RxVoid> OpenAnnotationManagerCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> OpenWindowLevelCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> OpenFilterRunnerCommand { get; }
+    public ReactiveCommand<RxVoid, RxVoid> OpenToolboxCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> OpenLogCommand { get; }
 
     // ── Runtime dockable creation ─────────────────────────────────────
@@ -155,6 +165,8 @@ public class DockViewModel : ViewModelBase
         => OpenSessionTool(DockableIds.WindowLevel, _sessionManager.Current?.WindowLevel);
 
     private void OpenFilterRunner() => OpenToolById(DockableIds.FilterRunner, "滤波器运行器");
+
+    private void OpenToolbox() => OpenToolById(DockableIds.Toolbox, "工具箱");
 
     private void OpenLog() => OpenToolById(DockableIds.Log, "Log");
 

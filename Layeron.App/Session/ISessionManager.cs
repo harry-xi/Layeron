@@ -1,4 +1,5 @@
 using System;
+using Layeron.App.Tools;
 
 namespace Layeron.App.Session;
 
@@ -20,7 +21,7 @@ public interface ISessionManager
     IObservable<ISession?> CurrentSession { get; }
 
     /// <summary>Opens a new session, closing any current one first.</summary>
-    ISession CreateSession();
+    ISession CreateSession(ToolCatalog? toolCatalog = null);
 
     /// <summary>Closes the current session, notifying consumers before it becomes unusable.</summary>
     void CloseSession();

@@ -1,4 +1,5 @@
 using System;
+using Layeron.App.Tools;
 using Layeron.App.ViewModels;
 
 namespace Layeron.App.Session;
@@ -22,6 +23,9 @@ public interface ISession
 
     /// <summary>Shared window/level lookup applied by every slice view.</summary>
     WindowLevelViewModel WindowLevel { get; }
+
+    /// <summary>Slice tool state for this session: active tool, options, pointer routing, undo history.</summary>
+    SliceToolService ToolService { get; }
 
     /// <summary>
     /// Raised first while the session is closing. The session is still fully usable

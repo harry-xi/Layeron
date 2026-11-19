@@ -1,0 +1,69 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Layeron.App.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="240" d:DesignHeight="520"
+             x:Class="Layeron.App.Views.ToolboxView"
+             x:DataType="vm:ToolboxViewModel">
+
+    <ScrollViewer>
+        <StackPanel Margin="8" Spacing="8">
+            <TextBlock Text="工具箱" FontWeight="SemiBold"/>
+
+            <ItemsControl ItemsSource="{Binding Tools}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ToolboxToolViewModel">
+                        <Button Command="{Binding $parent[ItemsControl].((vm:ToolboxViewModel)DataContext).SelectToolCommand}"
+                                CommandParameter="{Binding Id}"
+                                Margin="0,1"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Left"
+                                Classes="tool">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="{Binding Name}"/>
+                                <TextBlock Grid.Column="1" Text="✓" IsVisible="{Binding IsSelected}"/>
+                            </Grid>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Separator/>
+
+            <CheckBox Content="擦除模式（取消则添加）" IsChecked="{Binding IsEraseMode, Mode=TwoWay}"/>
+
+            <ItemsControl ItemsSource="{Binding Options}" IsVisible="{Binding Options.Count}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ToolboxOptionViewModel">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" Margin="0,2">
+                            <TextBlock Text="{Binding Label}" VerticalAlignment="Center"/>
+                            <NumericUpDown Grid.Column="1"
+                                           IsVisible="{Binding IsNumber}"
+                                           Minimum="{Binding Option.Min}"
+                                           Maximum="{Binding Option.Max}"
+                                           Increment="{Binding Option.Step}"
+                                           Value="{Binding NumberValue, Mode=TwoWay}"/>
+                            <CheckBox Grid.Column="1"
+                                      IsVisible="{Binding IsToggle}"
+                                      IsChecked="{Binding ToggleValue, Mode=TwoWay}"/>
+                            <ComboBox Grid.Column="1"
+                                      IsVisible="{Binding IsChoice}"
+                                      ItemsSource="{Binding Choices}"
+                                      SelectedIndex="{Binding ChoiceValue, Mode=TwoWay}"/>
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Separator/>
+
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="6">
+                <Button Content="撤销" Command="{Binding UndoCommand}" IsEnabled="{Binding CanUndo}"/>
+                <Button Grid.Column="1" Content="重做" Command="{Binding RedoCommand}" IsEnabled="{Binding CanRedo}"/>
+            </Grid>
+
+            <TextBlock Text="{Binding StatusText}" FontSize="11" Opacity="0.72" TextWrapping="Wrap"/>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

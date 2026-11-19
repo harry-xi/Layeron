@@ -48,6 +48,7 @@
                 <MenuItem Header="标注管理器" Command="{Binding Dock.OpenAnnotationManagerCommand}"/>
                 <MenuItem Header="窗宽窗位" Command="{Binding Dock.OpenWindowLevelCommand}"/>
                 <MenuItem Header="滤波器运行器" Command="{Binding Dock.OpenFilterRunnerCommand}"/>
+                <MenuItem Header="工具箱" Command="{Binding Dock.OpenToolboxCommand}"/>
                 <MenuItem Header="日志" Command="{Binding Dock.OpenLogCommand}"/>
             </MenuItem>
             <MenuItem x:Name="PluginMenu" Header="插件"/>

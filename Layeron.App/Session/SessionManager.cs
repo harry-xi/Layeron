@@ -22,7 +22,7 @@ public sealed class SessionManager : ISessionManager
 
     public ISession? Current => _current.Value;
 
-    public ISession CreateSession()
+    public ISession CreateSession(Tools.ToolCatalog? toolCatalog = null)
     {
         if (_current.Value is { } existing)
         {
@@ -40,7 +40,8 @@ public sealed class SessionManager : ISessionManager
         annotationManager.SharedData = sharedData;
         _windowLevel.SharedData = sharedData;
 
-        var session = new SessionContext(sharedData, maskManager, annotationManager, _windowLevel);
+        var toolService = new Tools.SliceToolService(toolCatalog ?? new Tools.ToolCatalog(), sharedData, maskManager);
+        var session = new SessionContext(sharedData, maskManager, annotationManager, _windowLevel, toolService);
         _current.OnNext(session);
         Log.Debug("Session", "Session {SessionId} created", session.GetHashCode());
         return session;
@@ -64,6 +65,7 @@ public sealed class SessionManager : ISessionManager
         _windowLevel.SharedData = null;
 
         session.RaiseClosed();
+        session.ToolService.Dispose();
         Log.Debug("Session", "Session {SessionId} closed (phase 2 complete)", session.GetHashCode());
     }
 }

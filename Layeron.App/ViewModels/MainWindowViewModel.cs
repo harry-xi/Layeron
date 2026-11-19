@@ -2,6 +2,7 @@ using Layeron.App.Logging;
 using Layeron.App.Plugins;
 using Layeron.App.Filters;
 using Layeron.App.Session;
+using Layeron.App.Tools;
 using Layeron.App.Workspaces;
 
 namespace Layeron.App.ViewModels;
@@ -15,7 +16,10 @@ public class MainWindowViewModel : ViewModelBase
     public MainWindowViewModel(ISessionManager sessions)
     {
         StartupTrace.Mark("vm-ctor-begin");
-        Session = sessions.CreateSession();
+        // The tool catalog is created before the session: the session's tool service keeps one
+        // reference to it for the whole session, and plugin contributions attach to it later.
+        var tools = new ToolCatalog();
+        Session = sessions.CreateSession(tools);
         StartupTrace.Mark("vm-session-created");
 
         // The services are created first because the dock needs the plugin preview channel: plugins
@@ -28,13 +32,16 @@ public class MainWindowViewModel : ViewModelBase
         // plugins reach is a view onto the active workspace.
         Workspace = new WorkspaceManager(services.Log);
 
-        Dock = new DockViewModel(sessions, services.Preview, filters);
+        Dock = new DockViewModel(sessions, services.Preview, filters, tools);
         Plugins = new PluginController(services, Dock);
         Settings = new SettingsWindowViewModel(Plugins);
 
         // The host-owned filter point exists as soon as the plugin manager is constructed. Attaching the
         // catalog before InitLoad means the runner panel sees the first contribution immediately.
         filters.Attach(Plugins.FilterPoint);
+
+        // Same for slice tools: the toolbox follows contributions from load, unload and hot reload.
+        tools.Attach(Plugins.ToolPoint);
 
         // The script host service delegates back to the plugin controller, so it is attached after the
         // controller exists but before plugins load - the script editor reads it during activation.

@@ -8,6 +8,7 @@ using Dock.Model.Controls;
 using Dock.Model.Core;
 using Dock.Model.ReactiveUI;
 using Layeron.App.Session;
+using Layeron.App.Tools;
 using Layeron.App.ViewModels;
 using Layeron.App.Layout;
 using Layeron.App.Logging;
@@ -37,6 +38,7 @@ public class DockFactory : Factory
     private readonly ISessionManager _sessions;
     private readonly IPreviewChannel? _preview;
     private readonly FilterCatalog _filters;
+    private readonly ToolCatalog _tools;
 
     /// <summary>Registered factory functions keyed by <see cref="DockableIds"/> value.</summary>
     private readonly Dictionary<string, Func<DockableDescriptor, IDockable?>> _registry = new();
@@ -44,11 +46,12 @@ public class DockFactory : Factory
     /// <summary>Dockables that could not be created during the most recent build (calling <see cref="TryBuildLayout"/>).</summary>
     public IReadOnlyList<UnresolvedDockable> Unresolved { get; private set; } = [];
 
-    public DockFactory(ISessionManager sessions, IPreviewChannel? preview = null, FilterCatalog? filters = null)
+    public DockFactory(ISessionManager sessions, IPreviewChannel? preview = null, FilterCatalog? filters = null, ToolCatalog? tools = null)
     {
         _sessions = sessions;
         _preview = preview;
         _filters = filters ?? new FilterCatalog();
+        _tools = tools ?? new ToolCatalog();
         RegisterBuiltIns();
 
         // Dockables may hold session subscriptions; release them on close so a removed
@@ -603,6 +606,7 @@ public class DockFactory : Factory
         Register(DockableIds.AnnotationManager, _ => _sessions.Current!.AnnotationManager);
         Register(DockableIds.WindowLevel, _ => _sessions.Current!.WindowLevel);
         Register(DockableIds.FilterRunner, _ => new FilterRunnerViewModel(_sessions, _filters));
+        Register(DockableIds.Toolbox, _ => new ToolboxViewModel(_sessions, _tools));
         Register(DockableIds.Log, _ => new LogViewerViewModel());
     }
 

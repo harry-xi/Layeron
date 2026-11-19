@@ -1,4 +1,5 @@
 using System;
+using Layeron.App.Tools;
 using Layeron.App.ViewModels;
 
 namespace Layeron.App.Session;
@@ -17,12 +18,14 @@ public sealed class SessionContext : ISession
         SharedDataSourceViewModel sharedData,
         MaskManagerViewModel maskManager,
         AnnotationManagerViewModel annotationManager,
-        WindowLevelViewModel windowLevel)
+        WindowLevelViewModel windowLevel,
+        SliceToolService toolService)
     {
         SharedData = sharedData;
         MaskManager = maskManager;
         AnnotationManager = annotationManager;
         WindowLevel = windowLevel;
+        ToolService = toolService;
     }
 
     /// <summary>Current main volume and crosshair position.</summary>
@@ -36,6 +39,9 @@ public sealed class SessionContext : ISession
 
     /// <summary>Shared window/level lookup applied by every slice view.</summary>
     public WindowLevelViewModel WindowLevel { get; }
+
+    /// <summary>Slice tool state for this session.</summary>
+    public SliceToolService ToolService { get; }
 
     /// <inheritdoc />
     public event Action<ISession>? Closing;

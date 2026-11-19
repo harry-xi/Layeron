@@ -100,6 +100,7 @@ public static class DefaultLayout
                             ActiveIndex = 0,
                             VisibleDockables =
                             [
+                                Dockable(DockableIds.Toolbox, "Toolbox", "工具箱"),
                                 Dockable(DockableIds.MaskManager, "MaskManager", "Mask Manager"),
                                 Dockable(DockableIds.AnnotationManager, "AnnotationManager", "Annotation Manager"),
                                 Dockable(DockableIds.WindowLevel, "WindowLevel", "Window Level"),
