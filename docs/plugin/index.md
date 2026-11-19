@@ -15,7 +15,7 @@ Layeron 的插件系统围绕三个概念构建：
 | 停靠工具面板 | `Registry.AddTool(...)` | 宿主 Dock（边缘工具坞） |
 | 中央文档标签页 | `Registry.AddDocument(...)` | 宿主 Dock（文档区） |
 | 菜单项 | `Registry.AddMenu(...)` | 宿主菜单 |
-| 体数据过滤器 | `Registry.AddFilter(...)` | 契约与宿主点已就绪；**App 尚未接入消费端/执行器** |
+| 体数据过滤器 | `Registry.AddFilter(...)` | 宿主“滤波器运行器”面板（预览 + 整卷应用） |
 | 数据加载器 | `Registry.AddLoader(...)` | `文件 → 从数据源加载` |
 | ONNX 推理 | `Registry.Contribute(IOnnxRunnerService.PointId, ...)` | 其他插件（见 [ONNX 模型运行器](/plugin/onnx)） |
 | Python 执行 | `Registry.Contribute(IPythonRunnerService.PointId, ...)` | 其他插件（Agent 正在使用） |
@@ -78,11 +78,12 @@ manager.VerifyUnloaded();   // 弱引用自检：报告没能被回收的插件
 
 托管泄漏之外，视图也必须配合：`ContentFactory` 返回的对象如果实现 `IDisposable`，宿主在关闭面板 / 标签页**或卸载插件**时会释放它。这是视图解绑宿主事件、释放 GPU 资源的时机——不这么做，插件的加载上下文无法被回收。
 
-## 六个内置插件
+## 七个内置插件
 
 | 插件 | Id | 展示的能力 |
 |---|---|---|
 | 阈值分割 | `layeron.threshold` | 工具面板 + 菜单 + **自定义扩展点**（其他插件可往它的面板加按钮） |
+| 邻域滤波器 | `layeron.filters` | 纯算法插件：通过 `AddFilter` 贡献均值/高斯/中值/锐化/梯度，由宿主运行器预览与应用 |
 | 掩膜 3D 模型 | `layeron.model3d` | **工具面板 + 文档**共享模型列表；Aura3D 渲染（多模型、glTF/GLB 导入、STL/GLB 导出） |
 | ONNX 模型运行器 | `layeron.onnxruntime` | **模型运行器**：推理、自带私有原生运行时、发布可被其他插件调用的服务 |
 | C# 脚本宿主 | `layeron.scripthost` | **插件加载器**（`IPluginSource`）+ 自己的编辑器 UI |
@@ -91,8 +92,8 @@ manager.VerifyUnloaded();   // 弱引用自检：报告没能被回收的插件
 
 它们都是普通插件：没有为任何一个开特权通道。
 
-::: warning 过滤器的当前状态
-`IVolumeFilter` 契约与 `layeron.filters.volume` 扩展点已经实现并有测试，但 `Layeron.App` **还没有**过滤器面板或执行器。Threshold 与 ONNX 使用各自的处理路径。详见[体数据过滤器](/plugin/filters)。
+::: tip 过滤器的当前状态
+`IVolumeFilter` 契约、`layeron.filters.volume` 扩展点、`Layeron.App.Filters.FilterRunner` 执行器以及 `Tools → 滤波器运行器` 面板都已就绪，内置插件 `layeron.filters` 提供五个常用算法。Threshold 与 ONNX 仍使用各自的处理路径。详见[体数据过滤器](/plugin/filters)。
 :::
 
 ## 接下来

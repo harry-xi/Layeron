@@ -1,7 +1,7 @@
 # Volume Filters
 
-::: warning Current state
-The `IVolumeFilter` contract, the `AddFilter` registration helper, the host extension point and tests exist; **`Layeron.App` does not yet have a filter panel or executor**. This page describes the contract and the intended host/plugin split, not a feature that is already wired into the app.
+::: tip Current state
+The `IVolumeFilter` contract, the `AddFilter` registration helper, the host extension point, the host **filter runner** panel and the built-in `layeron.filters` plugin (mean / Gaussian / median / sharpen / gradient) are implemented in `Layeron.App`. This page describes the contract and the host/plugin split.
 :::
 
 A volume filter (`IVolumeFilter`) draws the sharpest responsibility line in the whole system: **the host owns the domain, the plugin owns the mapping.**
@@ -55,7 +55,7 @@ public readonly record struct FilterRegion(int X0, int Y0, int Z0, int X, int Y,
 - a preview call passes a **one-slice-thick** box (the visible slice);
 - an apply call passes the whole volume (possibly as successive boxes, one per call).
 
-> The app has no executor yet, so these call conventions are currently used only by tests and future consumers.
+> `Layeron.App.Filters.FilterRunner` is that host executor: a preview builds a one-slice-thick `FilterRegion` for the chosen plane, an apply passes the whole volume, and both share one element-type dispatch and the same global statistics.
 
 ## FilterContext: precomputed facts
 
@@ -164,6 +164,12 @@ Scripts have no registration entry point for `IVolumeFilter` (a filter is a long
 
 ## Relationship to the built-in plugins
 
-`ThresholdEngine` in `layeron.threshold` is **not** an `IVolumeFilter` implementation; it uses its own threshold path. `layeron.onnxruntime` also calls ONNX Runtime directly rather than going through the filter point. No built-in plugin currently proves that a host filter driver exists.
+`layeron.filters` is the built-in plugin written against this contract: it has no UI and only calls `context.Registry.AddFilter(...)` in `Activate` to contribute five fixed-parameter 3×3×3 neighbourhood algorithms (mean, Gaussian, median, sharpen, gradient magnitude). The host's **filter runner** (`Tools → Filter Runner`) lists contributions, previews one slice of the current plane, cancels superseded previews, reports progress, allocates the destination and atomically replaces the session volume with the result.
 
-You can still implement `IVolumeFilter` and register it with `AddFilter`; until the app has an executor it will only appear in the `layeron.filters.volume` point and will not automatically get a UI.
+`ThresholdEngine` in `layeron.threshold` is **not** an `IVolumeFilter` implementation; it uses its own threshold path. `layeron.onnxruntime` also calls ONNX Runtime directly rather than going through the filter point.
+
+## Demo data
+
+`File → Generate filter demo phantom (noisy)` creates a deterministic 128×128×64 phantom: a high-contrast sphere with a bright shell, two small lesions and a thin rod, overlaid with uniform noise and a few salt-and-pepper outliers. It is designed for comparing smoothing/median (denoising) with sharpen/gradient (edge preservation). Generate it, open the filter runner, and the panel shows the source and filtered slice side by side.
+
+To implement your own `IVolumeFilter`, write it against the contract and register it with `AddFilter`; the runner lists it automatically and no host code needs to change.

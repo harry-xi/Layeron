@@ -3,7 +3,6 @@
 按命名空间与类型组织的完整清单。所有类型都在 `Layeron.Plugin.Abstractions`（除注明外）。
 
 ::: warning 当前未接线/未实现的 API
-- `IVolumeFilter` 的契约、注册与扩展点存在，但 App 没有过滤器面板/执行器。
 - `IAppLivetimePlugin` 已定义，但 `PluginManager.LoadAppLifetimePlugin` 与 `PluginController.EnableAll` 目前是未实现/未调用的占位。
 :::
 

@@ -1,0 +1,90 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Layeron.App.ViewModels"
+             xmlns:abstractions="using:Layeron.Plugin.Abstractions"
+             mc:Ignorable="d" d:DesignWidth="320" d:DesignHeight="560"
+             x:Class="Layeron.App.Views.FilterRunnerView"
+             x:DataType="vm:FilterRunnerViewModel">
+
+    <ScrollViewer>
+        <StackPanel Margin="8" Spacing="8">
+            <TextBlock Text="滤波器运行器" FontWeight="SemiBold"/>
+            <TextBlock Text="{Binding DetailText}" FontSize="11" Opacity="0.7" TextWrapping="Wrap"/>
+
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+                <TextBlock Text="算法" VerticalAlignment="Center"/>
+                <ComboBox Grid.Column="1"
+                          HorizontalAlignment="Stretch"
+                          ItemsSource="{Binding Filters}"
+                          SelectedItem="{Binding SelectedFilter, Mode=TwoWay}"
+                          IsEnabled="{Binding HasFilters}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="abstractions:IVolumeFilter">
+                            <TextBlock Text="{Binding DisplayName}"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+            </Grid>
+
+            <TextBlock Text="{Binding SelectedDescription}"
+                       FontSize="11"
+                       Opacity="0.72"
+                       TextWrapping="Wrap"/>
+
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                <TextBlock Text="预览平面" VerticalAlignment="Center"/>
+                <ComboBox Grid.Column="1"
+                          HorizontalAlignment="Stretch"
+                          ItemsSource="{Binding PlaneOptions}"
+                          SelectedItem="{Binding SelectedPlane, Mode=TwoWay}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:FilterPlaneOption">
+                            <TextBlock Text="{Binding Label}"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+            </Grid>
+
+            <CheckBox Content="自动预览当前切片"
+                      IsChecked="{Binding AutoPreview, Mode=TwoWay}"/>
+
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <Button Content="预览" Command="{Binding PreviewCommand}"/>
+                <Button Content="中心层" Command="{Binding CenterSliceCommand}"/>
+                <Button Content="应用整卷" Command="{Binding ApplyCommand}"/>
+                <Button Content="取消" Command="{Binding CancelCommand}"/>
+            </StackPanel>
+
+            <Button Content="撤销上次滤波" Command="{Binding UndoCommand}"
+                    IsEnabled="{Binding UndoAvailable}"
+                    HorizontalAlignment="Left"/>
+
+            <ProgressBar Value="{Binding ProgressValue}" Minimum="0" Maximum="100"/>
+            <TextBlock Text="{Binding StatusText}" FontSize="11" TextWrapping="Wrap" Opacity="0.8"/>
+
+            <TextBlock Text="{Binding SliceText}" FontSize="11" Opacity="0.7"/>
+
+            <Grid RowDefinitions="Auto,Auto" RowSpacing="6" IsVisible="{Binding HasPreview}">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="原始" FontSize="11" Opacity="0.7"/>
+                    <Border Background="#20000000" CornerRadius="4" Padding="2" Height="190">
+                        <Image Source="{Binding SourceImage}" Stretch="Uniform"/>
+                    </Border>
+                </StackPanel>
+                <StackPanel Grid.Row="1" Spacing="4">
+                    <TextBlock Text="滤波结果" FontSize="11" Opacity="0.7"/>
+                    <Border Background="#20000000" CornerRadius="4" Padding="2" Height="190">
+                        <Image Source="{Binding FilteredImage}" Stretch="Uniform"/>
+                    </Border>
+                </StackPanel>
+            </Grid>
+
+            <TextBlock Text="算法由插件通过 IVolumeFilter 扩展点提供；预览与应用都由本窗口驱动。"
+                       FontSize="10.5"
+                       Opacity="0.55"
+                       TextWrapping="Wrap"/>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

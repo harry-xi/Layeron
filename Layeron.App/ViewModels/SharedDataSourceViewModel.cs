@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Avalonia.Platform.Storage;
 using Layeron.Big3DArray;
 using Layeron.App.Logging;
+using Layeron.App.Filters;
 using Layeron.App.Plugins;
 using Layeron.App.Service;
 using Layeron.Plugin.Abstractions;
@@ -28,6 +29,7 @@ public class SharedDataSourceViewModel : ViewModelBase
         SaveCompressedCommand = ReactiveCommand.CreateFromTask(() => SaveAsync(VolumeCompression.GZip));
         GenerateDemoCommand = ReactiveCommand.Create(GenerateDemoData);
         GenerateDemo16Command = ReactiveCommand.Create(GenerateDemoData16);
+        GenerateFilterDemoCommand = ReactiveCommand.Create(GenerateFilterDemoData);
         CreateFromImagesCommand = ReactiveCommand.CreateFromTask(CreateFromImagesAsync);
 
         LoadCommand.ThrownExceptions.Subscribe(OnDataCommandError);
@@ -35,6 +37,7 @@ public class SharedDataSourceViewModel : ViewModelBase
         SaveCompressedCommand.ThrownExceptions.Subscribe(OnDataCommandError);
         GenerateDemoCommand.ThrownExceptions.Subscribe(OnDataCommandError);
         GenerateDemo16Command.ThrownExceptions.Subscribe(OnDataCommandError);
+        GenerateFilterDemoCommand.ThrownExceptions.Subscribe(OnDataCommandError);
         CreateFromImagesCommand.ThrownExceptions.Subscribe(OnDataCommandError);
     }
 
@@ -152,6 +155,7 @@ public class SharedDataSourceViewModel : ViewModelBase
     public ReactiveCommand<RxVoid, RxVoid> SaveCompressedCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> GenerateDemoCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> GenerateDemo16Command { get; }
+    public ReactiveCommand<RxVoid, RxVoid> GenerateFilterDemoCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> CreateFromImagesCommand { get; }
 
     private async Task LoadAsync()
@@ -270,6 +274,30 @@ public class SharedDataSourceViewModel : ViewModelBase
         });
         Array = array;
         FilePath = null;
+    }
+
+    /// <summary>
+    /// The phantom used to demonstrate the filter runner: smooth high-contrast structures plus
+    /// controlled noise and salt-and-pepper outliers, so a smoothing or median filter has something
+    /// visible to remove without destroying the edges a sharper filter is meant to preserve.
+    /// </summary>
+    private void GenerateFilterDemoData()
+    {
+        Log.Info("Data", "Generating the filter demo phantom {SizeX}x{SizeY}x{SizeZ}",
+            FilterDemoVolume.SizeX, FilterDemoVolume.SizeY, FilterDemoVolume.SizeZ);
+
+        Array = FilterDemoVolume.Create();
+        FilePath = null;
+
+        // The interesting structures sit in the middle of the phantom. The array setter resets the
+        // crosshair (the right behaviour for a new data set), so move it back to the centre after the
+        // assignment; otherwise the runner opens on an edge slice that is mostly noise and the filter
+        // preview looks like it did nothing.
+        CurrentX = FilterDemoVolume.SizeX / 2;
+        CurrentY = FilterDemoVolume.SizeY / 2;
+        CurrentZ = FilterDemoVolume.SizeZ / 2;
+
+        StatusText = "滤波演示体模已生成：含球形结构、亮壳、病灶、细杆与噪声（已定位到中心层）";
     }
 
     private async Task CreateFromImagesAsync()

@@ -378,8 +378,8 @@ public readonly record struct MaskColor(byte R, byte G, byte B, byte A = 255)
 
 ## Volume filters
 
-::: warning Current state
-The `IVolumeFilter` contract, registration helper, host point and tests exist, but `Layeron.App` **does not yet** have a filter panel or executor. This is the contract surface only.
+::: tip Current state
+`IVolumeFilter` is fully wired: the host executor is `Layeron.App.Filters.FilterRunner`, the `Tools → Filter Runner` panel previews and applies contributions, and `layeron.filters` is a built-in implementation.
 :::
 
 ```csharp

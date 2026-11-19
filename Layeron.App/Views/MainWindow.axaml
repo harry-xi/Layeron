@@ -30,6 +30,7 @@
                 <Separator/>
                 <MenuItem Header="生成演示数据" Command="{Binding SharedData.GenerateDemoCommand}"/>
                 <MenuItem Header="生成16位演示数据" Command="{Binding SharedData.GenerateDemo16Command}"/>
+                <MenuItem Header="生成滤波演示体模（含噪声）" Command="{Binding SharedData.GenerateFilterDemoCommand}"/>
                 <Separator/>
                 <MenuItem Header="从图片创建" Command="{Binding SharedData.CreateFromImagesCommand}"/>
             </MenuItem>
@@ -46,6 +47,7 @@
                 <MenuItem Header="遮罩管理器" Command="{Binding Dock.OpenMaskManagerCommand}"/>
                 <MenuItem Header="标注管理器" Command="{Binding Dock.OpenAnnotationManagerCommand}"/>
                 <MenuItem Header="窗宽窗位" Command="{Binding Dock.OpenWindowLevelCommand}"/>
+                <MenuItem Header="滤波器运行器" Command="{Binding Dock.OpenFilterRunnerCommand}"/>
                 <MenuItem Header="日志" Command="{Binding Dock.OpenLogCommand}"/>
             </MenuItem>
             <MenuItem x:Name="PluginMenu" Header="插件"/>

@@ -1,5 +1,6 @@
 using Layeron.App.Logging;
 using Layeron.App.Plugins;
+using Layeron.App.Filters;
 using Layeron.App.Session;
 using Layeron.App.Workspaces;
 
@@ -21,14 +22,19 @@ public class MainWindowViewModel : ViewModelBase
         // and slice views must share one channel instance. The plugin host is then wired up before the
         // window is shown, so contributed dockable factories exist by the time a saved layout is restored.
         var services = new AppPluginServices(sessions, new ConsolePluginLog());
+        var filters = new FilterCatalog();
 
         // The workspace comes before the plugin host: scripts live in it, so the script host service the
         // plugins reach is a view onto the active workspace.
         Workspace = new WorkspaceManager(services.Log);
 
-        Dock = new DockViewModel(sessions, services.Preview);
+        Dock = new DockViewModel(sessions, services.Preview, filters);
         Plugins = new PluginController(services, Dock);
         Settings = new SettingsWindowViewModel(Plugins);
+
+        // The host-owned filter point exists as soon as the plugin manager is constructed. Attaching the
+        // catalog before InitLoad means the runner panel sees the first contribution immediately.
+        filters.Attach(Plugins.FilterPoint);
 
         // The script host service delegates back to the plugin controller, so it is attached after the
         // controller exists but before plugins load - the script editor reads it during activation.

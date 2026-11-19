@@ -108,7 +108,7 @@ Big3DBitMap
 | 菜单 | `IPluginRegistry.AddMenu` → “插件”菜单树 |
 | 设置页 | `AddSettingsPage` → 设置窗口 |
 | 数据加载器 | `AddLoader` → 文件 → 从数据源加载 |
-| 体数据过滤器 | `AddFilter` 契约与宿主点已存在；**App 尚未接入消费者/驱动** |
+| 体数据过滤器 | `AddFilter` → 宿主 `FilterRunner` + “滤波器运行器”面板；内置 `layeron.filters` 提供五个算法 |
 | 跨插件服务 | `DefinePoint<T>` / `Contribute` / `GetPoint<T>` |
 | 插件加载器 | `AddPluginSource`；发现的插件成为子作用域 |
 | 脚本扩展 | `ScriptHost` 把 `.csx` 作为子插件；`ScriptGlobals` 提供数据与 UI 贡献 API |

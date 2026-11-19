@@ -125,7 +125,7 @@ The host defines these before loading any plugin; plugins only contribute:
 
 | Point id | Contribution type | See |
 |---|---|---|
-| `layeron.filters.volume` | `IVolumeFilter` | [Volume Filters](/en/plugin/filters) (contract ready; the App has no executor yet) |
+| `layeron.filters.volume` | `IVolumeFilter` | [Volume Filters](/en/plugin/filters) (host executor and runner panel are wired) |
 | `layeron.loaders.volume` | `VolumeLoader` | [Volume Loaders](/en/plugin/loaders) |
 | `layeron.settings.pages` | `SettingsPageContribution` | [Settings Pages](/en/plugin/settings) |
 

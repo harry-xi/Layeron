@@ -8,6 +8,7 @@
   <Project Path="Layeron.Plugin.Host/Layeron.Plugin.Host.csproj" />
   <Project Path="Layeron.Plugin.Test/Layeron.Plugin.Test.csproj" />
   <Project Path="Layeron.Plugins.Agent/Layeron.Plugins.Agent.csproj" />
+  <Project Path="Layeron.Plugins.Filters/Layeron.Plugins.Filters.csproj" />
   <Project Path="Layeron.Plugins.Model3D/Layeron.Plugins.Model3D.csproj" />
   <Project Path="Layeron.Plugins.Onnx.Api/Layeron.Plugins.Onnx.Api.csproj" />
   <Project Path="Layeron.Plugins.OnnxRuntime/Layeron.Plugins.OnnxRuntime.csproj" />

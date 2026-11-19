@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Layeron.Plugins.Filters</AssemblyName>
+    <!--
+      A headless plugin: it contributes volume filters only, so it carries no Avalonia views and can be
+      loaded by a batch host or a test process as well as by the desktop app.
+    -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="LayeronPluginId" Value="layeron.filters" />
+    <AssemblyMetadata Include="LayeronPluginName" Value="Neighborhood Filters" />
+    <AssemblyMetadata Include="LayeronPluginVersion" Value="1.0.0" />
+    <AssemblyMetadata Include="LayeronPluginDescription" Value="Common 3D neighborhood filters registered through the host's IVolumeFilter point." />
+    <AssemblyMetadata Include="LayeronPluginApiVersion" Value="1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Contracts are compile-time only: the host's copies must be used at runtime. -->
+    <ProjectReference Include="..\Layeron.Big3DArray\Layeron.Big3DArray.csproj" Private="false" />
+    <ProjectReference Include="..\Layeron.Plugin.Abstractions\Layeron.Plugin.Abstractions.csproj" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The algorithm tests drive the concrete filters directly. -->
+    <InternalsVisibleTo Include="Layeron.Plugin.Test" />
+  </ItemGroup>
+
+</Project>

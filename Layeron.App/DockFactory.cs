@@ -11,6 +11,7 @@ using Layeron.App.Session;
 using Layeron.App.ViewModels;
 using Layeron.App.Layout;
 using Layeron.App.Logging;
+using Layeron.App.Filters;
 using Layeron.App.Plugins;
 using Layeron.Plugin.Abstractions;
 
@@ -35,6 +36,7 @@ public class DockFactory : Factory
 {
     private readonly ISessionManager _sessions;
     private readonly IPreviewChannel? _preview;
+    private readonly FilterCatalog _filters;
 
     /// <summary>Registered factory functions keyed by <see cref="DockableIds"/> value.</summary>
     private readonly Dictionary<string, Func<DockableDescriptor, IDockable?>> _registry = new();
@@ -42,16 +44,16 @@ public class DockFactory : Factory
     /// <summary>Dockables that could not be created during the most recent build (calling <see cref="TryBuildLayout"/>).</summary>
     public IReadOnlyList<UnresolvedDockable> Unresolved { get; private set; } = [];
 
-    public DockFactory(ISessionManager sessions, IPreviewChannel? preview = null)
+    public DockFactory(ISessionManager sessions, IPreviewChannel? preview = null, FilterCatalog? filters = null)
     {
         _sessions = sessions;
         _preview = preview;
+        _filters = filters ?? new FilterCatalog();
         RegisterBuiltIns();
 
         // Dockables may hold session subscriptions; release them on close so a removed
         // slice view does not stay rooted to the session manager.
         DockableClosed += (_, e) => (e.Dockable as IDisposable)?.Dispose();
-        
     }
 
     /// <summary>
@@ -225,7 +227,7 @@ public class DockFactory : Factory
             Root = rootNode
         };
     }
-    
+
     public void AddDocument(IRootDock root, IDockable newDockable)
     {
         if (FindActiveDock<IDocumentDock>(root) is { } documentDock)
@@ -600,6 +602,7 @@ public class DockFactory : Factory
         Register(DockableIds.MaskManager, _ => _sessions.Current!.MaskManager);
         Register(DockableIds.AnnotationManager, _ => _sessions.Current!.AnnotationManager);
         Register(DockableIds.WindowLevel, _ => _sessions.Current!.WindowLevel);
+        Register(DockableIds.FilterRunner, _ => new FilterRunnerViewModel(_sessions, _filters));
         Register(DockableIds.Log, _ => new LogViewerViewModel());
     }
 

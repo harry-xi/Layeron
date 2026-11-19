@@ -17,6 +17,7 @@ public static class DockableIds
     public const string MaskManager = "layeron.tool.maskManager";
     public const string AnnotationManager = "layeron.tool.annotationManager";
     public const string WindowLevel = "layeron.tool.windowLevel";
+    public const string FilterRunner = "layeron.tool.filterRunner";
     public const string Log = "layeron.tool.log";
 
     /// <summary>

@@ -15,7 +15,7 @@ Layeron's plugin system is built around three concepts:
 | Dockable tool panel | `Registry.AddTool(...)` | Host dock (edge tool area) |
 | Centre document tab | `Registry.AddDocument(...)` | Host dock (document area) |
 | Menu entry | `Registry.AddMenu(...)` | Host menu |
-| Volume filter | `Registry.AddFilter(...)` | Contract and host point exist; **the App has no consumer/driver yet** |
+| Volume filter | `Registry.AddFilter(...)` | Host filter runner panel (preview + whole-volume apply) |
 | Volume loader | `Registry.AddLoader(...)` | `File → Load from data source` |
 | ONNX inference | `Registry.Contribute(IOnnxRunnerService.PointId, ...)` | Other plugins (see [ONNX Model Runner](/en/plugin/onnx)) |
 | Python execution | `Registry.Contribute(IPythonRunnerService.PointId, ...)` | Other plugins (the Agent uses it) |
@@ -83,6 +83,7 @@ Managed leaks aside, views must cooperate: if the object returned by `ContentFac
 | Plugin | Id | Capability demonstrated |
 |---|---|---|
 | Threshold Segmentation | `layeron.threshold` | Tool panel + menu + a **custom extension point** other plugins feed |
+| Neighbourhood Filters | `layeron.filters` | Pure algorithm plugin: contributes mean/Gaussian/median/sharpen/gradient through `AddFilter`; the host runner previews and applies them |
 | Mask 3D Model | `layeron.model3d` | **Tool panel + document** sharing a model list; Aura3D rendering (multiple models, glTF/GLB import, STL/GLB export) |
 | ONNX Model Runner | `layeron.onnxruntime` | A **model runner**: inference, its own private native runtime, and a published service |
 | C# Script Host | `layeron.scripthost` | A **plugin loader** (`IPluginSource`) + its own editor UI |
@@ -91,8 +92,8 @@ Managed leaks aside, views must cooperate: if the object returned by `ContentFac
 
 All of them are ordinary plugins: no privileged path was opened for any.
 
-::: warning Current state of filters
-The `IVolumeFilter` contract and the `layeron.filters.volume` point exist and are tested, but `Layeron.App` **does not yet** have a filter panel or executor. Threshold and ONNX use their own paths. See [Volume Filters](/en/plugin/filters).
+::: tip Current state of filters
+The `IVolumeFilter` contract, the `layeron.filters.volume` point, the `Layeron.App.Filters.FilterRunner` executor and the `Tools → Filter Runner` panel are ready, and the built-in `layeron.filters` plugin provides five common algorithms. Threshold and ONNX still use their own paths. See [Volume Filters](/en/plugin/filters).
 :::
 
 ## Next

@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Dock.Model.Controls;
 using Dock.Model.Core;
+using Layeron.App.Filters;
 using Layeron.App.Layout;
 using Layeron.App.Logging;
 using Layeron.App.Session;
@@ -30,10 +31,11 @@ public class DockViewModel : ViewModelBase
         NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals
     };
 
-    public DockViewModel(ISessionManager sessions, IPreviewChannel? preview = null)
+    public DockViewModel(ISessionManager sessions, IPreviewChannel? preview = null, FilterCatalog? filters = null)
     {
         _sessionManager = sessions;
-        Factory = new DockFactory(sessions, preview);
+        Filters = filters ?? new FilterCatalog();
+        Factory = new DockFactory(sessions, preview, Filters);
         Layout = Factory.BuildOrFallback(null);
         CreateAxialCommand = ReactiveCommand.Create(() => AddSlice(SliceAxis.Axial));
         CreateCoronalCommand = ReactiveCommand.Create(() => AddSlice(SliceAxis.Coronal));
@@ -44,8 +46,15 @@ public class DockViewModel : ViewModelBase
         OpenMaskManagerCommand = ReactiveCommand.Create(OpenMaskManager);
         OpenAnnotationManagerCommand = ReactiveCommand.Create(OpenAnnotationManager);
         OpenWindowLevelCommand = ReactiveCommand.Create(OpenWindowLevel);
+        OpenFilterRunnerCommand = ReactiveCommand.Create(OpenFilterRunner);
         OpenLogCommand = ReactiveCommand.Create(OpenLog);
     }
+
+    /// <summary>
+    /// The host's live view of plugin-contributed filters. The dock is built before the plugin host,
+    /// so the catalog is created here and attached to the extension point afterwards.
+    /// </summary>
+    public FilterCatalog Filters { get; }
 
     /// <summary>
     /// The dock factory. Exposed so the plugin host can register and unregister tool factories: every
@@ -75,6 +84,7 @@ public class DockViewModel : ViewModelBase
     public ReactiveCommand<RxVoid, RxVoid> OpenMaskManagerCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> OpenAnnotationManagerCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> OpenWindowLevelCommand { get; }
+    public ReactiveCommand<RxVoid, RxVoid> OpenFilterRunnerCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> OpenLogCommand { get; }
 
     // ── Runtime dockable creation ─────────────────────────────────────
@@ -143,6 +153,8 @@ public class DockViewModel : ViewModelBase
 
     private void OpenWindowLevel()
         => OpenSessionTool(DockableIds.WindowLevel, _sessionManager.Current?.WindowLevel);
+
+    private void OpenFilterRunner() => OpenToolById(DockableIds.FilterRunner, "滤波器运行器");
 
     private void OpenLog() => OpenToolById(DockableIds.Log, "Log");
 

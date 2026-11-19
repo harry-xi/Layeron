@@ -56,6 +56,7 @@
         -->
         <ProjectReference Include="..\Layeron.Plugins.ScriptHost\Layeron.Plugins.ScriptHost.csproj" ReferenceOutputAssembly="false" />
         <ProjectReference Include="..\Layeron.Plugins.Threshold\Layeron.Plugins.Threshold.csproj" ReferenceOutputAssembly="false" />
+        <ProjectReference Include="..\Layeron.Plugins.Filters\Layeron.Plugins.Filters.csproj" ReferenceOutputAssembly="false" />
         <ProjectReference Include="..\Layeron.Plugins.Model3D\Layeron.Plugins.Model3D.csproj" ReferenceOutputAssembly="false" />
         <ProjectReference Include="..\Layeron.Plugins.PythonRunner\Layeron.Plugins.PythonRunner.csproj" ReferenceOutputAssembly="false" />
         <ProjectReference Include="..\Layeron.Plugins.Agent\Layeron.Plugins.Agent.csproj" ReferenceOutputAssembly="false" />
@@ -83,6 +84,9 @@
         <ItemGroup>
             <SamplePluginFile Include="..\Layeron.Plugins.Threshold\bin\$(Configuration)\net10.0\$(RuntimeIdentifier)\**\*.*">
                 <PluginFolder>layeron.threshold</PluginFolder>
+            </SamplePluginFile>
+            <SamplePluginFile Include="..\Layeron.Plugins.Filters\bin\$(Configuration)\net10.0\$(RuntimeIdentifier)\**\*.*">
+                <PluginFolder>layeron.filters</PluginFolder>
             </SamplePluginFile>
             <SamplePluginFile Include="..\Layeron.Plugins.ScriptHost\bin\$(Configuration)\net10.0\$(RuntimeIdentifier)\**\*.*">
                 <PluginFolder>layeron.scripthost</PluginFolder>

@@ -20,6 +20,11 @@ internal static class TestPaths
         Path.Combine(RepositoryRoot, "Layeron.Plugins.Threshold", "bin", Configuration, "net10.0",
             "Layeron.Plugins.Threshold.dll");
 
+    /// <summary>The headless filter plugin: loaded by path so assembly metadata and activation are covered too.</summary>
+    public static string FiltersPluginAssembly { get; } =
+        Path.Combine(RepositoryRoot, "Layeron.Plugins.Filters", "bin", Configuration, "net10.0",
+            "Layeron.Plugins.Filters.dll");
+
     public static string ScriptHostPluginAssembly { get; } =
         Path.Combine(RepositoryRoot, "Layeron.Plugins.ScriptHost", "bin", Configuration, "net10.0",
             "Layeron.Plugins.ScriptHost.dll");

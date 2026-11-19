@@ -51,6 +51,7 @@ The window starts empty. This sequence shows every major feature quickly:
 1. `文件 → 生成演示数据` (File → Generate demo data) — instantly gives you a volume to browse.
 2. Open `Tools → 窗宽窗位` (Window Level) and adjust the lower/upper gray bounds; all three slice views update together.
 3. `Tools → 遮罩管理器` (Mask Manager) opens the mask panel; the Threshold Segmentation plugin produces a mask.
-4. `Tools → 日志` (Log) shows the log.
+4. `文件 → 生成滤波演示体模（含噪声）` (File → Generate filter demo phantom), then open `Tools → 滤波器运行器` (Filter Runner): pick an algorithm, compare the side-by-side source/filtered preview, then apply the whole volume or undo the last apply.
+5. `Tools → 日志` (Log) shows the log.
 
 If you have DICOM data, `文件 → 从数据源加载 → DICOM 序列 (文件夹)` (File → Load from data source → DICOM series) opens a series folder directly.

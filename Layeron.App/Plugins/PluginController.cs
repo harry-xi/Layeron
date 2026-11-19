@@ -81,6 +81,13 @@ public sealed class PluginController : IDisposable
         _manager.PointRegistry.GetPoint<SettingsPageContribution>(SettingsPoints.Pages);
 
     /// <summary>
+    /// The host-owned volume-filter point. The filter runner window binds to it through
+    /// <see cref="Layeron.App.Filters.FilterCatalog"/> so contributions follow plugin load, unload and hot reload.
+    /// </summary>
+    public ExtensionPoint<IVolumeFilter>? FilterPoint =>
+        _manager.PointRegistry.GetPoint<IVolumeFilter>(FilterPoints.Volume);
+
+    /// <summary>
     /// The volume loaders the import menu offers: the host's built-in readers plus every one a plugin
     /// contributed. Read through the manager's point registry, so it always reflects what is loaded.
     /// </summary>

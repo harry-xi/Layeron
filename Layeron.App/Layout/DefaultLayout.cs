@@ -102,7 +102,8 @@ public static class DefaultLayout
                             [
                                 Dockable(DockableIds.MaskManager, "MaskManager", "Mask Manager"),
                                 Dockable(DockableIds.AnnotationManager, "AnnotationManager", "Annotation Manager"),
-                                Dockable(DockableIds.WindowLevel, "WindowLevel", "Window Level")
+                                Dockable(DockableIds.WindowLevel, "WindowLevel", "Window Level"),
+                                Dockable(DockableIds.FilterRunner, "FilterRunner", "滤波器运行器")
                             ]
                         }
                     ]

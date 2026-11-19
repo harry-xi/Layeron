@@ -1,7 +1,7 @@
 # 体数据过滤器
 
-::: warning 当前状态
-`IVolumeFilter` 契约、`AddFilter` 注册扩展方法、宿主扩展点与测试已经存在；**但 `Layeron.App` 还没有过滤器面板或执行器**。本页描述的是契约与未来宿主的分工，不是当前应用里已经可用的功能。
+::: tip 当前状态
+`IVolumeFilter` 契约、`AddFilter` 注册扩展方法、宿主扩展点、宿主执行器与 **滤波器运行器**面板都已在 `Layeron.App` 中实现，并由内置插件 `layeron.filters`（均值 / 高斯 / 中值 / 锐化 / 梯度）实际使用。本页描述契约与宿主/插件的分工。
 :::
 
 过滤器（`IVolumeFilter`）是宿主与插件之间职责划分得最清楚的一处：**宿主拥有领域，插件拥有映射。**
@@ -55,7 +55,7 @@ public readonly record struct FilterRegion(int X0, int Y0, int Z0, int X, int Y,
 - 契约设计里，预览调用传入**一层厚**的盒子（当前可见的那一层）；
 - 契约设计里，应用调用传入整个体数据（可能是连续的多个盒子，一次调用一个）。
 
-> 当前 App 尚无执行器，因此这些调用约定暂时只由测试与未来消费者使用。
+> `Layeron.App.Filters.FilterRunner` 就是该约定的宿主执行器：预览按所选平面构造一层厚的 `FilterRegion`，应用传入整卷；两者共用同一次元素类型分派与同一份全局统计。
 
 ## FilterContext：硬件信息
 
@@ -165,6 +165,12 @@ context.Registry.AddFilter(new Mean3Filter());
 
 ## 与现有插件的关系
 
-`layeron.threshold` 的 `ThresholdEngine` **不是** `IVolumeFilter` 的实现；它使用自己的阈值处理路径。`layeron.onnxruntime` 也直接调用 ONNX Runtime，而不是走过滤器点。因此目前没有任何内置插件能证明宿主过滤驱动已经存在。
+`layeron.filters` 就是按本页契约实现的内置插件：它没有 UI，只在 `Activate` 里调用 `context.Registry.AddFilter(...)` 贡献五个固定参数的 3×3×3 邻域算法（均值、高斯、中值、锐化、梯度幅值）。宿主侧的**滤波器运行器**（`Tools → 滤波器运行器`）负责列出贡献、预览当前平面的一层、取消被取代的预览、报告进度、分配目标体数据并把整卷结果原子替换回会话。
 
-如果你要实现 `IVolumeFilter`，可以按上面的契约编写并通过 `AddFilter` 注册；在 App 接入执行器之前，它只会出现在 `layeron.filters.volume` 扩展点里，不会自动获得 UI。
+`layeron.threshold` 的 `ThresholdEngine` **不是** `IVolumeFilter` 的实现；它使用自己的阈值处理路径。`layeron.onnxruntime` 也直接调用 ONNX Runtime，而不是走过滤器点。
+
+## 演示数据
+
+`文件 → 生成滤波演示体模（含噪声）` 会生成一个确定性的 128×128×64 体模：高对比球体与亮壳、两个小病灶、一根细杆，叠加均匀噪声和少量椒盐离群点。它专门用于对比平滑/中值（去噪）与锐化/梯度（保留边界）的效果。生成后打开滤波器运行器即可看到“原始 / 滤波结果”并排预览。
+
+如果你要实现自己的 `IVolumeFilter`，按上面的契约编写并通过 `AddFilter` 注册即可；运行器会自动列出它，不需要改任何宿主代码。

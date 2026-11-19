@@ -45,6 +45,11 @@
     -->
     <ProjectReference Include="..\Layeron.Plugins.Threshold\Layeron.Plugins.Threshold.csproj" />
     <!--
+      The filter plugin is referenced for the same reason: its kernels and its registration through
+      the host-owned filter point are exercised without loading it into a separate load context.
+    -->
+    <ProjectReference Include="..\Layeron.Plugins.Filters\Layeron.Plugins.Filters.csproj" />
+    <!--
       Referenced, not just built: the Python engine's numpy bridge can only be verified against a real
       interpreter, and its internal types are exposed to this assembly. This does add an assembly to the test
       output that is also a plugin, but the tests never scan the output folder for plugins - they load the
