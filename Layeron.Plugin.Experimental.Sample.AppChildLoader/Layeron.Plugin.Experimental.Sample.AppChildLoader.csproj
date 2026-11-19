@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Layeron.Plugin.Experimental.Sample.AppChildLoader</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Layeron.Plugin.Experimental\Layeron.Plugin.Experimental.csproj" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="LayeronExperimentalPluginId" Value="app.child.loader" />
+    <AssemblyMetadata Include="LayeronExperimentalPluginName" Value="Sample Application Child Loader" />
+    <AssemblyMetadata Include="LayeronExperimentalPluginVersion" Value="1.0.0" />
+    <AssemblyMetadata Include="LayeronExperimentalPluginDescription" Value="Application plugin whose source publishes an application-lifetime child; the host must reject it." />
+    <AssemblyMetadata Include="LayeronExperimentalPluginApiVersion" Value="1.0" />
+    <AssemblyMetadata Include="LayeronExperimentalPluginLifetime" Value="app" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Layeron.Plugin.Experimental.Sample.Points</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Compile against the host contract; the host's copy is the one used at runtime. -->
+    <ProjectReference Include="..\Layeron.Plugin.Experimental\Layeron.Plugin.Experimental.csproj" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="LayeronExperimentalPluginId" Value="sample.points" />
+    <AssemblyMetadata Include="LayeronExperimentalPluginName" Value="Sample Keyed Points Plugin" />
+    <AssemblyMetadata Include="LayeronExperimentalPluginVersion" Value="1.0.0" />
+    <AssemblyMetadata Include="LayeronExperimentalPluginDescription" Value="Defines two keyed extension points for one contract type." />
+    <AssemblyMetadata Include="LayeronExperimentalPluginApiVersion" Value="1.0" />
+    <AssemblyMetadata Include="LayeronExperimentalPluginLifetime" Value="reloadable" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,11 @@
+<Solution>
+  <Project Path="Layeron.Plugin.Experimental/Layeron.Plugin.Experimental.csproj" />
+  <Project Path="Layeron.Plugin.Experimental.Sample.Actions.Api/Layeron.Plugin.Experimental.Sample.Actions.Api.csproj" />
+  <Project Path="Layeron.Plugin.Experimental.Sample.App/Layeron.Plugin.Experimental.Sample.App.csproj" />
+  <Project Path="Layeron.Plugin.Experimental.Sample.Feature/Layeron.Plugin.Experimental.Sample.Feature.csproj" />
+  <Project Path="Layeron.Plugin.Experimental.Sample.Top/Layeron.Plugin.Experimental.Sample.Top.csproj" />
+  <Project Path="Layeron.Plugin.Experimental.Sample.Loader/Layeron.Plugin.Experimental.Sample.Loader.csproj" />
+  <Project Path="Layeron.Plugin.Experimental.Sample.Points/Layeron.Plugin.Experimental.Sample.Points.csproj" />
+  <Project Path="Layeron.Plugin.Experimental.Sample.BadLoader/Layeron.Plugin.Experimental.Sample.BadLoader.csproj" />
+  <Project Path="Layeron.Plugin.Experimental.Sample.AppChildLoader/Layeron.Plugin.Experimental.Sample.AppChildLoader.csproj" />
+</Solution>

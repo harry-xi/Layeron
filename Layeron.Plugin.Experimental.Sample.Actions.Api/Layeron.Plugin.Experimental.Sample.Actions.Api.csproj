@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Layeron.Plugin.Experimental.Sample.Actions</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Compile-time only: the host supplies this assembly from its shared context at runtime. -->
+    <ProjectReference Include="..\Layeron.Plugin.Experimental\Layeron.Plugin.Experimental.csproj" Private="false" />
+  </ItemGroup>
+
+  <!--
+    A plugin-published contract. It is deployed into the host's plugins.shared directory, where one
+    non-collectible load context owns it. No plugin copies it into its own folder: two copies would
+    be two different ISampleObserver types and the point would silently be empty.
+  -->
+  <Target Name="DeploySharedContract" AfterTargets="Build">
+    <Copy SourceFiles="$(TargetPath)"
+          DestinationFolder="..\Layeron.Plugin.Experimental\bin\$(Configuration)\$(TargetFramework)\plugins.shared"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

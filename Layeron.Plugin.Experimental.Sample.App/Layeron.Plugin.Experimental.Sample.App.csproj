@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Compile against the host contract; the host's copy is the one used at runtime. -->
+    <ProjectReference Include="..\Layeron.Plugin.Experimental\Layeron.Plugin.Experimental.csproj" Private="false" />
+    <!-- The contract this plugin publishes. Not copied: plugins.shared owns the single runtime copy. -->
+    <ProjectReference Include="..\Layeron.Plugin.Experimental.Sample.Actions.Api\Layeron.Plugin.Experimental.Sample.Actions.Api.csproj" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="LayeronExperimentalPluginId" Value="sample.app" />
+    <AssemblyMetadata Include="LayeronExperimentalPluginName" Value="Sample Application Plugin" />
+    <AssemblyMetadata Include="LayeronExperimentalPluginVersion" Value="1.0.0" />
+    <AssemblyMetadata Include="LayeronExperimentalPluginDescription" Value="Application-lifetime sample that publishes an extension point." />
+    <AssemblyMetadata Include="LayeronExperimentalPluginApiVersion" Value="1.0" />
+    <AssemblyMetadata Include="LayeronExperimentalPluginLifetime" Value="app" />
+  </ItemGroup>
+
+</Project>

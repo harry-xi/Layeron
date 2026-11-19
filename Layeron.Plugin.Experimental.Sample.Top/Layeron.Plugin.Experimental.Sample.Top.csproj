@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Layeron.Plugin.Experimental\Layeron.Plugin.Experimental.csproj" Private="false" />
+    <ProjectReference Include="..\Layeron.Plugin.Experimental.Sample.Actions.Api\Layeron.Plugin.Experimental.Sample.Actions.Api.csproj" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="LayeronExperimentalPluginId" Value="sample.top" />
+    <AssemblyMetadata Include="LayeronExperimentalPluginName" Value="Sample Top Plugin" />
+    <AssemblyMetadata Include="LayeronExperimentalPluginVersion" Value="1.0.0" />
+    <AssemblyMetadata Include="LayeronExperimentalPluginDescription" Value="Reloadable sample at the top of the dependency chain." />
+    <AssemblyMetadata Include="LayeronExperimentalPluginApiVersion" Value="1.0" />
+    <AssemblyMetadata Include="LayeronExperimentalPluginLifetime" Value="reloadable" />
+    <AssemblyMetadata Include="LayeronExperimentalPluginDependencies" Value="sample.feature@1.1.0" />
+  </ItemGroup>
+
+</Project>
