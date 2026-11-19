@@ -206,17 +206,25 @@ namespace Layeron.Big3DArray
             return slice;
         }
 
-        public void SetXYSlice(int x, int z, bool[,] values)
+        /// <summary>
+        /// Writes a whole XY-slice at the given z. <paramref name="values"/> must have the exact
+        /// shape [Y, X] matching the map, with <c>values[y, x] → this[x, y, z]</c>, mirroring
+        /// <see cref="GetXYSlice"/>. Implemented block-wise in bulk rather than one indexer call
+        /// per voxel: empty blocks are created on demand, blocks that become empty are released,
+        /// and fully-set blocks collapse to the shared full singleton.
+        /// </summary>
+        public void SetXYSlice(int z, bool[,] values)
         {
-            if ((uint)x >= (uint)_sizeX || (uint)z >= (uint)_sizeZ)
+            if ((uint)z >= (uint)_sizeZ)
                 throw new IndexOutOfRangeException();
-            var rows = values.GetLength(0);
-            var cols = values.GetLength(1);
-            if (rows == 0 || cols == 0)
-                throw new ArgumentException("values array must be non-empty");
-            if (x + cols > _sizeX || z + rows > _sizeZ)
-                throw new ArgumentException("values array exceeds bounds");
+            ArgumentNullException.ThrowIfNull(values);
+            if (values.GetLength(0) != _sizeY || values.GetLength(1) != _sizeX)
+                throw new ArgumentException(
+                    $"values must have shape [{_sizeY}, {_sizeX}] to match the map, got [{values.GetLength(0)}, {values.GetLength(1)}].",
+                    nameof(values));
 
+            var bz = z / BlockSize;
+            var lz = z - bz * BlockSize;
             for (var by = 0; by < _blocksY; by++)
             {
                 var y0 = by * BlockSize;
@@ -225,38 +233,57 @@ namespace Layeron.Big3DArray
                 {
                     var x0 = bx * BlockSize;
                     var blockCols = Math.Min(BlockSize, _sizeX - x0);
-                    var block = _array[bx, by, z / BlockSize];
+                    var block = _array[bx, by, bz];
                     if (block == null)
                     {
-                        // Create a new block if any value is true
-                        for (var ly = 0; ly < blockRows; ly++)
+                        // Create a block only if this patch of the slice has any bit set.
+                        for (var ly = 0; ly < blockRows && block == null; ly++)
                         {
                             for (var lx = 0; lx < blockCols; lx++)
                             {
                                 if (values[y0 + ly, x0 + lx])
                                 {
                                     block = Block.CreateEmpty();
-                                    _array[bx, by, z / BlockSize] = block;
+                                    _array[bx, by, bz] = block;
                                     break;
                                 }
                             }
-                            if (block != null) break;
                         }
-                    }
 
-                    if (block != null)
+                        if (block == null)
+                            continue;
+                    }
+                    else if (ReferenceEquals(block, Block.Full))
                     {
-                        for (var ly = 0; ly < blockRows; ly++)
+                        // Never write through the shared full singleton: writing all-true into an
+                        // all-true block is a no-op, anything else goes through a private copy.
+                        var allTrue = true;
+                        for (var ly = 0; ly < blockRows && allTrue; ly++)
                         {
                             for (var lx = 0; lx < blockCols; lx++)
                             {
-                                block[lx, ly, z % BlockSize] = values[y0 + ly, x0 + lx];
+                                if (!values[y0 + ly, x0 + lx])
+                                {
+                                    allTrue = false;
+                                    break;
+                                }
                             }
                         }
 
-                        if (block.IsAllZero) _array[bx, by, z / BlockSize] = null;
-                        else if (block.IsAllOne) _array[bx, by, z / BlockSize] = Block.Full;
+                        if (allTrue)
+                            continue;
+                        block = Block.MaterializeFromFull();
+                        _array[bx, by, bz] = block;
                     }
+
+                    for (var ly = 0; ly < blockRows; ly++)
+                    {
+                        for (var lx = 0; lx < blockCols; lx++)
+                            block[lx, ly, lz] = values[y0 + ly, x0 + lx];
+                    }
+
+                    if (block.IsAllZero) _array[bx, by, bz] = null;
+                    else if (block.IsAllOne) _array[bx, by, bz] = Block.Full;
                 }
             }
         }
@@ -288,17 +315,25 @@ namespace Layeron.Big3DArray
             return slice;
         }
 
-        void SetXZSlice(int y, bool[,] values)
+        /// <summary>
+        /// Writes a whole XZ-slice at the given y. <paramref name="values"/> must have the exact
+        /// shape [Z, X] matching the map, with <c>values[z, x] → this[x, y, z]</c>, mirroring
+        /// <see cref="GetXZSlice"/>. Implemented block-wise in bulk rather than one indexer call
+        /// per voxel: empty blocks are created on demand, blocks that become empty are released,
+        /// and fully-set blocks collapse to the shared full singleton.
+        /// </summary>
+        public void SetXZSlice(int y, bool[,] values)
         {
             if ((uint)y >= (uint)_sizeY)
                 throw new IndexOutOfRangeException();
-            var rows = values.GetLength(0);
-            var cols = values.GetLength(1);
-            if (rows == 0 || cols == 0)
-                throw new ArgumentException("values array must be non-empty");
-            if (cols > _sizeX || rows > _sizeZ)
-                throw new ArgumentException("values array exceeds bounds");
+            ArgumentNullException.ThrowIfNull(values);
+            if (values.GetLength(0) != _sizeZ || values.GetLength(1) != _sizeX)
+                throw new ArgumentException(
+                    $"values must have shape [{_sizeZ}, {_sizeX}] to match the map, got [{values.GetLength(0)}, {values.GetLength(1)}].",
+                    nameof(values));
 
+            var by = y / BlockSize;
+            var ly = y - by * BlockSize;
             for (var bz = 0; bz < _blocksZ; bz++)
             {
                 var z0 = bz * BlockSize;
@@ -307,38 +342,57 @@ namespace Layeron.Big3DArray
                 {
                     var x0 = bx * BlockSize;
                     var blockCols = Math.Min(BlockSize, _sizeX - x0);
-                    var block = _array[bx, y / BlockSize, bz];
+                    var block = _array[bx, by, bz];
                     if (block == null)
                     {
-                        // Create a new block if any value is true
-                        for (var lz = 0; lz < blockRows; lz++)
+                        // Create a block only if this patch of the slice has any bit set.
+                        for (var lz = 0; lz < blockRows && block == null; lz++)
                         {
                             for (var lx = 0; lx < blockCols; lx++)
                             {
                                 if (values[z0 + lz, x0 + lx])
                                 {
                                     block = Block.CreateEmpty();
-                                    _array[bx, y / BlockSize, bz] = block;
+                                    _array[bx, by, bz] = block;
                                     break;
                                 }
                             }
-                            if (block != null) break;
                         }
-                    }
 
-                    if (block != null)
+                        if (block == null)
+                            continue;
+                    }
+                    else if (ReferenceEquals(block, Block.Full))
                     {
-                        for (var lz = 0; lz < blockRows; lz++)
+                        // Never write through the shared full singleton: writing all-true into an
+                        // all-true block is a no-op, anything else goes through a private copy.
+                        var allTrue = true;
+                        for (var lz = 0; lz < blockRows && allTrue; lz++)
                         {
                             for (var lx = 0; lx < blockCols; lx++)
                             {
-                                block[lx, y % BlockSize, lz] = values[z0 + lz, x0 + lx];
+                                if (!values[z0 + lz, x0 + lx])
+                                {
+                                    allTrue = false;
+                                    break;
+                                }
                             }
                         }
 
-                        if (block.IsAllZero) _array[bx, y / BlockSize, bz] = null;
-                        else if (block.IsAllOne) _array[bx, y / BlockSize, bz] = Block.Full;
+                        if (allTrue)
+                            continue;
+                        block = Block.MaterializeFromFull();
+                        _array[bx, by, bz] = block;
                     }
+
+                    for (var lz = 0; lz < blockRows; lz++)
+                    {
+                        for (var lx = 0; lx < blockCols; lx++)
+                            block[lx, ly, lz] = values[z0 + lz, x0 + lx];
+                    }
+
+                    if (block.IsAllZero) _array[bx, by, bz] = null;
+                    else if (block.IsAllOne) _array[bx, by, bz] = Block.Full;
                 }
             }
         }
@@ -370,17 +424,25 @@ namespace Layeron.Big3DArray
             return slice;
         }
 
+        /// <summary>
+        /// Writes a whole YZ-slice at the given x. <paramref name="values"/> must have the exact
+        /// shape [Z, Y] matching the map, with <c>values[z, y] → this[x, y, z]</c>, mirroring
+        /// <see cref="GetYZSlice"/>. Implemented block-wise in bulk rather than one indexer call
+        /// per voxel: empty blocks are created on demand, blocks that become empty are released,
+        /// and fully-set blocks collapse to the shared full singleton.
+        /// </summary>
         public void SetYZSlice(int x, bool[,] values)
         {
             if ((uint)x >= (uint)_sizeX)
                 throw new IndexOutOfRangeException();
-            var rows = values.GetLength(0);
-            var cols = values.GetLength(1);
-            if (rows == 0 || cols == 0)
-                throw new ArgumentException("values array must be non-empty");
-            if (cols > _sizeY || rows > _sizeZ)
-                throw new ArgumentException("values array exceeds bounds");
+            ArgumentNullException.ThrowIfNull(values);
+            if (values.GetLength(0) != _sizeZ || values.GetLength(1) != _sizeY)
+                throw new ArgumentException(
+                    $"values must have shape [{_sizeZ}, {_sizeY}] to match the map, got [{values.GetLength(0)}, {values.GetLength(1)}].",
+                    nameof(values));
 
+            var bx = x / BlockSize;
+            var lx = x - bx * BlockSize;
             for (var bz = 0; bz < _blocksZ; bz++)
             {
                 var z0 = bz * BlockSize;
@@ -389,38 +451,57 @@ namespace Layeron.Big3DArray
                 {
                     var y0 = by * BlockSize;
                     var blockCols = Math.Min(BlockSize, _sizeY - y0);
-                    var block = _array[x / BlockSize, by, bz];
+                    var block = _array[bx, by, bz];
                     if (block == null)
                     {
-                        // Create a new block if any value is true
-                        for (var lz = 0; lz < blockRows; lz++)
+                        // Create a block only if this patch of the slice has any bit set.
+                        for (var lz = 0; lz < blockRows && block == null; lz++)
                         {
                             for (var ly = 0; ly < blockCols; ly++)
                             {
                                 if (values[z0 + lz, y0 + ly])
                                 {
                                     block = Block.CreateEmpty();
-                                    _array[x / BlockSize, by, bz] = block;
+                                    _array[bx, by, bz] = block;
                                     break;
                                 }
                             }
-                            if (block != null) break;
                         }
-                    }
 
-                    if (block != null)
+                        if (block == null)
+                            continue;
+                    }
+                    else if (ReferenceEquals(block, Block.Full))
                     {
-                        for (var lz = 0; lz < blockRows; lz++)
+                        // Never write through the shared full singleton: writing all-true into an
+                        // all-true block is a no-op, anything else goes through a private copy.
+                        var allTrue = true;
+                        for (var lz = 0; lz < blockRows && allTrue; lz++)
                         {
                             for (var ly = 0; ly < blockCols; ly++)
                             {
-                                block[x % BlockSize, ly, lz] = values[z0 + lz, y0 + ly];
+                                if (!values[z0 + lz, y0 + ly])
+                                {
+                                    allTrue = false;
+                                    break;
+                                }
                             }
                         }
 
-                        if (block.IsAllZero) _array[x / BlockSize, by, bz] = null;
-                        else if (block.IsAllOne) _array[x / BlockSize, by, bz] = Block.Full;
+                        if (allTrue)
+                            continue;
+                        block = Block.MaterializeFromFull();
+                        _array[bx, by, bz] = block;
                     }
+
+                    for (var lz = 0; lz < blockRows; lz++)
+                    {
+                        for (var ly = 0; ly < blockCols; ly++)
+                            block[lx, ly, lz] = values[z0 + lz, y0 + ly];
+                    }
+
+                    if (block.IsAllZero) _array[bx, by, bz] = null;
+                    else if (block.IsAllOne) _array[bx, by, bz] = Block.Full;
                 }
             }
         }
@@ -642,6 +723,12 @@ namespace Layeron.Big3DArray
                 return new Block(2, bits, BlockVolume - 1);
             }
 
+            /// <summary>
+            /// Copy-on-write: a private mutable copy of the shared <see cref="Full"/> singleton
+            /// with every bit set, for callers that subsequently clear selected bits.
+            /// </summary>
+            public static Block MaterializeFromFull() => new(2, new BitArray(BlockVolume, true), BlockVolume);
+
             public bool this[int lx, int ly, int lz]
             {
                 get
@@ -667,20 +754,13 @@ namespace Layeron.Big3DArray
 
                     if (_state == 1)
                     {
-                        if (value) return;
-                        // expand to bits, initialize all true then clear
-                        _bits = new BitArray(BlockVolume, true);
-                        var idx1 = (lz << 12) | (ly << 6) | lx;
-                        _bits.Set(idx1, false);
-                        _setCount = BlockVolume - 1;
-                        _state = 2;
-                        if (_setCount == 0)
-                        {
-                            _bits = null;
-                            _state = 0;
-                        }
-
-                        return;
+                        if (value) return; // already set everywhere
+                        // The all-true state is a shared singleton: expanding it in place would
+                        // corrupt every other full block in the map. Callers must materialize a
+                        // private copy first (see MaterializeFromFull), so fail loudly here
+                        // instead of corrupting silently.
+                        throw new InvalidOperationException(
+                            "Cannot clear a bit on the shared full block; materialize a private copy first.");
                     }
 
                     // normal
