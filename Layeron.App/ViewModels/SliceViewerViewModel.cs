@@ -13,6 +13,7 @@ using Layeron.App.Layout;
 using Layeron.App.Logging;
 using Layeron.App.Models;
 using Layeron.App.Session;
+using Layeron.App.Tools;
 using Layeron.App.Views;
 using Layeron.App.Views.Overlays;
 using Layeron.Big3DArray;
@@ -46,6 +47,8 @@ public class SliceViewerViewModel : Document
     private MaskOverlay? _maskOverlay;
     private AnnotationOverlay? _annotationOverlay;
     private AnnotationManagerViewModel? _annotationManager;
+    private SliceToolService? _toolService;
+    private ToolOverlay? _toolOverlay;
     private MaskOverlay? _previewOverlay;
     private WriteableBitmap? _previewImage;
     private PreviewOverlay? _renderedOverlay;
@@ -62,12 +65,14 @@ public class SliceViewerViewModel : Document
         CanClose = true;
         DockGroup = DockGroups.Documents;
         ClickCommand = ReactiveCommand.Create<Point>(OnClick);
-        PaintCommand = ReactiveCommand.Create<Point>(PaintMask); // [TEMP-DEMO]
+        ToolPointerCommand = ReactiveCommand.Create<SliceToolPointerArgs>(OnToolPointer);
+        ToolKeyCommand = ReactiveCommand.Create<SliceToolKey>(OnToolKey);
         AnnotationClickCommand = ReactiveCommand.Create<SliceClick>(OnAnnotationClick);
         CancelAnnotationCommand = ReactiveCommand.Create(CancelAnnotation);
 
         ClickCommand.ThrownExceptions.Subscribe(HandleInteractiveError);
-        PaintCommand.ThrownExceptions.Subscribe(HandleInteractiveError);
+        ToolPointerCommand.ThrownExceptions.Subscribe(HandleInteractiveError);
+        ToolKeyCommand.ThrownExceptions.Subscribe(HandleInteractiveError);
         AnnotationClickCommand.ThrownExceptions.Subscribe(HandleInteractiveError);
         CancelAnnotationCommand.ThrownExceptions.Subscribe(HandleInteractiveError);
     }
@@ -102,6 +107,7 @@ public class SliceViewerViewModel : Document
             SharedData = s?.SharedData;
             WindowLevel = s?.WindowLevel;
             AnnotationManager = s?.AnnotationManager;
+            ToolService = s?.ToolService;
         });
 
         if (_previewChannel != null)
@@ -123,13 +129,17 @@ public class SliceViewerViewModel : Document
             _annotationManager = null;
         }
 
+        ToolService = null;
+
         _previewImage?.Dispose();
         _previewImage = null;
     }
 
     public ReactiveCommand<Point, RxVoid> ClickCommand { get; }
 
-    public ReactiveCommand<Point, RxVoid> PaintCommand { get; } // [TEMP-DEMO]
+    public ReactiveCommand<SliceToolPointerArgs, RxVoid> ToolPointerCommand { get; }
+
+    public ReactiveCommand<SliceToolKey, RxVoid> ToolKeyCommand { get; }
 
     public ReactiveCommand<SliceClick, RxVoid> AnnotationClickCommand { get; }
 
@@ -191,12 +201,46 @@ public class SliceViewerViewModel : Document
     /// <summary>True while the active tool turns a left click into an annotation vertex.</summary>
     public bool IsAnnotationMode => _annotationManager is { ActiveTool: not AnnotationTool.None };
 
+    /// <summary>
+    /// The session's slice tool state. Bound from the session stream like the other session services:
+    /// the pointer/key commands below forward into it, and its overlay event drives the tool preview.
+    /// </summary>
+    public SliceToolService? ToolService
+    {
+        get => _toolService;
+        private set
+        {
+            if (ReferenceEquals(_toolService, value)) return;
+            if (_toolService != null)
+            {
+                _toolService.ActiveToolChanged -= OnToolStateChanged;
+                _toolService.OverlayChanged -= OnToolOverlayChanged;
+            }
+
+            _toolService = value;
+
+            if (value != null)
+            {
+                value.ActiveToolChanged += OnToolStateChanged;
+                value.OverlayChanged += OnToolOverlayChanged;
+            }
+
+            OnToolStateChanged();
+            OnToolOverlayChanged();
+        }
+    }
+
+    /// <summary>True while a slice tool is active: the viewer routes left-button gestures to it.</summary>
+    public bool IsToolActive => _toolService is { HasActiveTool: true };
+
+    private void OnToolStateChanged() => this.RaisePropertyChanged(nameof(IsToolActive));
+
     private void SubscribeMaskManager(MaskManagerViewModel? manager)
     {
         if (manager != null)
         {
             manager.MasksCollectionChanged += OnMasksCollectionChanged;
-            manager.MasksContentChanged += OnMasksContentChanged; // [TEMP-DEMO]
+            manager.MasksContentChanged += OnMasksContentChanged;
         }
     }
 
@@ -205,7 +249,7 @@ public class SliceViewerViewModel : Document
         if (manager != null)
         {
             manager.MasksCollectionChanged -= OnMasksCollectionChanged;
-            manager.MasksContentChanged -= OnMasksContentChanged; // [TEMP-DEMO]
+            manager.MasksContentChanged -= OnMasksContentChanged;
         }
     }
 
@@ -226,6 +270,7 @@ public class SliceViewerViewModel : Document
             PushOverlayState();
             RefreshSlice();
             RefreshPreviewOverlay();
+            RefreshToolOverlay();
             RefreshAnnotations();
         }
     }
@@ -247,6 +292,7 @@ public class SliceViewerViewModel : Document
             this.RaisePropertyChanged(nameof(CurrentImageHeight));
             PushOverlayState();
             RefreshAnnotations();
+            RefreshToolOverlay();
             return;
         }
 
@@ -264,6 +310,7 @@ public class SliceViewerViewModel : Document
         PushOverlayState();
         RefreshSlice();
         RefreshAnnotations();
+        RefreshToolOverlay();
     }
 
     public void RegisterImageViewer(CustomImageViewer viewer)
@@ -287,6 +334,7 @@ public class SliceViewerViewModel : Document
         _maskOverlay = new MaskOverlay();
         _previewOverlay = new MaskOverlay();
         _annotationOverlay = new AnnotationOverlay();
+        _toolOverlay = new ToolOverlay();
         _renderedOverlay = null;
         _imageBorderOverlay = new ImageBorderOverlay
         {
@@ -297,10 +345,12 @@ public class SliceViewerViewModel : Document
         viewer.Overlays.Add(_crosshairOverlay);
         viewer.Overlays.Add(_maskOverlay);
         viewer.Overlays.Add(_previewOverlay);
+        viewer.Overlays.Add(_toolOverlay);
         viewer.Overlays.Add(_annotationOverlay);
         viewer.Overlays.Add(_imageBorderOverlay);
 
         RefreshPreviewOverlay();
+        RefreshToolOverlay();
     }
 
     private void UnregisterOverlays(CustomImageViewer? viewer)
@@ -310,11 +360,13 @@ public class SliceViewerViewModel : Document
         if (_maskOverlay != null) viewer.Overlays.Remove(_maskOverlay);
         if (_previewOverlay != null) viewer.Overlays.Remove(_previewOverlay);
         if (_annotationOverlay != null) viewer.Overlays.Remove(_annotationOverlay);
+        if (_toolOverlay != null) viewer.Overlays.Remove(_toolOverlay);
         if (_imageBorderOverlay != null) viewer.Overlays.Remove(_imageBorderOverlay);
         _crosshairOverlay = null;
         _maskOverlay = null;
         _previewOverlay = null;
         _annotationOverlay = null;
+        _toolOverlay = null;
         _imageBorderOverlay = null;
     }
 
@@ -566,7 +618,7 @@ public class SliceViewerViewModel : Document
         RefreshSlice();
     }
 
-    private void OnMasksContentChanged() // [TEMP-DEMO]
+    private void OnMasksContentChanged()
     {
         RefreshSlice();
     }
@@ -767,50 +819,43 @@ public class SliceViewerViewModel : Document
         }
     }
 
-    // [TEMP-DEMO] paint a disc into the active mask on the current slice plane
-    private void PaintMask(Point pixel)
+    // -----------------------------------------------------------------------
+    //  Slice tool routing
+    // -----------------------------------------------------------------------
+
+    // The viewer converts gestures to continuous image-pixel coordinates; everything else
+    // (axis→plane mapping, crosshair slice as index) is resolved here so a tool always
+    // receives one consistent slice-space event no matter which view the user drew in.
+    private void OnToolPointer(SliceToolPointerArgs args) =>
+        _toolService?.HandlePointer(
+            CurrentPlane, CurrentSlice,
+            args.Point.X, args.Point.Y,
+            args.Phase, args.Modifiers, args.ClickCount);
+
+    private void OnToolKey(SliceToolKey key) => _toolService?.HandleKey(key);
+
+    private void OnToolOverlayChanged()
     {
-        var array = _sharedData?.Array;
-        var manager = _sharedData?.MaskManager;
-        var mask = manager?.ActiveMask;
-        if (array == null || mask?.Bitmap == null || manager == null || _sharedData == null) return;
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+            RefreshToolOverlay();
+        else
+            Avalonia.Threading.Dispatcher.UIThread.Post(RefreshToolOverlay);
+    }
 
-        var bitmap = mask.Bitmap;
-        var r = manager.BrushRadius;
-        var px = (int)pixel.X;
-        var py = (int)pixel.Y;
+    /// <summary>
+    /// Mirrors the active tool's preview overlay onto this view's slice: the overlay only renders
+    /// when its plane/index match what is on screen, so a crosshair move simply makes it skip.
+    /// </summary>
+    private void RefreshToolOverlay()
+    {
+        if (_toolOverlay == null)
+            return;
 
-        var depth = Axis switch
-        {
-            SliceAxis.Axial => _sharedData.CurrentZ,
-            SliceAxis.Coronal => _sharedData.CurrentY,
-            SliceAxis.Sagittal => _sharedData.CurrentX,
-            _ => 0
-        };
-
-        for (var dy = -r; dy <= r; dy++)
-        {
-            for (var dx = -r; dx <= r; dx++)
-            {
-                if (dx * dx + dy * dy > r * r) continue;
-
-                var u = px + dx;
-                var v = py + dy;
-
-                int wx, wy, wz;
-                switch (Axis)
-                {
-                    case SliceAxis.Axial: wx = u; wy = v; wz = depth; break;
-                    case SliceAxis.Coronal: wx = u; wy = depth; wz = v; break;
-                    default:           wx = depth; wy = u; wz = v; break;
-                }
-
-                if ((uint)wx < (uint)array.X && (uint)wy < (uint)array.Y && (uint)wz < (uint)array.Z)
-                    bitmap[wx, wy, wz] = true;
-            }
-        }
-
-        manager.RaiseMasksContentChanged(); // [TEMP-DEMO] refresh all slice views
+        _toolOverlay.ViewPlane = CurrentPlane;
+        _toolOverlay.ViewIndex = CurrentSlice;
+        _toolOverlay.ImageWidth = CurrentImageWidth;
+        _toolOverlay.ImageHeight = CurrentImageHeight;
+        _toolOverlay.Content = _toolService?.Overlay;
     }
 
     private void RefreshSlice()

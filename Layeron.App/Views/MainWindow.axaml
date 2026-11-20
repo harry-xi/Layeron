@@ -10,6 +10,12 @@
             Icon="/Assets/logo.ico"
             Title="Layeron">
 
+    <!-- Window-level routing: mask edit history is reachable whichever view has the focus. -->
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Ctrl+Z" Command="{Binding UndoCommand}"/>
+        <KeyBinding Gesture="Ctrl+Shift+Z" Command="{Binding RedoCommand}"/>
+    </Window.KeyBindings>
+
     <Design.DataContext>
         <vm:MainWindowViewModel/>
     </Design.DataContext>

@@ -4,6 +4,8 @@ using Layeron.App.Filters;
 using Layeron.App.Session;
 using Layeron.App.Tools;
 using Layeron.App.Workspaces;
+using ReactiveUI;
+using RxVoid = ReactiveUI.Primitives.RxVoid;
 
 namespace Layeron.App.ViewModels;
 public class MainWindowViewModel : ViewModelBase
@@ -21,6 +23,11 @@ public class MainWindowViewModel : ViewModelBase
         var tools = new ToolCatalog();
         Session = sessions.CreateSession(tools);
         StartupTrace.Mark("vm-session-created");
+
+        // Window-level keyboard entry points (Ctrl+Z / Ctrl+Shift+Z), available whichever view has
+        // focus; both act on the session's mask edit history.
+        UndoCommand = ReactiveCommand.Create(() => Session.ToolService.Undo());
+        RedoCommand = ReactiveCommand.Create(() => Session.ToolService.Redo());
 
         // The services are created first because the dock needs the plugin preview channel: plugins
         // and slice views must share one channel instance. The plugin host is then wired up before the
@@ -59,6 +66,12 @@ public class MainWindowViewModel : ViewModelBase
 
     /// <summary>The live session. Replaced when <see cref="ISessionManager"/> opens a new one.</summary>
     public ISession Session { get; } = null!;
+
+    /// <summary>Mask edit undo; bound to Ctrl+Z at the window level.</summary>
+    public ReactiveCommand<RxVoid, RxVoid> UndoCommand { get; } = null!;
+
+    /// <summary>Mask edit redo; bound to Ctrl+Shift+Z at the window level.</summary>
+    public ReactiveCommand<RxVoid, RxVoid> RedoCommand { get; } = null!;
 
     public DockViewModel Dock { get; } = null!;
 

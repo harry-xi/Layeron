@@ -11,23 +11,42 @@
         <StackPanel Margin="8" Spacing="8">
             <TextBlock Text="工具箱" FontWeight="SemiBold"/>
 
-            <ItemsControl ItemsSource="{Binding Tools}">
+            <ItemsControl ItemsSource="{Binding ToolGroups}">
                 <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:ToolboxToolViewModel">
-                        <Button Command="{Binding $parent[ItemsControl].((vm:ToolboxViewModel)DataContext).SelectToolCommand}"
-                                CommandParameter="{Binding Id}"
-                                Margin="0,1"
-                                HorizontalAlignment="Stretch"
-                                HorizontalContentAlignment="Left"
-                                Classes="tool">
-                            <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Grid.Column="0" Text="{Binding Name}"/>
-                                <TextBlock Grid.Column="1" Text="✓" IsVisible="{Binding IsSelected}"/>
-                            </Grid>
-                        </Button>
+                    <DataTemplate x:DataType="vm:ToolboxToolGroupViewModel">
+                        <StackPanel Margin="0,2" Spacing="2">
+                            <TextBlock Text="{Binding Header}"
+                                       FontWeight="SemiBold"
+                                       Opacity="0.72"
+                                       IsVisible="{Binding HasHeader}"
+                                       Margin="0,4,0,1"/>
+                            <ItemsControl ItemsSource="{Binding Tools}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:ToolboxToolViewModel">
+                                        <Button Command="{Binding $parent[ItemsControl].((vm:ToolboxToolGroupViewModel)DataContext).SelectToolCommand}"
+                                                CommandParameter="{Binding Id}"
+                                                Margin="0,1"
+                                                HorizontalAlignment="Stretch"
+                                                HorizontalContentAlignment="Left"
+                                                Classes="tool">
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <TextBlock Grid.Column="0" Text="{Binding Name}"/>
+                                                <TextBlock Grid.Column="1" Text="✓" IsVisible="{Binding IsSelected}"/>
+                                            </Grid>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+
+            <TextBlock Text="标注模式优先：切片左键正被标注工具占用，请先结束或取消标注。"
+                       IsVisible="{Binding ShowAnnotationConflict}"
+                       FontSize="11"
+                       TextWrapping="Wrap"
+                       Foreground="#FFFFB020"/>
 
             <Separator/>
 

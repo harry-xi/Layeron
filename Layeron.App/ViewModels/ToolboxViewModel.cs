@@ -24,6 +24,7 @@ public sealed class ToolboxViewModel : Tool, IDockableIdentity, IDisposable
     private readonly ToolCatalog _catalog;
     private readonly IDisposable _sessionSubscription;
     private SliceToolService? _service;
+    private AnnotationManagerViewModel? _annotations;
     private bool _disposed;
     private bool _eraseMode;
 
@@ -48,8 +49,8 @@ public sealed class ToolboxViewModel : Tool, IDockableIdentity, IDisposable
 
     public string TypeId => DockableIds.Toolbox;
 
-    /// <summary>One entry per tool; selecting one activates it.</summary>
-    public ObservableCollection<ToolboxToolViewModel> Tools { get; } = [];
+    /// <summary>Tool buttons grouped by the descriptor's group key; selecting one activates it.</summary>
+    public ObservableCollection<ToolboxToolGroupViewModel> ToolGroups { get; } = [];
 
     /// <summary>Option editors for the active tool; empty in browse mode.</summary>
     public ObservableCollection<ToolboxOptionViewModel> Options { get; } = [];
@@ -72,6 +73,12 @@ public sealed class ToolboxViewModel : Tool, IDockableIdentity, IDisposable
     public bool CanRedo => _service?.CanRedo ?? false;
 
     public string? StatusText => _service?.StatusText;
+
+    /// <summary>True while the session's annotation manager has an active drawing tool.</summary>
+    public bool IsAnnotationMode => _annotations is { ActiveTool: not AnnotationTool.None };
+
+    /// <summary>Annotation drawing wins the left button on slices; surface the clash instead of hiding it.</summary>
+    public bool ShowAnnotationConflict => IsAnnotationMode && _service?.ActiveToolId != null;
 
     public ReactiveCommand<string?, RxVoid> SelectToolCommand { get; }
 
@@ -101,6 +108,10 @@ public sealed class ToolboxViewModel : Tool, IDockableIdentity, IDisposable
             _service.HistoryChanged += OnServiceStateChanged;
         }
 
+        _annotations = session?.AnnotationManager;
+        if (_annotations != null)
+            _annotations.PropertyChanged += OnAnnotationsPropertyChanged;
+
         _eraseMode = _service?.WriteMode == MaskWriteMode.Clear;
         this.RaisePropertyChanged(nameof(IsEraseMode));
         SyncFromService();
@@ -115,6 +126,21 @@ public sealed class ToolboxViewModel : Tool, IDockableIdentity, IDisposable
             _service.HistoryChanged -= OnServiceStateChanged;
             _service = null;
         }
+
+        if (_annotations != null)
+        {
+            _annotations.PropertyChanged -= OnAnnotationsPropertyChanged;
+            _annotations = null;
+        }
+    }
+
+    private void OnAnnotationsPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(AnnotationManagerViewModel.ActiveTool))
+        {
+            this.RaisePropertyChanged(nameof(IsAnnotationMode));
+            this.RaisePropertyChanged(nameof(ShowAnnotationConflict));
+        }
     }
 
     private void OnServiceStateChanged() => SyncFromService();
@@ -122,12 +148,15 @@ public sealed class ToolboxViewModel : Tool, IDockableIdentity, IDisposable
     private void SyncFromService()
     {
         var activeId = _service?.ActiveToolId;
-        foreach (var tool in Tools)
-            tool.IsSelected = tool.Id == activeId;
+        foreach (var group in ToolGroups)
+            foreach (var tool in group.Tools)
+                tool.IsSelected = tool.Id == activeId;
+
         RebuildOptions();
         this.RaisePropertyChanged(nameof(CanUndo));
         this.RaisePropertyChanged(nameof(CanRedo));
         this.RaisePropertyChanged(nameof(StatusText));
+        this.RaisePropertyChanged(nameof(ShowAnnotationConflict));
     }
 
     // ── Tool list ─────────────────────────────────────────────────
@@ -136,17 +165,46 @@ public sealed class ToolboxViewModel : Tool, IDockableIdentity, IDisposable
 
     private void RebuildTools()
     {
-        // The browse entry (null id) sits above every contributed tool; contributed tools
-        // keep the catalog's order (built-ins by group/order, then plugins by registration).
+        // The browse entry (null id) sits above every contributed tool; contributed tools are
+        // grouped by their descriptor key, ordered within the group and by the group's rank.
         var activeId = _service?.ActiveToolId;
-        Tools.Clear();
-        Tools.Add(new ToolboxToolViewModel(null, "浏览", activeId == null));
-        foreach (var contribution in _catalog.Items)
+        ToolGroups.Clear();
+
+        var browse = new ToolboxToolGroupViewModel(null, SelectToolCommand);
+        browse.Tools.Add(new ToolboxToolViewModel(null, "浏览", activeId == null));
+        ToolGroups.Add(browse);
+
+        foreach (var group in _catalog.Items
+                     .GroupBy(c => c.Descriptor.Group ?? string.Empty)
+                     .OrderBy(g => GroupRank(g.Key))
+                     .ThenBy(g => g.Key))
         {
-            var descriptor = contribution.Descriptor;
-            Tools.Add(new ToolboxToolViewModel(descriptor.Id, descriptor.DisplayName, descriptor.Id == activeId));
+            var groupVm = new ToolboxToolGroupViewModel(GroupHeader(group.Key), SelectToolCommand);
+            foreach (var contribution in group.OrderBy(c => c.Descriptor.Order))
+            {
+                var descriptor = contribution.Descriptor;
+                groupVm.Tools.Add(new ToolboxToolViewModel(descriptor.Id, descriptor.DisplayName, descriptor.Id == activeId));
+            }
+
+            ToolGroups.Add(groupVm);
         }
     }
+
+    /// <summary>Stable ordering of known groups; unknown (plugin) groups sort after the built-ins.</summary>
+    private static int GroupRank(string group) => group switch
+    {
+        "region" => 0,
+        "retouch" => 1,
+        _ => 2
+    };
+
+    private static string GroupHeader(string group) => group switch
+    {
+        "region" => "区域",
+        "retouch" => "修边",
+        "" => "工具",
+        _ => group
+    };
 
     private void SelectTool(string? toolId) => _service?.ActivateTool(toolId);
 
@@ -172,6 +230,25 @@ public sealed class ToolboxViewModel : Tool, IDockableIdentity, IDisposable
         foreach (var option in descriptor.Options)
             Options.Add(new ToolboxOptionViewModel(service, activeId, option));
     }
+}
+
+/// <summary>One toolbox group: a header (null for the browse entry) and its tool buttons.</summary>
+public sealed class ToolboxToolGroupViewModel
+{
+    public ToolboxToolGroupViewModel(string? header, ReactiveCommand<string?, RxVoid> selectToolCommand)
+    {
+        Header = header;
+        SelectToolCommand = selectToolCommand;
+    }
+
+    public string? Header { get; }
+
+    /// <summary>False for the browse entry, which renders without a section title.</summary>
+    public bool HasHeader => !string.IsNullOrEmpty(Header);
+
+    public ReactiveCommand<string?, RxVoid> SelectToolCommand { get; }
+
+    public ObservableCollection<ToolboxToolViewModel> Tools { get; } = [];
 }
 
 /// <summary>One toolbox button: the tool id (null = browse mode), its name and selection state.</summary>

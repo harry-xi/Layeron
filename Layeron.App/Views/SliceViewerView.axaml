@@ -12,7 +12,9 @@
         <local:CustomImageViewer x:Name="ImageViewer"
                                  Source="{Binding SliceImage}"
                                  ClickCommand="{Binding ClickCommand}"
-                                 PaintCommand="{Binding PaintCommand}"
+                                 ToolCommand="{Binding ToolPointerCommand}"
+                                 ToolKeyCommand="{Binding ToolKeyCommand}"
+                                 IsToolActive="{Binding IsToolActive}"
                                  AnnotationCommand="{Binding AnnotationClickCommand}"
                                  IsAnnotationMode="{Binding IsAnnotationMode}"
                                  BackgroundBrush="#FF1E1E1E" />

@@ -10,6 +10,7 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Layeron.App.Views.Overlays;
+using Layeron.Plugin.Abstractions;
 
 namespace Layeron.App.Views;
 
@@ -21,9 +22,13 @@ public partial class CustomImageViewer : UserControl
     public static readonly StyledProperty<ICommand?> ClickCommandProperty =
         AvaloniaProperty.Register<CustomImageViewer, ICommand?>(nameof(ClickCommand));
 
-    // [TEMP-DEMO] mask painting support
-    public static readonly StyledProperty<ICommand?> PaintCommandProperty =
-        AvaloniaProperty.Register<CustomImageViewer, ICommand?>(nameof(PaintCommand));
+    /// <summary>Receives <see cref="SliceToolPointerArgs"/> values while <see cref="IsToolActive"/> is on.</summary>
+    public static readonly StyledProperty<ICommand?> ToolCommandProperty =
+        AvaloniaProperty.Register<CustomImageViewer, ICommand?>(nameof(ToolCommand));
+
+    /// <summary>Receives <see cref="SliceToolKey"/> values (Enter/Escape) while a tool gesture needs them.</summary>
+    public static readonly StyledProperty<ICommand?> ToolKeyCommandProperty =
+        AvaloniaProperty.Register<CustomImageViewer, ICommand?>(nameof(ToolKeyCommand));
 
     /// <summary>Receives <see cref="SliceClick"/> values while <see cref="IsAnnotationMode"/> is on.</summary>
     public static readonly StyledProperty<ICommand?> AnnotationCommandProperty =
@@ -32,11 +37,15 @@ public partial class CustomImageViewer : UserControl
     public static readonly StyledProperty<bool> IsAnnotationModeProperty =
         AvaloniaProperty.Register<CustomImageViewer, bool>(nameof(IsAnnotationMode));
 
+    public static readonly StyledProperty<bool> IsToolActiveProperty =
+        AvaloniaProperty.Register<CustomImageViewer, bool>(nameof(IsToolActive));
+
     public static readonly StyledProperty<IBrush?> BackgroundBrushProperty =
         AvaloniaProperty.Register<CustomImageViewer, IBrush?>(nameof(BackgroundBrush));
 
     private bool _isDragging;
-    private bool _isPainting; // [TEMP-DEMO]
+    private bool _isToolDragging;
+    private bool _spaceHeld;
     private Point _lastDragPoint;
     private Point _pan = new(0, 0);
     private double _scale = 1.0;
@@ -50,13 +59,19 @@ public partial class CustomImageViewer : UserControl
     {
         AvaloniaXamlLoader.Load(this);
 
+        // Key routing (Space pan modifier, Enter/Escape for the active tool) requires focus;
+        // pressing anywhere in the viewer takes it so gestures start working immediately.
+        Focusable = true;
+
         Overlays.CollectionChanged += OnOverlaysCollectionChanged;
 
         PointerWheelChanged += OnPointerWheelChanged;
         PointerPressed += OnPointerPressed;
         PointerMoved += OnPointerMoved;
         PointerReleased += OnPointerReleased;
-        PointerExited += OnPointerReleased;
+        // Leaving the control only ends a pan; a captured tool gesture keeps running
+        // until the button actually comes up (see OnPointerExited).
+        PointerExited += OnPointerExited;
         this.GetObservable(BoundsProperty).Subscribe(OnBoundsChanged);
     }
 
@@ -72,11 +87,16 @@ public partial class CustomImageViewer : UserControl
         set => SetValue(ClickCommandProperty, value);
     }
 
-    // [TEMP-DEMO] mask painting support
-    public ICommand? PaintCommand
+    public ICommand? ToolCommand
     {
-        get => GetValue(PaintCommandProperty);
-        set => SetValue(PaintCommandProperty, value);
+        get => GetValue(ToolCommandProperty);
+        set => SetValue(ToolCommandProperty, value);
+    }
+
+    public ICommand? ToolKeyCommand
+    {
+        get => GetValue(ToolKeyCommandProperty);
+        set => SetValue(ToolKeyCommandProperty, value);
     }
 
     public ICommand? AnnotationCommand
@@ -89,6 +109,13 @@ public partial class CustomImageViewer : UserControl
     {
         get => GetValue(IsAnnotationModeProperty);
         set => SetValue(IsAnnotationModeProperty, value);
+    }
+
+    /// <summary>True while the session has an active slice tool: the left button belongs to it.</summary>
+    public bool IsToolActive
+    {
+        get => GetValue(IsToolActiveProperty);
+        set => SetValue(IsToolActiveProperty, value);
     }
 
     public IBrush? BackgroundBrush
@@ -170,53 +197,79 @@ public partial class CustomImageViewer : UserControl
 
     private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        var pt = e.GetPosition(this);
+        Focus();
+
         var current = e.GetCurrentPoint(this).Properties;
 
-        // Double-click returns to fit-to-window framing, unless the user is drawing: there the same
-        // gesture means "finish the polygon".
-        if (current.IsLeftButtonPressed && e.ClickCount >= 2 && !IsAnnotationMode)
+        if (current.IsLeftButtonPressed)
         {
-            FitToWindow();
-            e.Handled = true;
-            return;
-        }
+            // Annotation mode has priority over tools: a drawing session in progress must keep
+            // its clicks even when a slice tool is active in the toolbox.
+            if (IsAnnotationMode)
+            {
+                Cursor = new Cursor(StandardCursorType.Cross);
+                ExecuteAnnotation(e, e.ClickCount);
+                e.Handled = true;
+                return;
+            }
 
-        if (current.IsLeftButtonPressed && IsPaintModifier(e.KeyModifiers)) // [TEMP-DEMO]
-        {
-            _isPainting = true;
-            Cursor = new Cursor(StandardCursorType.Cross);
-            ExecutePaint(pt);
+            if (IsToolActive)
+            {
+                // Space+left drag pans even while a tool is active (the PS convention);
+                // the middle button below covers the same without the keyboard.
+                if (_spaceHeld)
+                {
+                    BeginPanDrag(e);
+                    e.Handled = true;
+                    return;
+                }
+
+                // The left button belongs to the tool, including double presses (a double
+                // press is how polygon-style tools close, so fit-to-window must not eat it).
+                _isToolDragging = true;
+                e.Pointer.Capture(this);
+                ExecuteTool(e, SlicePointerPhase.Press);
+                e.Handled = true;
+                return;
+            }
+
+            // Double-click returns to fit-to-window framing in browse mode.
+            if (e.ClickCount >= 2)
+            {
+                FitToWindow();
+                e.Handled = true;
+                return;
+            }
+
+            BeginPanDrag(e);
         }
-        else if (current.IsLeftButtonPressed && IsAnnotationMode)
+        else if (current.IsMiddleButtonPressed)
         {
-            Cursor = new Cursor(StandardCursorType.Cross);
-            ExecuteAnnotation(pt, e.ClickCount);
-            e.Handled = true;
-        }
-        else if (current.IsLeftButtonPressed)
-        {
-            _lastDragPoint = pt;
-            _isDragging = true;
-            Cursor = new Cursor(StandardCursorType.DragMove);
+            // Middle-drag pans in every mode; the tool keeps the left button.
+            BeginPanDrag(e);
         }
         else if (current.IsRightButtonPressed)
         {
-            HandleRightClick(pt);
+            HandleRightClick(e);
         }
     }
 
-    private void HandleRightClick(Point controlPt)
+    private void BeginPanDrag(PointerEventArgs e)
+    {
+        _lastDragPoint = e.GetPosition(this);
+        _isDragging = true;
+        Cursor = new Cursor(StandardCursorType.DragMove);
+    }
+
+    private void HandleRightClick(PointerEventArgs e)
     {
         if (Source == null) return;
-        var imgW = Source.PixelSize.Width;
-        var imgH = Source.PixelSize.Height;
 
-        var imgPt = (controlPt - _pan) / _scale;
+        var imgPt = ToImageSpace(e);
         var pixelX = (int)imgPt.X;
         var pixelY = (int)imgPt.Y;
 
-        if (pixelX >= 0 && pixelX < imgW && pixelY >= 0 && pixelY < imgH)
+        if (pixelX >= 0 && pixelX < Source.PixelSize.Width && pixelY >= 0 && pixelY < Source.PixelSize.Height)
         {
             ClickCommand?.Execute(new Point(pixelX, pixelY));
         }
@@ -224,12 +277,18 @@ public partial class CustomImageViewer : UserControl
 
     private void OnPointerMoved(object? sender, PointerEventArgs e)
     {
-        var currentPoint = e.GetCurrentPoint(this);
-        if (_isPainting && currentPoint.Properties.IsLeftButtonPressed) // [TEMP-DEMO]
+        var leftPressed = e.GetCurrentPoint(this).Properties.IsLeftButtonPressed;
+
+        if (_isToolDragging && leftPressed)
         {
-            ExecutePaint(e.GetPosition(this));
+            ExecuteTool(e, SlicePointerPhase.Move);
         }
-        else if (_isDragging && currentPoint.Properties.IsLeftButtonPressed)
+        else if (IsToolActive && !leftPressed && !_isDragging)
+        {
+            // Hover lets tools without a held button react (e.g. a lasso tracking the cursor).
+            ExecuteTool(e, SlicePointerPhase.Hover);
+        }
+        else if (_isDragging && (leftPressed || e.GetCurrentPoint(this).Properties.IsMiddleButtonPressed))
         {
             var current = e.GetPosition(this);
             _pan += current - _lastDragPoint;
@@ -239,47 +298,102 @@ public partial class CustomImageViewer : UserControl
         }
     }
 
-    private void OnPointerReleased(object? sender, PointerEventArgs e)
+    private void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
-        _isPainting = false; // [TEMP-DEMO]
+        if (_isToolDragging)
+        {
+            _isToolDragging = false;
+            // Captured on press; releasing the capture here guarantees the tool sees the
+            // Release phase even if the cursor left the viewer mid-gesture.
+            e.Pointer.Capture(null);
+            ExecuteTool(e, SlicePointerPhase.Release);
+        }
+
         _isDragging = false;
-        Cursor = new Cursor(StandardCursorType.Arrow);
+        RestoreCursor();
     }
 
-    // [TEMP-DEMO] mask painting support
-    private static bool IsPaintModifier(KeyModifiers modifiers) =>
-        modifiers.HasFlag(KeyModifiers.Control);
-
-    private void ExecutePaint(Point controlPt)
+    private void OnPointerExited(object? sender, PointerEventArgs e)
     {
-        if (PaintCommand == null || Source == null) return;
-        var imgW = Source.PixelSize.Width;
-        var imgH = Source.PixelSize.Height;
-
-        var imgPt = (controlPt - _pan) / _scale;
-        var pixelX = (int)imgPt.X;
-        var pixelY = (int)imgPt.Y;
-        if (pixelX < 0 || pixelX >= imgW || pixelY < 0 || pixelY >= imgH) return;
-
-        PaintCommand.Execute(new Point(pixelX, pixelY));
+        // Only pan ends here: a captured tool gesture keeps its pointer events.
+        _isDragging = false;
     }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+
+        if (e.Key == Key.Space)
+        {
+            // Track Space rather than reading KeyModifiers: Avalonia's modifier flags cover
+            // Shift/Ctrl/Alt only, and suppressing the key stops outer ScrollViewers from
+            // scrolling the viewer out of view while the user holds it to pan.
+            _spaceHeld = true;
+            e.Handled = true;
+            return;
+        }
+
+        if (!IsToolActive)
+            return;
+
+        if (e.Key == Key.Enter)
+        {
+            ToolKeyCommand?.Execute(SliceToolKey.Enter);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            ToolKeyCommand?.Execute(SliceToolKey.Escape);
+            e.Handled = true;
+        }
+    }
+
+    protected override void OnKeyUp(KeyEventArgs e)
+    {
+        base.OnKeyUp(e);
+        if (e.Key == Key.Space)
+            _spaceHeld = false;
+    }
+
+    private static SliceKeyModifiers ToSliceModifiers(KeyModifiers modifiers) =>
+        (modifiers.HasFlag(KeyModifiers.Shift) ? SliceKeyModifiers.Shift : SliceKeyModifiers.None)
+        | (modifiers.HasFlag(KeyModifiers.Control) ? SliceKeyModifiers.Control : SliceKeyModifiers.None)
+        | (modifiers.HasFlag(KeyModifiers.Alt) ? SliceKeyModifiers.Alt : SliceKeyModifiers.None);
+
+    /// <summary>Control-space point → continuous image-pixel point; zoom and pan never affect it.
+    /// Coordinates may fall outside the image; the tools clip to the plane themselves.</summary>
+    private Point ToImageSpace(PointerEventArgs e)
+        => (e.GetPosition(this) - _pan) / _scale;
+
+    private void ExecuteTool(PointerEventArgs e, SlicePointerPhase phase)
+    {
+        if (ToolCommand == null || Source == null) return;
+        ToolCommand.Execute(new SliceToolPointerArgs(phase, ToImageSpace(e), ToSliceModifiers(e.KeyModifiers), ClickCountOf(e)));
+    }
+
+    private static int ClickCountOf(PointerEventArgs e) => e is PointerPressedEventArgs pressed ? pressed.ClickCount : 1;
 
     /// <summary>
     /// Converts a click to a pixel coordinate in the source image. The annotation tools work in image
     /// space, not control space, so zoom and pan never affect where a shape lands.
     /// </summary>
-    private void ExecuteAnnotation(Point controlPt, int clickCount)
+    private void ExecuteAnnotation(PointerEventArgs e, int clickCount)
     {
         if (AnnotationCommand == null || Source == null) return;
-        var imgW = Source.PixelSize.Width;
-        var imgH = Source.PixelSize.Height;
-
-        var imgPt = (controlPt - _pan) / _scale;
+        var imgPt = (e.GetPosition(this) - _pan) / _scale;
         var pixelX = (int)Math.Floor(imgPt.X);
         var pixelY = (int)Math.Floor(imgPt.Y);
-        if (pixelX < 0 || pixelX >= imgW || pixelY < 0 || pixelY >= imgH) return;
+        if (pixelX < 0 || pixelX >= Source.PixelSize.Width || pixelY < 0 || pixelY >= Source.PixelSize.Height) return;
 
         AnnotationCommand.Execute(new SliceClick(new Point(pixelX, pixelY), clickCount));
+    }
+
+    private void RestoreCursor()
+    {
+        // The mode properties decide the resting cursor; only a plain drag falls back to the arrow.
+        Cursor = IsAnnotationMode || IsToolActive
+            ? new Cursor(StandardCursorType.Cross)
+            : new Cursor(StandardCursorType.Arrow);
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
@@ -302,11 +416,12 @@ public partial class CustomImageViewer : UserControl
         {
             InvalidateVisual();
         }
-        else if (change.Property == IsAnnotationModeProperty)
+        else if (change.Property == IsAnnotationModeProperty || change.Property == IsToolActiveProperty)
         {
-            Cursor = change.GetNewValue<bool>()
-                ? new Cursor(StandardCursorType.Cross)
-                : new Cursor(StandardCursorType.Arrow);
+            // A mode property turned on claims the cursor even outside a gesture; turning
+            // both off restores the browse cursor after a drag released mid-switch.
+            var active = GetValue(IsAnnotationModeProperty) || GetValue(IsToolActiveProperty);
+            Cursor = active ? new Cursor(StandardCursorType.Cross) : new Cursor(StandardCursorType.Arrow);
         }
     }
 

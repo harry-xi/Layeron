@@ -399,13 +399,15 @@ P1–P3 顺序执行（P2/P3 依赖 P1 的契约冻结）；每阶段结束跑�
 - **工具箱面板**（`ToolboxViewModel` + `ToolboxView.axaml`）：浏览/工具按钮列表（跟随目录热加载）、声明式选项编辑（Number=NumericUpDown / Toggle=CheckBox / Choice=ComboBox）、擦除模式开关、Undo/Redo 按钮、状态文本。
 - App 编译 0 警告 0 错误；全量测试 App 103/103、核心库 92/92、插件 191/191 通过。
 
-**P1 剩余（下次会话从这里开始）：**
+**P1 视图接线（2026-11-20 会话完成）：**
 
-1. 视图路由改造：`CustomImageViewer` 移除 Ctrl+左键 `[TEMP-DEMO]` 涂抹路径（`PaintCommand` / `IsPaintModifier` / `_isPainting` / 涂抹光标），新增 `ToolCommand`（参数含 `Phase`、`Point(double)`、`Modifiers`、`ClickCount`）与 `IsToolActive`；工具激活时左键归工具，平移改 Space+左拖或中键拖。
-2. `SliceViewerViewModel`：删除 `PaintMask` / `PaintCommand`，转发到 `session.ToolService.HandlePointer`（SliceAxis↔SlicePlane 映射）；`SliceViewerView.axaml` 绑定更新；`MaskManagerViewModel` 删除 `[TEMP-DEMO] BrushRadius`（注意查 MaskManagerView.axaml 的绑定）。
-3. `ToolOverlay`（`IImageOverlay`）：Path/Points 矢量绘制 + Region 半透明位图（复用 `RenderSingleMaskToBitmap` 同款路径），只渲染 Plane/Index 匹配的当前视图切片。
-4. 键盘：Enter/Escape 由有焦点的视图路由到活动工具；Ctrl+Z / Ctrl+Shift+Z 全局撤销重做。
-5. 工具箱细化：按钮按 Group/Order 分组显示（数据已有，UI 未分组）；工具箱与标注模式的冲突提示。
-6. `SliceToolRegistrationTests`（插件侧真程序集注册/热移除）。
+1. 视图路由改造：`CustomImageViewer` 删除 Ctrl+左键 `[TEMP-DEMO]` 涂抹路径，新增 `ToolCommand`（`SliceToolPointerArgs`：`Phase`、`Point(double)` 连续像素坐标、`Modifiers`、`ClickCount`）、`ToolKeyCommand` 与 `IsToolActive`；工具激活时左键归工具（双击不再适配窗口，ClickCount 原样给工具），平移改 Space+左拖或中键拖，右键十字线与滚轮缩放保留；工具手势用指针捕获保证 Release 一定送达；Space/Enter/Escape 经焦点路由（viewer 可聚焦，按下即聚焦）。
+2. `SliceViewerViewModel`：删除 `PaintMask` / `PaintCommand`，新增 `ToolPointerCommand` / `ToolKeyCommand` 转发到 `session.ToolService`（Axis↔Plane 映射、十字线层号做 Index）；`ToolService` 属性随会话流接线并驱动 `IsToolActive`；`MaskManagerViewModel` 删除 `BrushRadius`（无视图绑定）；MasksContentChanged 相关 `[TEMP-DEMO]` 注释清理（现为工具系统正式刷新路径）。
+3. `ToolOverlay`（`IImageOverlay`，`Views\Overlays\`，Layer=40 位于掩膜之上、标注之下）：Path/Points 矢量绘制（琥珀色虚线折线/顶点）+ Region 半透明位图（`RenderSingleMaskToBitmap` 同款预乘路径，每次 overlay 变化时重建）；只渲染 Plane/Index 匹配的当前视图切片，由 `RefreshToolOverlay` 跟随十字线移动刷新。
+4. 键盘：Enter/Escape 由有焦点的视图路由到活动工具；`Ctrl+Z` / `Ctrl+Shift+Z` 经 MainWindow KeyBindings → `MainWindowViewModel.UndoCommand/RedoCommand` 全局撤销重做。
+5. 工具箱细化：按钮按 Group 分组显示（浏览置顶无标题；region→区域、retouch→修边、未知插件组键按原文，未知组排在内置组后），组内按 Order 排序；标注模式与活动工具冲突时显示提示行（标注优先，提示在工具箱面板）。
+6. `SliceToolRegistrationTests`（4 例：宿主点归属、空点预定义、重复 id 拒绝且不留残留、卸载移贡献留点），`RecordingSliceTool`/`SliceToolPlugin` 加入 TestPlugins.cs。
+
+验证：全解决方案 0 警告 0 错误；App 103/103、插件 195/195（+4）、核心库 92/92 通过。
 
 **之后**：P2 区域工具（套索/多边形/矩形/椭圆 + 跨层自动连接插值）→ P3 算法工具（魔棒 3D 生长 + 磁力套索 live-wire）→ P4 插件接入验证 → P5 文档（docs/plugin 三篇；**api-reference.md 仍记着旧 `SetXYSlice(int x, int z, ...)` 签名，届时同步**；本文状态改"已实现"）。

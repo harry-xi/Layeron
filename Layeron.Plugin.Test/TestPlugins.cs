@@ -174,3 +174,46 @@ internal sealed class FilterPlugin : IPlugin
 
     public void Activate(IPluginContext context) => context.Registry.AddFilter(Filter);
 }
+
+/// <summary>
+/// A slice tool that records what the host hands it. The host-side routing and edit history are
+/// covered by the app test suite; here only the registration lifecycle matters, plus enough
+/// behavioural surface to prove the contributed instance is the one that would run.
+/// </summary>
+internal sealed class RecordingSliceTool : ISliceTool
+{
+    public static readonly SliceToolDescriptor SharedDescriptor = new()
+    {
+        Id = "test.slicetool.demo",
+        DisplayName = "Demo Slice Tool",
+        Group = "test",
+        Order = 1
+    };
+
+    public int Activations;
+    public int Deactivations;
+    public int PointerEvents;
+    public int KeyEvents;
+
+    public SliceToolDescriptor Descriptor => SharedDescriptor;
+
+    public void Activate(ISliceToolContext context) => Activations++;
+
+    public void Deactivate() => Deactivations++;
+
+    public void HandlePointer(in SlicePointerEvent e) => PointerEvents++;
+
+    public void HandleKey(SliceToolKey key) => KeyEvents++;
+
+    /// <summary>Resets the counters so a test starts from a known state regardless of run order.</summary>
+    public void Reset() => (Activations, Deactivations, PointerEvents, KeyEvents) = (0, 0, 0, 0);
+}
+
+/// <summary>Contributes a slice tool through the AddSliceTool registration sugar.</summary>
+[Plugin("test.slicetool")]
+internal sealed class SliceToolPlugin : IPlugin
+{
+    public static readonly RecordingSliceTool Tool = new();
+
+    public void Activate(IPluginContext context) => context.Registry.AddSliceTool(Tool);
+}

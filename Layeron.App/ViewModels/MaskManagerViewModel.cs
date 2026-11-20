@@ -51,10 +51,7 @@ public class MaskManagerViewModel : Tool
 
     public string LayersCountText => $"{Masks.Count} layer(s)";
 
-    // [TEMP-DEMO] mask painting support
-    public int BrushRadius { get; set; } = 3;
-
-    // [TEMP-DEMO] mask painting support
+    /// <summary>The mask layer that slice tools and paint-style plugins write into.</summary>
     public MaskLayer? ActiveMask
     {
         get;
@@ -81,10 +78,10 @@ public class MaskManagerViewModel : Tool
 
     public event Action? MasksCollectionChanged;
 
-    // [TEMP-DEMO] mask painting support: raised when mask PIXELS change (not structure)
+    /// <summary>Raised when mask PIXELS change (not structure) - e.g. a tool gesture or a plugin wrote into a layer.</summary>
     public event Action? MasksContentChanged;
 
-    // [TEMP-DEMO] mask painting support
+    /// <summary>Notifies every slice view that mask pixels changed; batch to once per gesture where possible.</summary>
     public void RaiseMasksContentChanged() => MasksContentChanged?.Invoke();
 
     private void OnSharedDataChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -115,7 +112,7 @@ public class MaskManagerViewModel : Tool
             MasksCollectionChanged?.Invoke();
 
         if (ActiveMask != null && !Masks.Contains(ActiveMask))
-            ActiveMask = Masks.FirstOrDefault(); // [TEMP-DEMO] keep active mask valid
+            ActiveMask = Masks.FirstOrDefault(); // keep active mask valid
     }
 
     private void AddMask()
@@ -138,7 +135,7 @@ public class MaskManagerViewModel : Tool
     public void AddLayer(MaskLayer layer)
     {
         Masks.Add(layer);
-        ActiveMask = layer; // [TEMP-DEMO]
+        ActiveMask = layer;
         MasksCollectionChanged?.Invoke();
     }
 
@@ -149,7 +146,7 @@ public class MaskManagerViewModel : Tool
             return;
 
         if (ReferenceEquals(ActiveMask, layer))
-            ActiveMask = Masks.LastOrDefault(); // [TEMP-DEMO] keep active mask valid
+            ActiveMask = Masks.LastOrDefault(); // keep active mask valid
         MasksCollectionChanged?.Invoke();
     }
 
