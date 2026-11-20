@@ -52,6 +52,18 @@
 
             <CheckBox Content="擦除模式（取消则添加）" IsChecked="{Binding IsEraseMode, Mode=TwoWay}"/>
 
+            <CheckBox Content="跨层自动连接（隔层提交时插值中间层）"
+                      IsChecked="{Binding AutoConnectEnabled, Mode=TwoWay}"/>
+
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" Margin="0,2">
+                <TextBlock Text="连接层距上限" VerticalAlignment="Center"/>
+                <NumericUpDown Grid.Column="1"
+                               Minimum="2"
+                               Maximum="1024"
+                               Increment="1"
+                               Value="{Binding AutoConnectMaxGap, Mode=TwoWay}"/>
+            </Grid>
+
             <ItemsControl ItemsSource="{Binding Options}" IsVisible="{Binding Options.Count}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:ToolboxOptionViewModel">

@@ -17,12 +17,15 @@ public sealed class SliceToolService : IDisposable
     private readonly ToolCatalog _catalog;
     private readonly SharedDataSourceViewModel _shared;
     private readonly MaskManagerViewModel _masks;
+    private readonly RegionAutoConnect _autoConnect;
     private readonly Dictionary<string, ISliceTool> _instances = [];
     private readonly Dictionary<string, ToolOptionValues> _options = [];
     private ISliceTool? _active;
     private SliceToolContext? _context;
     private SliceOverlay? _overlay;
     private MaskWriteMode _writeMode = MaskWriteMode.Set;
+    private bool _autoConnectEnabled = true;
+    private int _autoConnectMaxGap = 16;
     private bool _disposed;
 
     public SliceToolService(ToolCatalog catalog, SharedDataSourceViewModel shared, MaskManagerViewModel masks)
@@ -31,6 +34,7 @@ public sealed class SliceToolService : IDisposable
         _shared = shared;
         _masks = masks;
         History = new MaskEditHistory();
+        _autoConnect = new RegionAutoConnect(masks);
 
         _catalog.Changed += OnCatalogChanged;
         _masks.MasksCollectionChanged += OnMasksCollectionChanged;
@@ -39,6 +43,9 @@ public sealed class SliceToolService : IDisposable
 
     /// <summary>Undo/redo stacks for mask edits; see <see cref="MaskEditHistory"/>.</summary>
     internal MaskEditHistory History { get; }
+
+    /// <summary>Session-level cross-slice bridge for the region tools; see <see cref="RegionAutoConnect"/>.</summary>
+    internal RegionAutoConnect AutoConnect => _autoConnect;
 
     /// <summary>Raised when the active tool (or its overlay) changed; slice views rebind cursors and gestures.</summary>
     public event Action? ActiveToolChanged;
@@ -67,6 +74,38 @@ public sealed class SliceToolService : IDisposable
         {
             if (_writeMode == value) return;
             _writeMode = value;
+            StateChanged?.Invoke();
+        }
+    }
+
+    /// <summary>
+    /// Cross-slice auto-connection switch (toolbox-level state, default on): two consecutive
+    /// single-layer region commits on the same layer, plane and mode bridge their intermediate
+    /// slices through shape interpolation.
+    /// </summary>
+    public bool AutoConnectEnabled
+    {
+        get => _autoConnectEnabled;
+        set
+        {
+            if (_autoConnectEnabled == value) return;
+            _autoConnectEnabled = value;
+            StateChanged?.Invoke();
+        }
+    }
+
+    /// <summary>
+    /// Maximum slice gap for auto-connection; two commits further apart start a new chain instead
+    /// of bridging. Clamped to 2..1024 - a gap below 2 has no intermediate slices to fill.
+    /// </summary>
+    public int AutoConnectMaxGap
+    {
+        get => _autoConnectMaxGap;
+        set
+        {
+            var clamped = Math.Clamp(value, 2, 1024);
+            if (_autoConnectMaxGap == clamped) return;
+            _autoConnectMaxGap = clamped;
             StateChanged?.Invoke();
         }
     }

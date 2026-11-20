@@ -27,6 +27,8 @@ public sealed class ToolboxViewModel : Tool, IDockableIdentity, IDisposable
     private AnnotationManagerViewModel? _annotations;
     private bool _disposed;
     private bool _eraseMode;
+    private bool _autoConnect = true;
+    private double _autoConnectGap = 16;
 
     public ToolboxViewModel(ISessionManager sessions, ToolCatalog catalog)
     {
@@ -64,6 +66,37 @@ public sealed class ToolboxViewModel : Tool, IDockableIdentity, IDisposable
             if (_eraseMode == value) return;
             _eraseMode = value;
             _service?.WriteMode = value ? MaskWriteMode.Clear : MaskWriteMode.Set;
+            this.RaisePropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Cross-slice auto-connection switch: with it on, two consecutive single-layer region commits on
+    /// the same layer, plane and mode fill their intermediate slices through shape interpolation.
+    /// </summary>
+    public bool AutoConnectEnabled
+    {
+        get => _autoConnect;
+        set
+        {
+            if (_autoConnect == value) return;
+            _autoConnect = value;
+            if (_service != null)
+                _service.AutoConnectEnabled = value;
+            this.RaisePropertyChanged();
+        }
+    }
+
+    /// <summary>Maximum slice gap for auto-connection; commits further apart start a new chain.</summary>
+    public double AutoConnectMaxGap
+    {
+        get => _autoConnectGap;
+        set
+        {
+            if (Math.Abs(_autoConnectGap - value) < 0.5) return;
+            _autoConnectGap = value;
+            if (_service != null)
+                _service.AutoConnectMaxGap = (int)Math.Round(value);
             this.RaisePropertyChanged();
         }
     }
@@ -113,7 +146,11 @@ public sealed class ToolboxViewModel : Tool, IDockableIdentity, IDisposable
             _annotations.PropertyChanged += OnAnnotationsPropertyChanged;
 
         _eraseMode = _service?.WriteMode == MaskWriteMode.Clear;
+        _autoConnect = _service?.AutoConnectEnabled ?? true;
+        _autoConnectGap = _service?.AutoConnectMaxGap ?? 16;
         this.RaisePropertyChanged(nameof(IsEraseMode));
+        this.RaisePropertyChanged(nameof(AutoConnectEnabled));
+        this.RaisePropertyChanged(nameof(AutoConnectMaxGap));
         SyncFromService();
     }
 

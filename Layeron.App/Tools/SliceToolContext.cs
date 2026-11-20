@@ -82,6 +82,15 @@ internal sealed class SliceToolContext : ISliceToolContext
         return new MaskEditScopeImpl(_masks, _masks.ActiveMask!, _service.History, description);
     }
 
+    /// <summary>
+    /// Cross-slice bridge for the built-in region tools: called inside the gesture's edit scope, right
+    /// after the tool wrote its own slice, so the interpolated slices join the same undo command.
+    /// Not part of the plugin contract - plugin tools opt into auto-connection by reusing the host's
+    /// region tool base classes, which call this themselves.
+    /// </summary>
+    internal void AutoConnectRegion(MaskEditScope scope, SlicePlane plane, int index, bool[,] region, MaskWriteMode mode)
+        => _service.AutoConnect.OnRegionCommit(scope, plane, index, region, mode, _service.AutoConnectEnabled, _service.AutoConnectMaxGap);
+
     public void SetOverlay(SliceOverlay? overlay) => _service.SetOverlay(overlay);
 
     public double GetNumber(string optionId) => _service.GetNumber(_toolId, optionId);
