@@ -16,6 +16,7 @@ Layeron's plugin system is built around three concepts:
 | Centre document tab | `Registry.AddDocument(...)` | Host dock (document area) |
 | Menu entry | `Registry.AddMenu(...)` | Host menu |
 | Volume filter | `Registry.AddFilter(...)` | Host filter runner panel (preview + whole-volume apply) |
+| Slice interaction tool | `Registry.AddSliceTool(...)` | Host toolbox panel (grouped buttons + generated option editor) |
 | Volume loader | `Registry.AddLoader(...)` | `File → Load from data source` |
 | ONNX inference | `Registry.Contribute(IOnnxRunnerService.PointId, ...)` | Other plugins (see [ONNX Model Runner](/en/plugin/onnx)) |
 | Python execution | `Registry.Contribute(IPythonRunnerService.PointId, ...)` | Other plugins (the Agent uses it) |
@@ -94,6 +95,10 @@ All of them are ordinary plugins: no privileged path was opened for any.
 
 ::: tip Current state of filters
 The `IVolumeFilter` contract, the `layeron.filters.volume` point, the `Layeron.App.Filters.FilterRunner` executor and the `Tools → Filter Runner` panel are ready, and the built-in `layeron.filters` plugin provides five common algorithms. Threshold and ONNX still use their own paths. See [Volume Filters](/en/plugin/filters).
+:::
+
+::: tip Current state of slice tools
+The `ISliceTool` contract, the `layeron.tools.slice` point, the `AddSliceTool` helper, the session-scoped `SliceToolService` (activation, options, mask undo) and the `Toolbox` panel are ready; the host ships brush, eraser, lasso, polygon, rectangle, ellipse, magic wand and magnetic lasso as built-ins. A plugin tool joins the same toolbox and the same undo channel. See [Extension Points → Slice tools](/en/plugin/extension-points#slice-tools) and [API Reference → Slice tools](/en/plugin/api-reference#slice-tools).
 :::
 
 ## Next

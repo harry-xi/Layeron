@@ -16,6 +16,7 @@ Layeron 的插件系统围绕三个概念构建：
 | 中央文档标签页 | `Registry.AddDocument(...)` | 宿主 Dock（文档区） |
 | 菜单项 | `Registry.AddMenu(...)` | 宿主菜单 |
 | 体数据过滤器 | `Registry.AddFilter(...)` | 宿主“滤波器运行器”面板（预览 + 整卷应用） |
+| 切片交互工具 | `Registry.AddSliceTool(...)` | 宿主工具箱（与内置工具同组排序，写入自动进撤销栈） |
 | 数据加载器 | `Registry.AddLoader(...)` | `文件 → 从数据源加载` |
 | ONNX 推理 | `Registry.Contribute(IOnnxRunnerService.PointId, ...)` | 其他插件（见 [ONNX 模型运行器](/plugin/onnx)） |
 | Python 执行 | `Registry.Contribute(IPythonRunnerService.PointId, ...)` | 其他插件（Agent 正在使用） |
@@ -23,6 +24,8 @@ Layeron 的插件系统围绕三个概念构建：
 | 自定义扩展点 | `Registry.DefinePoint<T>(...)` | 其他插件 |
 | 新的插件格式 | `Registry.AddPluginSource(...)` | 宿主插件管理器 |
 | 可选宿主能力 | `Services.GetService<T>()` | 宿主按接口提供 |
+
+笔刷、橡皮、套索、多边形、矩形、椭圆、魔棒与磁力套索是宿主内置的切片工具；插件用 `AddSliceTool` 贡献的工具与它们同契约、同工具箱、同撤销栈。注册点与生命周期见[扩展点](/plugin/extension-points)，类型清单见 [API 参考](/plugin/api-reference)。
 
 ## 项目结构
 

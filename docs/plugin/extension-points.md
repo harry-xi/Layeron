@@ -18,8 +18,9 @@ context.Registry.Contribute("layeron.threshold.actions", new VolumeAction { /* .
 |---|---|---|
 | 工具面板、文档、菜单 | 直连接入 | 单一消费者（宿主 Dock / 菜单），一对一，无需排序或事件 |
 | 过滤器、设置页、插件自定义载荷 | 扩展点 | 多贡献者，需要列表、顺序、增删事件 |
+| 切片交互工具 | 扩展点 | 宿主内置工具与各插件工具聚合进同一个工具箱，需要分组、排序与增删事件 |
 
-把工具做成扩展点只会带来排序、事件重放、宿主拥有点生命周期这些成本，而没有收益——所以它们不是扩展点。
+停靠工具面板（`AddTool`）不是扩展点：它只有一个消费者（宿主 Dock），做成扩展点只会带来排序、事件重放、宿主拥有点生命周期这些成本，而没有收益。**切片交互工具**（`AddSliceTool`）相反——工具箱是宿主内置工具与所有插件工具的共同列表，必须聚合、排序、跟随热加载增删，所以它是扩展点。
 
 ## IPluginRegistry 上的扩展点方法
 
@@ -128,14 +129,54 @@ public sealed class VolumeAction
 | `layeron.filters.volume` | `IVolumeFilter` | [体数据过滤器](/plugin/filters)（宿主执行器与运行器面板已接入） |
 | `layeron.loaders.volume` | `VolumeLoader` | [数据加载器](/plugin/loaders) |
 | `layeron.settings.pages` | `SettingsPageContribution` | [设置页面](/plugin/settings) |
+| `layeron.tools.slice` | `SliceToolContribution` | 下文的切片工具点；契约见 [API 参考](/plugin/api-reference) |
 
 用扩展方法贡献更安全（带校验）：
 
 ```csharp
 context.Registry.AddFilter(myFilter);            // 校验 id 全局唯一
 context.Registry.AddLoader(myLoader);            // 校验 id 全局唯一
+context.Registry.AddSliceTool(myTool);           // 校验 id 全局唯一
 context.Registry.AddSettingsPage(myPage);        // 校验 Settings / ContentFactory 二选一
 ```
+
+## 切片工具点：layeron.tools.slice
+
+`ToolPoints.SliceTools`（`"layeron.tools.slice"`）和过滤器点一样由**宿主**预定义（`OwnerPluginId == null`）：任何插件加载之前它就已经存在且为空，所以宿主工具箱可以在启动时直接绑定，之后再跟随插件加载、卸载与热重载。
+
+| 谁 | 负责 |
+|---|---|
+| 宿主 | 定义点、把指针 / 键盘事件路由给活动工具、渲染预览、拥有会话级撤销栈、按描述符排布工具箱 |
+| 插件 | 只实现 `ISliceTool`：把事件解释成预览（`SliceOverlay`）与编辑意图（`MaskEditScope`） |
+
+载荷是 `SliceToolContribution`：
+
+```csharp
+public sealed class SliceToolContribution
+{
+    public required SliceToolDescriptor Descriptor { get; init; }   // 含 Id、显示名、分组、排序、光标、声明式选项
+    public required Func<ISliceTool> Factory { get; init; }         // 首次激活时才调用
+}
+```
+
+`Descriptor.Id` 必须**全局唯一**（内置工具与所有插件工具共用同一 id 空间），它就是工具的身份：宿主用它查找贡献、缓存会话实例、绑定选项值。`Factory` 惰性调用（首次激活时），宿主把返回的实例按会话缓存，会话结束或插件卸载时丢掉引用。
+
+注册：
+
+```csharp
+context.Registry.AddSliceTool(new MyTool());
+```
+
+`AddSliceTool` 是对 `Contribute(ToolPoints.SliceTools, ...)` 的封装，做两件事：校验 id 全局唯一（重复 id 让本次激活失败，并给出明确信息），以及把工具包成贡献（`Descriptor` 取自工具，`Factory` 返回该实例）。直接 `Contribute` 也可以——那时你可以让 `Factory` 每次构造新实例。
+
+生命周期与写入：
+
+- 插件工具**与内置工具无差别**地出现在工具箱里：按 `Descriptor.Group` / `Order` 分组排序，选项按 `SliceToolOption` 声明式渲染成数字 / 开关 / 下拉编辑器，不需要写任何 UI 代码。
+- 热卸载时贡献从工具箱移除；如果被移除的正是活动工具，宿主先调用它的 `Deactivate`。
+- 所有掩膜写入都经 `ISliceToolContext.BeginEdit` 返回的 `MaskEditScope`：`Dispose` 把一次手势的写入合成**一条**撤销命令，`Cancel` 回滚。插件工具无法绕过这条通道直接改掩膜数据。
+- 内置工具优先于同 id 的贡献（`ToolCatalog.Find` 先返回内置项），而 `AddSliceTool` 只检查贡献之间的重复——所以请始终用插件 id 作前缀（如 `acme.sprayer`），不要占用 `layeron.tools.*`。
+
+契约类型逐个列在 [API 参考](/plugin/api-reference)；交互设计（坐标约定、预览与提交分离、跨层自动连接）见仓库中的 `design-notes/TOOL_SYSTEM.md`。
 
 ## 完整例子
 

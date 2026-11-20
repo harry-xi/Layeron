@@ -93,6 +93,7 @@ public interface IPluginRegistry
 public static class PluginRegistryExtensions
 {
     public static IDisposable AddFilter(this IPluginRegistry registry, IVolumeFilter filter);
+    public static IDisposable AddSliceTool(this IPluginRegistry registry, ISliceTool tool);
     public static IDisposable AddLoader(this IPluginRegistry registry, VolumeLoader loader);
     public static IDisposable AddSettingsPage(this IPluginRegistry registry, SettingsPageContribution page);
     public static IDisposable Subscribe<T>(this ExtensionPoint<T> point, Action<T> onAdded, Action<T>? onRemoved = null);
@@ -100,7 +101,7 @@ public static class PluginRegistryExtensions
 }
 ```
 
-`AddFilter` / `AddLoader` validate that the id is globally unique; `AddSettingsPage` calls `Validate()`.
+`AddFilter` / `AddLoader` validate that the id is globally unique, `AddSliceTool` does the same with the tool's descriptor id, and `AddSettingsPage` calls `Validate()`.
 
 ## Contribution types
 
@@ -416,6 +417,290 @@ public static class VolumeFilterSampling
         where T : unmanaged;
 }
 ```
+
+## Slice tools
+
+::: tip Current state
+The slice tool system is fully wired: `Layeron.App.Tools.ToolCatalog` aggregates the built-ins with contributions to `layeron.tools.slice`, `SliceToolService` owns the active tool, option values and mask undo per session, and the `Toolbox` panel renders the tools and their options. `AddSliceTool` is the registration helper.
+:::
+
+### ToolPoints
+
+```csharp
+public static class ToolPoints
+{
+    public const string SliceTools = "layeron.tools.slice";
+}
+```
+
+The point is defined by the host with `OwnerPluginId == null`, so it exists (empty) before any plugin loads and survives every unload. Its contribution type is `SliceToolContribution`.
+
+### ISliceTool
+
+```csharp
+public interface ISliceTool
+{
+    SliceToolDescriptor Descriptor { get; }
+    void Activate(ISliceToolContext context);
+    void Deactivate();
+    void HandlePointer(in SlicePointerEvent e);
+    void HandleKey(SliceToolKey key);
+}
+```
+
+A tool is a state machine, not a drawing primitive: it interprets pointer and key events and turns them into preview overlays and mask edits. The host routes the left-button gesture and `Enter` / `Escape` from the slice views to the active instance.
+
+- `Activate` is called on each activation; the context is valid until `Deactivate`.
+- `Deactivate` must clear pending state and drop the context. The same instance is cached for the whole session, so it is activated again later.
+- `HandlePointer` receives one event in slice-pixel space. A drag (`Press` … `Move` … `Release`), a single click, or an `Enter`-closed polygon is **one gesture = one undo command**.
+- `HandleKey` exists for `Enter` (commit the pending gesture) and `Escape` (cancel it and clear scratch state).
+
+### SliceToolDescriptor
+
+```csharp
+public sealed class SliceToolDescriptor
+{
+    public required string Id { get; init; }        // globally unique; built-ins use layeron.tools.*
+    public required string DisplayName { get; init; }
+    public string? Description { get; init; }       // hint shown while the tool is active
+    public string? Group { get; init; }             // toolbox group key; null = default group
+    public int Order { get; init; }                 // sort order inside the group
+    public SliceCursor Cursor { get; init; } = SliceCursor.Crosshair;
+    public IReadOnlyList<SliceToolOption>? Options { get; init; }
+}
+```
+
+Identity and display metadata; it must not change over the tool's lifetime. `Id` is also the key the toolbox and the session's instance cache use, so prefix a plugin tool with its plugin id. `Group` / `Order` decide where the tool lands in the toolbox; `Options` is rendered generically (next section), which is why the toolbox can show an option editor without creating an instance.
+
+### SliceToolOption / SliceToolOptionKind
+
+```csharp
+public sealed class SliceToolOption
+{
+    public required string Id { get; init; }
+    public required string Label { get; init; }
+    public SliceToolOptionKind Kind { get; init; }
+
+    public double Min { get; init; }                // Number
+    public double Max { get; init; }                // Number
+    public double Step { get; init; } = 1;          // Number; 0 means any
+    public double NumberDefault { get; init; }      // Number
+    public bool ToggleDefault { get; init; }        // Toggle
+    public IReadOnlyList<string>? Choices { get; init; }   // Choice, in display order
+    public int ChoiceDefault { get; init; }         // Choice, index into Choices
+}
+
+public enum SliceToolOptionKind { Number, Toggle, Choice }
+```
+
+`Id` is unique within the tool and is what the tool passes to `context.GetNumber` / `GetToggle` / `GetChoice`. The toolbox renders `Number` as a numeric field, `Toggle` as a checkbox and `Choice` as a combo box. Values live for the session, so they survive switching tools.
+
+`SliceCursor` is `Arrow` or `Crosshair`; the host maps it to a platform cursor while the tool is active, and `Crosshair` is the default because most tools are region tools.
+
+### Pointer and key events
+
+```csharp
+public readonly record struct SlicePoint(double U, double V);
+
+public readonly record struct SlicePointerEvent(
+    SlicePlane Plane,       // plane the interaction occurs on
+    int Index,              // slice index along the plane normal (crosshair position)
+    double U,               // continuous horizontal pixel coordinate
+    double V,               // continuous vertical pixel coordinate
+    SlicePointerPhase Phase,
+    SliceKeyModifiers Modifiers,
+    int ClickCount);        // 2+ means a double press on the same spot
+
+public enum SlicePointerPhase { Press, Move, Release, Hover }
+public enum SliceToolKey { Enter, Escape }
+
+[Flags]
+public enum SliceKeyModifiers { None = 0, Shift = 1, Control = 2, Alt = 4 }
+```
+
+Coordinates are **continuous pixels**, not indices: rounding is the tool's decision. `Hover` means the pointer moved with no button held and is used for rubber-band previews; `Move` means a button is held. There is no separate double-click phase — `Press` with `ClickCount >= 2` is it. `SliceKeyModifiers` is a plain flags enum so the contract assembly stays free of any UI framework type.
+
+### ISliceToolContext
+
+```csharp
+public interface ISliceToolContext
+{
+    int GetPlaneU(SlicePlane plane);          // U (horizontal) dimension of the [V, U] buffer
+    int GetPlaneV(SlicePlane plane);          // V (vertical) dimension
+    int GetPlaneIndex(SlicePlane plane);      // current slice (crosshair)
+    int GetPlaneCount(SlicePlane plane);      // number of slices; valid indices are [0, count)
+    double[,] ReadSlice(SlicePlane plane, int index);   // raw grayscale, [V, U], no display LUT
+
+    bool CanEdit { get; }                     // volume loaded and an active mask layer exists
+    MaskWriteMode WriteMode { get; }          // shared add/erase switch from the toolbox
+    MaskEditScope BeginEdit(string description);
+
+    void SetOverlay(SliceOverlay? overlay);   // null clears; takes effect on the next frame
+    double GetNumber(string optionId);
+    bool GetToggle(string optionId);
+    int GetChoice(string optionId);
+
+    void Post(Action action);                 // marshal back to the UI thread
+}
+```
+
+The capability surface handed to the active tool:
+
+- **Threading:** every member is UI-thread-only. A tool that computed on a background thread calls `Post` and does its `Write` / `SetOverlay` work there; `Post` runs inline when already on the UI thread.
+- **Geometry:** `GetPlaneU` / `GetPlaneV` size the `[V, U]` buffers, `GetPlaneIndex` is the current slice and `GetPlaneCount` bounds it. `ReadSlice` returns **raw values** — tolerance and gradient algorithms must see the real data, not the window/level LUT.
+- **Editing:** `CanEdit` is false when no volume is loaded or no mask layer is active; degrade gracefully rather than calling `BeginEdit`, which throws in that state. `WriteMode` is the toolbox-wide add/erase switch; show it in your UI only if your tool honours it (the brush and eraser hard-code their mode instead).
+- **Options:** the getters return the current value of an option declared in the descriptor, falling back to the descriptor default.
+
+### MaskEditScope
+
+```csharp
+public interface MaskEditScope : IDisposable
+{
+    void Write(SlicePlane plane, int index, bool[,] region, MaskWriteMode mode);
+    void Cancel();
+}
+
+public enum MaskWriteMode { Set, Clear }
+```
+
+One scope brackets one undoable gesture:
+
+- `Write` applies a region to the **active mask layer** on one slice. The region is a `[V, U]` buffer sized to the plane; empty regions are ignored; `Set` adds bits, `Clear` removes them.
+- `Dispose` commits: the host captures the after-snapshots, pushes **one** `MaskEditCommand` (cropped to what was touched) and refreshes the views.
+- `Cancel` restores the bits captured before the scope opened and discards the gesture.
+- Either call finishes the scope; a later `Write` throws. Writes are visible immediately, so live painting works while the gesture is in progress.
+
+### SliceOverlay
+
+```csharp
+public sealed record SliceOverlay
+{
+    public IReadOnlyList<SlicePoint>? Path { get; init; }   // polyline: freehand trail or snapped path
+    public IReadOnlyList<SlicePoint>? Points { get; init; } // markers: pinned polygon vertices
+    public bool[,]? Region { get; init; }                   // tint: flood-fill preview, [V, U]
+    public SlicePlane Plane { get; init; }
+    public int Index { get; init; }
+}
+```
+
+Transient feedback, not session state: the host strokes `Path`, marks `Points`, tints `Region`, and only renders the overlay whose `Plane` / `Index` matches the slice being displayed. Region tools set overlays while dragging and commit on release; `SetOverlay(null)` clears.
+
+### SliceToolContribution
+
+```csharp
+public sealed class SliceToolContribution
+{
+    public required SliceToolDescriptor Descriptor { get; init; }   // metadata for the toolbox
+    public required Func<ISliceTool> Factory { get; init; }         // lazy, at most once per session
+}
+```
+
+This is the payload of `layeron.tools.slice`. The factory is called on first activation and the instance is cached for that session; it is dropped on unload, so a tool cannot keep its plugin load context alive.
+
+### AddSliceTool
+
+```csharp
+public static IDisposable AddSliceTool(this IPluginRegistry registry, ISliceTool tool);
+```
+
+Wraps `Contribute(ToolPoints.SliceTools, new SliceToolContribution { Descriptor = tool.Descriptor, Factory = () => tool })` and rejects a descriptor id that is already registered, failing the activation without leaving anything behind.
+
+A minimal tool:
+
+```csharp
+using System;
+using Layeron.Plugin.Abstractions;
+
+[Plugin("acme.sprayer")]
+public sealed class SprayerPlugin : IPlugin
+{
+    public void Activate(IPluginContext context) => context.Registry.AddSliceTool(new SprayerTool());
+}
+
+internal sealed class SprayerTool : ISliceTool
+{
+    private static readonly SliceToolDescriptor DescriptorValue = new()
+    {
+        Id = "acme.sprayer",
+        DisplayName = "Sprayer",
+        Group = "retouch",
+        Order = 100,
+        Options =
+        [
+            new SliceToolOption
+            {
+                Id = "radius", Label = "Radius",
+                Kind = SliceToolOptionKind.Number, Min = 1, Max = 64, NumberDefault = 4
+            }
+        ]
+    };
+
+    private ISliceToolContext? _context;
+    private MaskEditScope? _edit;
+
+    public SliceToolDescriptor Descriptor => DescriptorValue;
+
+    public void Activate(ISliceToolContext context) => _context = context;
+
+    public void Deactivate()
+    {
+        _edit?.Cancel();
+        _edit = null;
+        _context = null;
+    }
+
+    public void HandlePointer(in SlicePointerEvent e)
+    {
+        if (_context is not { CanEdit: true } context)
+            return;
+
+        switch (e.Phase)
+        {
+            case SlicePointerPhase.Press:
+                _edit = context.BeginEdit("Sprayer stroke");
+                Stamp(e, context, _edit);
+                break;
+            case SlicePointerPhase.Move when _edit is not null:
+                Stamp(e, context, _edit);
+                break;
+            case SlicePointerPhase.Release when _edit is not null:
+                _edit.Dispose();               // one gesture → one undo command
+                _edit = null;
+                break;
+        }
+    }
+
+    public void HandleKey(SliceToolKey key)
+    {
+        if (key != SliceToolKey.Escape)
+            return;
+
+        _edit?.Cancel();                   // roll the gesture back, no undo entry
+        _edit = null;
+    }
+
+    private static void Stamp(in SlicePointerEvent e, ISliceToolContext context, MaskEditScope edit)
+    {
+        var radius = (int)context.GetNumber("radius");
+        var region = new bool[context.GetPlaneV(e.Plane), context.GetPlaneU(e.Plane)];
+        var cu = (int)e.U;
+        var cv = (int)e.V;
+
+        for (var v = Math.Max(0, cv - radius); v <= Math.Min(region.GetLength(0) - 1, cv + radius); v++)
+        for (var u = Math.Max(0, cu - radius); u <= Math.Min(region.GetLength(1) - 1, cu + radius); u++)
+        {
+            var dx = u - cu;
+            var dy = v - cv;
+            if (dx * dx + dy * dy <= radius * radius)
+                region[v, u] = true;
+        }
+
+        edit.Write(e.Plane, e.Index, region, context.WriteMode);
+    }
+}
+```
+
+The tool never touches the mask or the UI types: it declares what changed, and the host applies it inside the undoable gesture. See [Extension Points → Slice tools](/en/plugin/extension-points#slice-tools) for registration and lifecycle rules.
 
 ## Volume loaders
 
@@ -765,14 +1050,21 @@ public class Big3DBitMap
     public bool MatchesDimensions(int x, int y, int z);
 
     public void SetBlock(int blockX, int blockY, int blockZ, ReadOnlySpan<bool> values);
-    public void SetXYSlice(int x, int z, bool[,] values);
-    public void SetYZSlice(int x, bool[,] values);
     public void ClearAllBlocks();
+
+    public bool[,] GetXYSlice(int z);                    // [Y, X]
+    public void SetXYSlice(int z, bool[,] values);       // [Y, X]
+    public bool[,] GetXZSlice(int y);                    // [Z, X]
+    public void SetXZSlice(int y, bool[,] values);       // [Z, X]
+    public bool[,] GetYZSlice(int x);                    // [Z, Y]
+    public void SetYZSlice(int x, bool[,] values);       // [Z, Y]
 
     public void SaveStream(Stream stream);
     public static Big3DBitMap LoadStream(Stream stream);
 }
 ```
+
+Each getter returns the whole slice with `slice[v, u] → this[x, y, z]`. Each setter takes the index along the plane normal and requires the **exact** plane shape — `XY` `[Y, X]`, `XZ` `[Z, X]`, `YZ` `[Z, Y]` — throwing `ArgumentException` otherwise (and `IndexOutOfRangeException` for an index outside the map). Writes are applied block-wise: empty blocks are created on demand, blocks that become empty are released, and fully-set blocks collapse to the shared full block.
 
 ### Miscellaneous
 

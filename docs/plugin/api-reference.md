@@ -92,6 +92,7 @@ public interface IPluginRegistry
 public static class PluginRegistryExtensions
 {
     public static IDisposable AddFilter(this IPluginRegistry registry, IVolumeFilter filter);
+    public static IDisposable AddSliceTool(this IPluginRegistry registry, ISliceTool tool);
     public static IDisposable AddLoader(this IPluginRegistry registry, VolumeLoader loader);
     public static IDisposable AddSettingsPage(this IPluginRegistry registry, SettingsPageContribution page);
     public static IDisposable Subscribe<T>(this ExtensionPoint<T> point, Action<T> onAdded, Action<T>? onRemoved = null);
@@ -99,7 +100,7 @@ public static class PluginRegistryExtensions
 }
 ```
 
-`AddFilter` / `AddLoader` 校验 id 全局唯一；`AddSettingsPage` 调用 `Validate()`。
+`AddFilter` / `AddSliceTool` / `AddLoader` 校验 id 全局唯一；`AddSettingsPage` 调用 `Validate()`。
 
 ## 贡献类型
 
@@ -498,6 +499,280 @@ public sealed class SettingItem
 public enum SettingKind { Boolean, Integer, Number, Text, Choice }
 ```
 
+## 切片交互工具
+
+工具箱里的所有编辑工具——笔刷、橡皮、套索、多边形、矩形、椭圆、魔棒、磁力套索——都是同一个 `ISliceTool` 抽象的实现；宿主把内置工具放在 `Layeron.App.Tools`，插件用同一契约贡献自己的工具。分工与过滤器一致：
+
+| 谁 | 负责 |
+|---|---|
+| 宿主 | 定义扩展点、把指针 / 键盘事件路由给活动工具、渲染预览、拥有会话级撤销栈、按描述符排布工具箱 |
+| 工具 | 把事件解释成预览（`SetOverlay`）与编辑意图（`BeginEdit` 后的 `Write`） |
+
+```csharp
+public static class ToolPoints
+{
+    public const string SliceTools = "layeron.tools.slice";
+}
+
+public interface ISliceTool
+{
+    SliceToolDescriptor Descriptor { get; }
+    void Activate(ISliceToolContext context);
+    void Deactivate();
+    void HandlePointer(in SlicePointerEvent e);
+    void HandleKey(SliceToolKey key);
+}
+```
+
+- `Activate` 收到的 context 一直有效到 `Deactivate`；`Deactivate` 必须清掉挂起的手势并丢弃 context（工具切换、会话关闭、插件卸载都会走到这里）。
+- `HandlePointer` 的一次按下 → 移动 → 抬起是**一次手势**：所有写入放进同一个 `BeginEdit` 括号，`Dispose` 时合成一条撤销命令。
+- `HandleKey` 只处理 `Enter`（提交挂起手势）与 `Escape`（取消并清空临时状态）；其余快捷键由宿主负责。
+- 一切 `context` / `scope` 调用都必须在 **UI 线程**上发生。工具若在后台线程计算（大范围区域生长、路径搜索），算完必须经 `context.Post` 回到 UI 线程再提交。
+- 工具不持有 UI 类型，也不直接改掩膜——写入只有 `MaskEditScope` 一条路。
+
+### SliceToolDescriptor / SliceToolOption
+
+```csharp
+public sealed class SliceToolDescriptor
+{
+    public required string Id { get; init; }             // 全局唯一；内置工具用 layeron.tools.* 前缀
+    public required string DisplayName { get; init; }
+    public string? Description { get; init; }            // 工具箱里的提示行
+    public string? Group { get; init; }                  // 分组键；null = 默认组
+    public int Order { get; init; }                      // 组内排序
+    public SliceCursor Cursor { get; init; } = SliceCursor.Crosshair;
+    public IReadOnlyList<SliceToolOption>? Options { get; init; }
+}
+
+public sealed class SliceToolOption
+{
+    public required string Id { get; init; }             // 工具内唯一；取值时用它
+    public required string Label { get; init; }
+    public SliceToolOptionKind Kind { get; init; }
+    public double Min { get; init; }                     // Number 的闭区间下界
+    public double Max { get; init; }                     // Number 的闭区间上界
+    public double Step { get; init; } = 1;               // Number 的步长；0 = 不限
+    public double NumberDefault { get; init; }
+    public bool ToggleDefault { get; init; }
+    public IReadOnlyList<string>? Choices { get; init; } // Choice 的选项，按显示顺序
+    public int ChoiceDefault { get; init; }
+}
+
+public enum SliceToolOptionKind { Number, Toggle, Choice }
+```
+
+- 描述符是工具的**身份**：宿主用它查找贡献、缓存会话实例、绑定选项值，所以 `Id` 在工具生命周期内不得变化。内置 id 形如 `layeron.tools.brush`；插件用插件 id 作前缀（如 `acme.sprayer`）。
+- `Group` / `Order` 只影响工具箱排布：同一组排在一起，组内按 `Order` 升序；`null` 组落在默认组。`Cursor` 是工具活动期间宿主显示的光标。
+- 选项是**声明式**的：宿主按 `Kind` 生成数字 / 开关 / 下拉编辑器，工具不写任何 UI 代码。`Number` 用 `Min` / `Max` / `Step` / `NumberDefault`，`Toggle` 用 `ToggleDefault`，`Choice` 用 `Choices` / `ChoiceDefault`；工具经 `ISliceToolContext.GetNumber` / `GetToggle` / `GetChoice` 读取当前值，用户尚未改动时返回描述符里的默认值。
+
+### SlicePointerEvent / SlicePoint 与相关枚举
+
+```csharp
+public enum SlicePointerPhase { Press, Move, Release, Hover }
+public enum SliceToolKey { Enter, Escape }
+
+[Flags]
+public enum SliceKeyModifiers { None = 0, Shift = 1, Control = 2, Alt = 4 }
+
+public enum SliceCursor { Arrow, Crosshair }
+public enum MaskWriteMode { Set, Clear }
+
+public readonly record struct SlicePoint(double U, double V);
+
+public readonly record struct SlicePointerEvent(
+    SlicePlane Plane,              // 交互发生的平面
+    int Index,                     // 平面法线方向的层号（十字线位置）
+    double U,                      // 连续水平像素坐标
+    double V,                      // 连续垂直像素坐标
+    SlicePointerPhase Phase,
+    SliceKeyModifiers Modifiers,
+    int ClickCount);               // 同一点上的按下次数；2+ 即双击
+```
+
+- U / V 是**连续像素坐标**（已从控件坐标换算，未取整）；整数化由工具或算法自己决定。区域缓冲一律 `[V, U]`，与 `GetXYSlice` 的 `[Y, X]` 约定一致。
+- 没有单独的 `Click` / `DoubleClick` 相位：单击 = 一次 `Press` + `Release`，双击看 `ClickCount`。
+- `Plane` 复用既有的 `SlicePlane`（XY / XZ / YZ），`Index` 是该平面的层号，与 `GetXYSlice(int z)` 的 `z` 同一语义。
+- 修饰键是契约程序集自己的 `[Flags]` 枚举：视图层负责从 UI 框架映射，工具因此不依赖任何 UI 类型。
+
+### ISliceToolContext
+
+```csharp
+public interface ISliceToolContext
+{
+    int GetPlaneU(SlicePlane plane);                     // 平面的 U（横向）尺寸
+    int GetPlaneV(SlicePlane plane);                     // 平面的 V（纵向）尺寸
+    int GetPlaneIndex(SlicePlane plane);                 // 当前层号（十字线）
+    int GetPlaneCount(SlicePlane plane);                 // 层数；合法层号 [0, count)
+    double[,] ReadSlice(SlicePlane plane, int index);    // 原始灰度 [V, U]，不经窗位 LUT
+
+    bool CanEdit { get; }
+    MaskWriteMode WriteMode { get; }
+    MaskEditScope BeginEdit(string description);
+    void SetOverlay(SliceOverlay? overlay);
+
+    double GetNumber(string optionId);
+    bool GetToggle(string optionId);
+    int GetChoice(string optionId);
+
+    void Post(Action action);
+}
+```
+
+- 几何读取都按平面寻址；`GetPlaneU` / `GetPlaneV` 就是 `[V, U]` 区域的列数 / 行数。
+- `CanEdit` 在“有体数据且存在活动掩膜层”时为 `true`；为 `false` 时工具应优雅降级（不开始手势、不写掩膜），而不是抛异常。
+- `WriteMode` 是工具箱共享的“添加 / 擦除”开关，区域工具把它透传给 `Write`；笔刷 / 橡皮这类本身就是模式的具象化的工具可以忽略它。
+- `SetOverlay` 设置（传 `null` 清除）本工具的瞬态预览，下一帧生效；宿主只在与 `Plane` / `Index` 匹配的视图上画它。
+- `Post` 把动作封送回 UI 线程，是后台计算与 `context` / `scope` 之间唯一的桥。
+
+### MaskEditScope
+
+```csharp
+public interface MaskEditScope : IDisposable
+{
+    void Write(SlicePlane plane, int index, bool[,] region, MaskWriteMode mode);
+    void Cancel();
+}
+```
+
+- 一个 scope = 一次手势。`Write` 的 `region` 必须是该平面的 `[V, U]` 缓冲（XY `[Y, X]`、XZ `[Z, X]`、YZ `[Z, Y]`），空区域被忽略；`Set` 置位、`Clear` 清位。
+- 写入立即落到**活动掩膜层**，所以笔刷可以可见即所得；`Dispose` 收尾时把本次触及切片的 before / after 快照裁剪到包围盒，作为**一条**命令压入会话撤销栈并刷新一次视图。
+- `Cancel` 回滚本次全部写入（手势中途取消），之后 `Dispose` 不再提交任何东西。
+
+### SliceOverlay
+
+```csharp
+public sealed record SliceOverlay
+{
+    public IReadOnlyList<SlicePoint>? Path { get; init; }    // 折线：套索轨迹、磁力吸附路径
+    public IReadOnlyList<SlicePoint>? Points { get; init; }  // 点：多边形顶点
+    public bool[,]? Region { get; init; }                    // 区域：魔棒预览；[V, U] 平面尺寸
+    public SlicePlane Plane { get; init; }
+    public int Index { get; init; }
+}
+```
+
+Overlay 是**瞬态反馈**，不是会话状态：只用于预览，不参与撤销。三个形状属性都可以为空，宿主只画非空的部分；`Region` 与 `Write` 一样按平面尺寸的 `[V, U]` 缓冲给出。
+
+### SliceToolContribution / AddSliceTool
+
+```csharp
+public sealed class SliceToolContribution
+{
+    public required SliceToolDescriptor Descriptor { get; init; }
+    public required Func<ISliceTool> Factory { get; init; }
+}
+```
+
+`Descriptor` 单独放在贡献上，工具箱因此不必创建工具实例就能渲染按钮、分组与选项。`Factory` 在首次激活时调用，返回的实例由宿主按会话缓存，会话结束或插件卸载时清掉缓存。
+
+```csharp
+public static IDisposable AddSliceTool(this IPluginRegistry registry, ISliceTool tool);
+```
+
+`AddSliceTool` 校验 `tool.Descriptor.Id` 全局唯一（重复 id 让本次激活失败，且不留残留），然后贡献 `new SliceToolContribution { Descriptor = tool.Descriptor, Factory = () => tool }`。最小示例：
+
+```csharp
+using System;
+using Layeron.Plugin.Abstractions;
+
+[Plugin("acme.sprayer")]
+public sealed class SprayerPlugin : IPlugin
+{
+    public void Activate(IPluginContext context)
+        => context.Registry.AddSliceTool(new SprayerTool());
+}
+
+internal sealed class SprayerTool : ISliceTool
+{
+    public SliceToolDescriptor Descriptor { get; } = new()
+    {
+        Id = "acme.sprayer",
+        DisplayName = "喷雾",
+        Description = "按住拖动喷洒；Esc 取消本次手势",
+        Group = "retouch",
+        Order = 100,
+        Options =
+        [
+            new SliceToolOption
+            {
+                Id = "radius", Label = "半径", Kind = SliceToolOptionKind.Number,
+                Min = 1, Max = 64, NumberDefault = 5
+            }
+        ]
+    };
+
+    private ISliceToolContext? _context;
+    private MaskEditScope? _scope;
+
+    public void Activate(ISliceToolContext context) => _context = context;
+
+    public void Deactivate()
+    {
+        _scope?.Cancel();
+        _scope = null;
+        _context = null;
+    }
+
+    public void HandlePointer(in SlicePointerEvent e)
+    {
+        if (_context is not { CanEdit: true } context)
+            return;
+
+        switch (e.Phase)
+        {
+            case SlicePointerPhase.Press:
+                _scope?.Cancel();           // 重复按下（双击）：丢弃上一段未提交的手势
+                _scope = context.BeginEdit("喷雾");
+                break;
+
+            case SlicePointerPhase.Move when _scope is { } scope:
+                scope.Write(e.Plane, e.Index,
+                    BuildStamp(context, e.Plane, e.U, e.V, context.GetNumber("radius")),
+                    context.WriteMode);
+                break;
+
+            case SlicePointerPhase.Release:
+                _scope?.Dispose();          // 一次手势 = 一条撤销命令
+                _scope = null;
+                break;
+        }
+    }
+
+    public void HandleKey(SliceToolKey key)
+    {
+        if (key != SliceToolKey.Escape)
+            return;
+
+        _scope?.Cancel();
+        _scope = null;
+    }
+
+    // 按半径生成整张平面的 [V, U] 区域：以 (u, v) 为圆心的圆盘。
+    private static bool[,] BuildStamp(ISliceToolContext context, SlicePlane plane,
+                                      double u, double v, double radius)
+    {
+        var region = new bool[context.GetPlaneV(plane), context.GetPlaneU(plane)];
+        var r = (int)Math.Ceiling(radius);
+        var cu = (int)Math.Round(u);
+        var cv = (int)Math.Round(v);
+
+        for (var dv = -r; dv <= r; dv++)
+        for (var du = -r; du <= r; du++)
+        {
+            if (du * du + dv * dv > radius * radius)
+                continue;
+
+            var x = cu + du;
+            var y = cv + dv;
+            if (x >= 0 && y >= 0 && y < region.GetLength(0) && x < region.GetLength(1))
+                region[y, x] = true;
+        }
+
+        return region;
+    }
+}
+```
+
 ## 插件加载器
 
 ```csharp
@@ -764,14 +1039,22 @@ public class Big3DBitMap
     public bool MatchesDimensions(int x, int y, int z);
 
     public void SetBlock(int blockX, int blockY, int blockZ, ReadOnlySpan<bool> values);
-    public void SetXYSlice(int x, int z, bool[,] values);
-    public void SetYZSlice(int x, bool[,] values);
+
+    public bool[,] GetXYSlice(int z);              // [Y, X]
+    public void SetXYSlice(int z, bool[,] values); // 精确形状 [Y, X]
+    public bool[,] GetXZSlice(int y);              // [Z, X]
+    public void SetXZSlice(int y, bool[,] values); // 精确形状 [Z, X]
+    public bool[,] GetYZSlice(int x);              // [Z, Y]
+    public void SetYZSlice(int x, bool[,] values); // 精确形状 [Z, Y]
+
     public void ClearAllBlocks();
 
     public void SaveStream(Stream stream);
     public static Big3DBitMap LoadStream(Stream stream);
 }
 ```
+
+三个 setter 都要求传入数组与平面的形状**完全一致**（`[Y, X]` / `[Z, X]` / `[Z, Y]`），否则抛 `ArgumentException`；层号越界抛 `IndexOutOfRangeException`。平面与数组形状的对应关系与前面的 `SlicePlane` 约定相同。
 
 ### 其他
 

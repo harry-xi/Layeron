@@ -1,6 +1,6 @@
 # Layeron 切片编辑工具系统（Slice Tool System）
 
-> 状态：设计稿（未实现，待评审）
+> 状态：已实现（P1–P4 于 2026-11-20 落地，实施记录与验证见 §13；P5 文档同步随本状态行更新）
 > 本文档定义"用户在切片上的一切点击 / 绘制行为"的统一抽象：笔刷、套索、魔棒、磁力套索等都是同一抽象的实例；宿主内置常用工具，插件可通过扩展点贡献新工具；掩膜编辑自带撤销 / 重做。
 
 ---
@@ -430,4 +430,10 @@ P1–P3 顺序执行（P2/P3 依赖 P1 的契约冻结）；每阶段结束跑�
 
 验证：全解决方案 0 警告 0 错误；App 139/139（P3 新增 23 例）、核心库 92/92、插件 195/195 通过。
 
-**之后**：P4 插件接入验证（已由 `SliceToolRegistrationTests` 在 P1 提前完成，届时确认覆盖即可）→ P5 文档（docs/plugin 三篇；**api-reference.md 仍记着旧 `SetXYSlice(int x, int z, ...)` 签名，届时同步**；本文状态改"已实现"）。
+**P4 插件接入验证（2026-11-20 确认）**：由 `471c4ca`（P1 视图接线会话）落地的 `Layeron.Plugin.Test\SliceToolRegistrationTests` 覆盖——真程序集加载管线注册、宿主点归属（owner = 宿主而非插件）、预定义空点、重复 id 拒绝且无残留、卸载移除贡献但保留宿主点；插件 195/195 通过。设计 §9 的"不新增产品级 demo 插件"约定保持：扩展性由测试程序集证明。
+
+**P5 文档（2026-11-20）**：docs/plugin 与 docs/en/plugin 两语言树同步更新 extension-points / api-reference / index——`layeron.tools.slice` 扩展点、`SliceToolContribution`、`AddSliceTool` 注册糖、契约类型参考（ISliceTool / 描述符 / 选项 / 指针事件 / 上下文 / MaskEditScope）、插件工具与内置工具同等待遇（工具箱分组 / 选项面板 / 撤销通道不可绕过）；api-reference 的 Big3DBitMap 段旧 `SetXYSlice(int x, int z, ...)` 签名同步为修复后的三对读写 API；本文状态行改"已实现"。
+
+**设计稿 §3 与实现契约的差异**（文档轮核对，以 `Plugin.Abstractions\SliceTools.cs` 为准）：`SliceToolContribution` 只有 `Descriptor` + `Factory`（无独立 `Id` 成员，工具 id 即 `Descriptor.Id`）；`SlicePointerPhase` 只有 `Press/Move/Release/Hover`（无独立 `Click/DoubleClick`——双击是 `Press` 的 `ClickCount >= 2`）；`SliceCursor` 无 `None`（仅 `Arrow/Crosshair`）；`SliceToolDescriptor.Description`、`ISliceToolContext.GetPlaneCount` 为实现新增；`AddSliceTool` 的查重只扫贡献表（无法跨层引用内置清单），内置 `layeron.tools.*` 前缀按**保留前缀**文档化——插件撞内置 id 会被接受但被目录遮蔽；`MaskEditHistory` 字节预算实现为 512 MB（设计稿记 1 GB），宿主内部细节不进插件文档。
+
+**至此设计 §11 全部阶段（P1–P5）完成。**

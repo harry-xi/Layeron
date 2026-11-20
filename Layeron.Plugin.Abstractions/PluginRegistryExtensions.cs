@@ -2,11 +2,11 @@ namespace Layeron.Plugin.Abstractions;
 
 /// <summary>
 /// Generic-mechanism helpers over <see cref="IPluginRegistry"/>.
-/// Note: Tool/Menu stay as direct host attachments (via IPluginHostAdapter),
+/// Note: tool PANELS and menus stay as direct host attachments (via IPluginHostAdapter),
 /// not extension points: single consumer (host Dock/Menu), no cross-plugin
 /// consumption, so a point adds ordering + event-replay cost with no benefit.
 /// Points are reserved for multi-contributor aggregation
-/// (Filter / Settings / plugin-defined VolumeAction).
+/// (Filter / Settings / slice interaction tools / plugin-defined VolumeAction).
 /// </summary>
 public static class PluginRegistryExtensions
 {

@@ -17,9 +17,9 @@ The test is simple: **a single consumer, or multi-contributor aggregation?**
 | Scenario | Mechanism | Reason |
 |---|---|---|
 | Tool panels, documents, menus | Direct attachment | Single consumer (host dock / menu), one-to-one, no ordering or events |
-| Filters, settings pages, plugin-defined payloads | Extension point | Multiple contributors, needs a list, ordering and add/remove events |
+| Filters, slice tools, settings pages, plugin-defined payloads | Extension point | Multiple contributors, needs a list, ordering and add/remove events |
 
-Making a tool an extension point would only add ordering, event replay and host-owned point lifetime — cost without benefit — which is why they are not extension points.
+Making a dockable tool panel an extension point would only add ordering, event replay and host-owned point lifetime — cost without benefit — which is why they are not extension points. A slice interaction tool (see below) is different: many contributors, one shared toolbox, so it **is** a point.
 
 ## Point methods on IPluginRegistry
 
@@ -70,7 +70,7 @@ contextB.Registry.Contribute("acme.panel.actions", new VolumeAction
 // → Unload A: the point goes away and B's contribution with it
 ```
 
-Host-defined points (the filter point, the settings page point) are defined with `OwnerPluginId == null`, so they **do not disappear with any single plugin** — only each contributor's entry is removed.
+Host-defined points (the filter point, the loader point, the settings page point and the slice tool point) are defined with `OwnerPluginId == null`, so they **do not disappear with any single plugin** — only each contributor's entry is removed.
 
 ## Consuming a point
 
@@ -126,6 +126,7 @@ The host defines these before loading any plugin; plugins only contribute:
 | Point id | Contribution type | See |
 |---|---|---|
 | `layeron.filters.volume` | `IVolumeFilter` | [Volume Filters](/en/plugin/filters) (host executor and runner panel are wired) |
+| `layeron.tools.slice` | `SliceToolContribution` | [Slice tools](#slice-tools) below, [API Reference](/en/plugin/api-reference#slice-tools) |
 | `layeron.loaders.volume` | `VolumeLoader` | [Volume Loaders](/en/plugin/loaders) |
 | `layeron.settings.pages` | `SettingsPageContribution` | [Settings Pages](/en/plugin/settings) |
 
@@ -133,9 +134,62 @@ Contributing through the extension methods is safer because they validate:
 
 ```csharp
 context.Registry.AddFilter(myFilter);            // validates globally unique id
+context.Registry.AddSliceTool(myTool);           // validates globally unique tool id
 context.Registry.AddLoader(myLoader);            // validates globally unique id
 context.Registry.AddSettingsPage(myPage);        // validates exactly one content form
 ```
+
+## Slice tools
+
+`ToolPoints.SliceTools` (`"layeron.tools.slice"`) is the host-owned point for **slice interaction tools** — the brush, eraser, lasso, polygon, rectangle, ellipse, magic wand and magnetic lasso the host ships are implementations of the same contract. Like the filter point it is defined before any plugin loads, with `OwnerPluginId == null`: it exists and is **empty** until something contributes, and it survives every contributor's unload.
+
+The payload is `SliceToolContribution`, the descriptor plus the factory that creates the tool:
+
+```csharp
+public sealed class SliceToolContribution
+{
+    public required SliceToolDescriptor Descriptor { get; init; }   // display metadata; lets the toolbox group the tool without creating it
+    public required Func<ISliceTool> Factory { get; init; }         // called at most once per session
+}
+```
+
+`Descriptor.Id` is the tool id and is also the key the toolbox and the per-session instance cache use. It must be **globally unique across built-ins and all plugins**, and it must never change over the tool's lifetime. The factory is called **lazily, once per session**, on first activation; the instance is cached for that session, so a plugin tool's state never outlives the session and never keeps a plugin load context alive. That also means the instance is reused across activations and must handle being reactivated.
+
+Registering works exactly like `AddFilter`:
+
+```csharp
+context.Registry.AddSliceTool(new SprayerTool());
+```
+
+`AddSliceTool` wraps `Contribute(ToolPoints.SliceTools, ...)` and additionally **validates that the id is not already taken** — a duplicate fails the activation with an explicit message and leaves nothing behind. Prefix your id with your plugin id:
+
+```csharp
+public SliceToolDescriptor Descriptor => new()
+{
+    Id = "acme.sprayer",
+    DisplayName = "Sprayer",
+    Group = "retouch",
+    Order = 100,
+    Options =
+    [
+        new SliceToolOption
+        {
+            Id = "radius", Label = "Radius",
+            Kind = SliceToolOptionKind.Number, Min = 1, Max = 64, NumberDefault = 4
+        }
+    ]
+};
+```
+
+The host's `layeron.tools.*` ids are reserved for built-ins. They are not part of the duplicate check (the point only holds contributions), but the catalog resolves a built-in before a contribution with the same id, so a colliding plugin tool would simply never become active.
+
+**Lifecycle and undo:**
+
+- A contributed tool appears in the host toolbox alongside the built-ins, grouped by `Descriptor.Group` and sorted by `Order` inside the group, with a declarative options editor generated from `Descriptor.Options` — numeric, toggle or combo, exactly as for the built-ins. No host code knows the tool's name.
+- The toolbox follows the point's `Added` / `Removed` events, so hot reload needs no panel reopen. On unload the contribution disappears; if the removed tool is the active one it is **deactivated first** and its cached instance dropped, then the contribution is removed. The point itself stays.
+- All mask writes go through `context.BeginEdit(...)` and the returned `MaskEditScope`; the host owns the before/after snapshots and publishes **one undo command per gesture** on `Dispose`. A plugin tool cannot bypass that channel — the contract has no way to write mask data directly, so `Ctrl+Z` always works.
+
+The contract types are listed in [API Reference → Slice tools](/en/plugin/api-reference#slice-tools); `design-notes/TOOL_SYSTEM.md` describes the interaction design (planes, previews, how 2D gestures become 3D edits).
 
 ## A complete example
 

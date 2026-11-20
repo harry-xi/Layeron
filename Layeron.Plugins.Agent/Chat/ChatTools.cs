@@ -8,7 +8,9 @@ using SixLabors.ImageSharp;
 
 namespace Layeron.Plugins.Agent.Chat;
 
-public partial class ChatTools(IPluginContext context,IPluginServices services, IScriptHostService scriptHost)
+#pragma warning disable CS9113 // 'services' is intentionally kept in the constructor signature:
+// the test suite constructs ChatTools with it, and future tool hooks are expected to need it.
+public partial class ChatTools(IPluginContext context, IPluginServices services, IScriptHostService scriptHost)
 {
 
     public IList<AITool> BuildTools()
@@ -282,3 +284,4 @@ public partial class ChatTools(IPluginContext context,IPluginServices services, 
         return output.ToArray();
     }
 }
+#pragma warning restore CS9113
