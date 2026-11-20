@@ -107,6 +107,46 @@ internal sealed class SliceToolContext : ISliceToolContext
             Dispatcher.UIThread.Post(action);
     }
 
+    /// <summary>
+    /// A slice reader for the magic wand's background grow. The volume is captured once, on the UI
+    /// thread, and the closure only reads the immutable <see cref="ReadonlyBig3DArray"/> - the one
+    /// background read the tool system allows, because contract members stay UI-thread-only.
+    /// Null when no volume is loaded.
+    /// </summary>
+    internal Func<int, double[,]>? CreateBackgroundSliceReader(SlicePlane plane) => _shared.Array switch
+    {
+        null => null,
+        ReadonlyBig3DArray<byte> bytes => index => ToDouble(Extract(bytes, plane, index)),
+        ReadonlyBig3DArray<ushort> shorts => index => ToDouble(Extract(shorts, plane, index)),
+        _ => null
+    };
+
+    /// <summary>
+    /// The live-wire cost map of a slice, cached for the magnetic lasso's per-move searches. The
+    /// cache is keyed by the volume instance, so a data reload invalidates it for free.
+    /// </summary>
+    internal double[,]? GetLiveWireCost(SlicePlane plane, int index)
+    {
+        var array = _shared.Array;
+        if (array == null)
+            return null;
+
+        if (_costCache is { } cache
+            && ReferenceEquals(cache.Array, array)
+            && cache.Plane == plane
+            && cache.Index == index)
+            return cache.Map;
+
+        var map = LiveWire.CostMap(ReadSlice(plane, index));
+        _costCache = (array, plane, index, map);
+        return map;
+    }
+
+    /// <summary>Shows a transient busy hint in the toolbox (e.g. the magic wand's growing note).</summary>
+    internal void SetBusyStatus(string? status) => _service.SetBusyStatus(status);
+
+    private (object Array, SlicePlane Plane, int Index, double[,] Map)? _costCache;
+
     private static T[,] Extract<T>(ReadonlyBig3DArray<T> array, SlicePlane plane, int index) where T : unmanaged
         => plane switch
         {

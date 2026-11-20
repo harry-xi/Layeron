@@ -17,6 +17,12 @@
     </ItemGroup>
 
     <ItemGroup>
+        <!-- The slice tool internals (edit history, auto-connect, tool context seams) are covered by
+             the app test suite; the built-in tools need the same access for their sync-mode test seam. -->
+        <InternalsVisibleTo Include="Layeron.App.Test" />
+    </ItemGroup>
+
+    <ItemGroup>
         <PackageReference Include="Avalonia.AvaloniaEdit" Version="12.0.0" />
         <PackageReference Include="Avalonia" Version="12.1.3" />
         <PackageReference Include="Avalonia.Desktop" Version="12.1.3" />

@@ -418,4 +418,16 @@ P1–P3 顺序执行（P2/P3 依赖 P1 的契约冻结）；每阶段结束跑�
 
 验证：全解决方案 0 警告 0 错误；App 116/116（+13）、插件 195/195、核心库 92/92 通过。实现期修正：套索 Release 原未把松开点补入轮廓（轮廓缺最后一点导致填充形状错误），已修正并有测试钉住。
 
-**之后**：P3 算法工具（魔棒 3D 生长 + 磁力套索 live-wire）→ P4 插件接入验证 → P5 文档（docs/plugin 三篇；**api-reference.md 仍记着旧 `SetXYSlice(int x, int z, ...)` 签名，届时同步**；本文状态改"已实现"）。
+**P3 算法工具（2026-11-20 会话完成）：**
+
+1. **LiveWire 几何库**（`App\Tools\Geometry\LiveWire.cs`）：`CostMap`（中心差分梯度倒数 1/(1+|g|)，平地=1、强边缘趋 0）+ `FindPath`（8 连通 Dijkstra，走廊=两端点包围盒外扩搜索半径并钳制到平面，边权=两像素代价均值×对角√2，PriorityQueue 惰性删除，父指针回溯重建路径，起点终点越界钳制到像素中心）。6 例纯函数测试：边缘便宜/平地为 1、平地路径=直线、绕行骑边、像素连通性、同点单元素、越界端点钳制。
+2. **宿主支持**（`SliceToolContext` / `SliceToolService`）：`CreateBackgroundSliceReader`（UI 线程捕获不可变 `ReadonlyBig3DArray` 闭包，允许魔棒后台生长读原始灰度——契约成员保持 UI 线程约定的唯一豁免，因为只读不可变快照）；`GetLiveWireCost`（按"卷实例+平面+层号"缓存代价图，换卷自动失效）；`SetBusyStatus`（工具箱状态栏显示"魔棒生长中…再点一次取消"的瞬态忙碌提示）。
+3. **魔棒**（`BuiltIn\MagicWandTool.cs`，group=region Order 50）：单击种子 → `Task.Run` 3D 容差生长（种子灰度 ± 容差、6/26 连通、深度窗口=种子层 ± 上限或全卷）→ `context.Post` 回 UI 提交，一次点击全部受影响切片为**一条撤销命令**；生长中再点一次或 Esc 取消（代计数器 `_growGeneration` 防护取消/重启/重激活竞态——同一工具实例按会话缓存复用）。选项：容差 0–255 默认 12、连通 6/26 默认 26、全卷开关默认关。两个 internal 测试接缝（同步生长 + 读片器覆盖）供确定性测试，生产路径不受影响。
+4. **磁力套索**（`BuiltIn\MagneticLassoTool.cs`，group=region Order 60）：点击种子 → Hover 实时吸附（代价图缓存 + 走廊 Dijkstra）→ 点击钉住段 → 双击/回车闭合（末段回到种子）→ 扫描线填充提交，走 `RegionToolBase` 提交路径因此**参与跨层自动连接**；Esc 清链。选项：搜索半径 4–256 默认 48。
+5. **测试**（`App.Test\AlgorithmToolTests.cs`，17 例）：魔棒跨层生长单命令撤销、深度窗口截断、全卷选项、容差边界、擦除模式、生长中再点取消（阻塞读片器 + 双线程确定性复现 UI 线程取消点击）、失活取消且重激活后首击正常、负边界坐标拒绝、越界像素的种子；磁力套索平移体积上直线段的钉住/回车闭合/双击闭合/Esc 清链、按住拖动（Move 阶段）实时吸附、跨层跨平面事件忽略、退化链拒绝；忙碌提示随工具切换清理；`[TestCleanup]` 接缝兜底。
+6. **评审轮**（两个独立 deepseek 子代理：只读评审 + 测试编写，共发现 9 项、全部采纳修复）：魔棒提交回调重查 `CanEdit` 并 try/catch 日志降级（生长期间删层/换卷不再产生 UI 线程未处理异常）；`Activate`/`Deactivate` 统一 `ResetGrowState`（代计数 + CTS 取消——修复重激活后首击被吞与陈旧 `FinishGrow` 提交两个竞态）；`DeactivateCore` 清忙碌提示（不泄漏到下一工具）；磁力套索补上 `Move` 阶段（"按住拖动实时吸附"此前无效——视图按住左键只发 Move）；链上 Press/Hover/Move 限定种子的平面与层（跨视图/跨十字线事件一律忽略）；闭合要求 ≥3 次**钉住手势**（`_pinCount` 单独计数——测试代理抓到初版修复误用路径像素计数：`_pinned` 存的是插值折线，10 像素段即 11 个元素，退化 1px 线仍会提交）；种子坐标 `Math.Floor`（-0.6 不再截断成第 0 列）；LiveWire 走廊改为"线段 ± 半径"的真走廊（设计 §6 原意，长对角拖段不再搜索半个平面）；`PolygonTool` 同步获得平面/层防护；`RegionToolBase.CommitRegion` 加层号界守卫（换卷后陈旧链不再越界写）。
+7. App 工程向测试工程开放 InternalsVisibleTo（工具内部接缝）。
+
+验证：全解决方案 0 警告 0 错误；App 139/139（P3 新增 23 例）、核心库 92/92、插件 195/195 通过。
+
+**之后**：P4 插件接入验证（已由 `SliceToolRegistrationTests` 在 P1 提前完成，届时确认覆盖即可）→ P5 文档（docs/plugin 三篇；**api-reference.md 仍记着旧 `SetXYSlice(int x, int z, ...)` 签名，届时同步**；本文状态改"已实现"）。

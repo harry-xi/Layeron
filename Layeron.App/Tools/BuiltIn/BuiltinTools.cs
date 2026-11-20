@@ -6,7 +6,6 @@ namespace Layeron.App.Tools.BuiltIn;
 /// <summary>
 /// The built-in tool set: host features that are always present, contributed to the
 /// <see cref="ToolCatalog"/> directly instead of going through the plugin extension point.
-/// The algorithmic tools (magic wand, magnetic lasso) join this list in later phases.
 /// </summary>
 internal static class BuiltinTools
 {
@@ -31,6 +30,16 @@ internal static class BuiltinTools
         {
             Descriptor = EllipseTool.SharedDescriptor,
             Factory = () => new EllipseTool()
+        },
+        new SliceToolContribution
+        {
+            Descriptor = MagicWandTool.SharedDescriptor,
+            Factory = () => new MagicWandTool()
+        },
+        new SliceToolContribution
+        {
+            Descriptor = MagneticLassoTool.SharedDescriptor,
+            Factory = () => new MagneticLassoTool()
         },
         new SliceToolContribution
         {

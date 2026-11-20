@@ -26,6 +26,7 @@ public sealed class SliceToolService : IDisposable
     private MaskWriteMode _writeMode = MaskWriteMode.Set;
     private bool _autoConnectEnabled = true;
     private int _autoConnectMaxGap = 16;
+    private string? _busyStatus;
     private bool _disposed;
 
     public SliceToolService(ToolCatalog catalog, SharedDataSourceViewModel shared, MaskManagerViewModel masks)
@@ -120,12 +121,27 @@ public sealed class SliceToolService : IDisposable
         {
             if (_active == null)
                 return "浏览模式：左键拖动平移，右键移动十字线";
+            if (_busyStatus != null)
+                return _busyStatus;
             if (_shared.Array == null)
                 return "请先加载体数据";
             if (_masks.ActiveMask == null)
                 return "请先添加或选择一个掩膜层";
             return _active.Descriptor.Description ?? _active.Descriptor.DisplayName;
         }
+    }
+
+    /// <summary>
+    /// A transient busy hint of the active tool (e.g. the magic wand's growing note), shown in the
+    /// toolbox while a background computation is in flight. Cleared by passing null.
+    /// </summary>
+    internal void SetBusyStatus(string? status)
+    {
+        if (string.Equals(_busyStatus, status, StringComparison.Ordinal))
+            return;
+
+        _busyStatus = status;
+        StateChanged?.Invoke();
     }
 
     /// <summary>Activates the tool with the given id; null deactivates (browse mode).</summary>
@@ -255,6 +271,9 @@ public sealed class SliceToolService : IDisposable
         _active = null;
         _context = null;
         SetOverlay(null);
+        // A tool's busy hint (e.g. the magic wand's growing note) is per-tool: deactivation must
+        // never leak it into the next tool's status line.
+        SetBusyStatus(null);
     }
 
     private void OnCatalogChanged()

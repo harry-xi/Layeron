@@ -58,6 +58,11 @@ internal abstract class RegionToolBase : ISliceTool
             if (!CanEdit || MaskSliceIO.BoundsOf(region) == null)
                 return;
 
+            // A stale chain (e.g. a polygon Enter pressed after the volume was reloaded smaller)
+            // can carry an out-of-range slice index: drop it rather than write past the volume.
+            if (index < 0 || index >= context.GetPlaneCount(plane))
+                return;
+
             var mode = context.WriteMode;
             using var scope = context.BeginEdit($"{Descriptor.DisplayName} 区域");
             scope.Write(plane, index, region, mode);

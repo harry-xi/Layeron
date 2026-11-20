@@ -40,6 +40,11 @@ internal sealed class PolygonTool : RegionToolBase
                 if (!CanEdit)
                     return;
 
+                // The pending chain lives on the slice it was started on: a click from another
+                // view or another crosshair position would pin a vertex into a foreign polygon.
+                if (_vertices.Count > 0 && (e.Plane != _plane || e.Index != _index))
+                    return;
+
                 // A double-click closes the pending chain (the first click already pinned the last
                 // vertex, so its position doubles as the closing point).
                 if (e.ClickCount >= 2)
@@ -64,7 +69,7 @@ internal sealed class PolygonTool : RegionToolBase
                 break;
 
             case SlicePointerPhase.Hover:
-                if (_vertices.Count == 0)
+                if (_vertices.Count == 0 || e.Plane != _plane || e.Index != _index)
                     return;
                 _hover = new SlicePoint(e.U, e.V);
                 _hoverValid = true;
