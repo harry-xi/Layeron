@@ -88,10 +88,19 @@
     <sys:Double x:Key="DockDocumentTabStripMinHeight">0</sys:Double>
     <Thickness x:Key="DockDocumentTabItemMargin">0,0,1,0</Thickness>
     <Thickness x:Key="DockDocumentTabItemPadding">8,0</Thickness>
-    <CornerRadius x:Key="DockDocumentTabItemCornerRadius">4</CornerRadius>
-    <CornerRadius x:Key="DockDocumentTabCreateButtonCornerRadius">4</CornerRadius>
+    <!--
+        文档标签在文档区顶部，下沿要与内容区接合，所以只圆上角；
+        工具标签在工具窗底边，方向相反，只圆下角。
+    -->
+    <CornerRadius x:Key="DockDocumentTabItemCornerRadius">6,6,0,0</CornerRadius>
+    <CornerRadius x:Key="DockDocumentTabCreateButtonCornerRadius">6</CornerRadius>
     <Thickness x:Key="DockToolTabItemPadding">6,1</Thickness>
     <Thickness x:Key="DockToolTabItemSelectedPadding">6,2,6,1</Thickness>
+    <!--
+        工具标签位于工具窗底边，选中时上边缘与内容连通，所以只圆下沿：
+        标签看起来像挂在面板底部的一页纸，而不是四个角都漂浮的小方块。
+    -->
+    <CornerRadius x:Key="DockToolTabItemCornerRadius">0,0,6,6</CornerRadius>
     <sys:Double x:Key="DockCreateButtonWidth">24</sys:Double>
     <sys:Double x:Key="DockCreateButtonHeight">22</sys:Double>
     <sys:Double x:Key="DockCloseButtonSize">12</sys:Double>
@@ -108,8 +117,8 @@
     <sys:Double x:Key="DockDocumentTabItemSeparatorOpacity">0</sys:Double>
     <Thickness x:Key="DockTabContentMargin">1</Thickness>
     <CornerRadius x:Key="DockSelectorOverlayCornerRadius">8</CornerRadius>
-    <CornerRadius x:Key="DockSelectorOverlayItemCornerRadius">4</CornerRadius>
-    <CornerRadius x:Key="DockDragPreviewCornerRadius">6</CornerRadius>
+    <CornerRadius x:Key="DockSelectorOverlayItemCornerRadius">6</CornerRadius>
+    <CornerRadius x:Key="DockDragPreviewCornerRadius">8</CornerRadius>
     <CornerRadius x:Key="DockOverlayCardCornerRadius">10</CornerRadius>
     <CornerRadius x:Key="DockDialogCornerRadius">10</CornerRadius>
     <x:Boolean x:Key="DockDocumentTabStripSeparatorVisible">False</x:Boolean>

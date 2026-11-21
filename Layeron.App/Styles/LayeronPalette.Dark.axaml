@@ -85,13 +85,21 @@
     </LinearGradientBrush>
     <SolidColorBrush x:Key="LayeronDockDropCenterBrush" Color="{StaticResource ThemeAccentColor3}" />
 
-    <!-- Dock 停靠选择器：默认是白色底 + 橙色箭头位图，这里替换成主题化的矢量卡片。 -->
+    <!--
+        Dock 停靠选择器：默认是白色底 + 橙色箭头位图，这里替换成主题化的圆角卡片。
+        每个方向画成“面板轮廓 + 该方向上的实心圆角矩形”：上/下/左/右是半块，居中是把
+        整块填满。矩形直接预演拖动后会占用的区域，比只指出方向的箭头更直观；
+        实心块使用与拖放提示相同的强调色，所以悬停哪一侧，哪一侧就亮起。
+    -->
+    <SolidColorBrush x:Key="LayeronDockSelectorWellBrush" Color="{StaticResource ThemeAccentColor}" Opacity="0.14" />
+    <SolidColorBrush x:Key="LayeronDockSelectorEdgeBrush" Color="{StaticResource ThemeAccentColor}" Opacity="0.55" />
     <RectangleGeometry x:Key="LayeronDockSelectorCardGeometry" Rect="5.5,5.5,29,29" RadiusX="6" RadiusY="6" />
-    <RectangleGeometry x:Key="LayeronDockSelectorCenterGlyphGeometry" Rect="14,14,12,12" RadiusX="2" RadiusY="2" />
-    <StreamGeometry x:Key="LayeronDockSelectorTopArrowGeometry">M 20,27 L 20,13 M 14,19 L 20,13 L 26,19</StreamGeometry>
-    <StreamGeometry x:Key="LayeronDockSelectorBottomArrowGeometry">M 20,13 L 20,27 M 14,21 L 20,27 L 26,21</StreamGeometry>
-    <StreamGeometry x:Key="LayeronDockSelectorLeftArrowGeometry">M 27,20 L 13,20 M 19,14 L 13,20 L 19,26</StreamGeometry>
-    <StreamGeometry x:Key="LayeronDockSelectorRightArrowGeometry">M 13,20 L 27,20 M 21,14 L 27,20 L 21,26</StreamGeometry>
+    <RectangleGeometry x:Key="LayeronDockSelectorWellGeometry" Rect="11,11,18,18" RadiusX="3" RadiusY="3" />
+    <RectangleGeometry x:Key="LayeronDockSelectorTopGlyphGeometry" Rect="11,11,18,9" RadiusX="3" RadiusY="3" />
+    <RectangleGeometry x:Key="LayeronDockSelectorBottomGlyphGeometry" Rect="11,20,18,9" RadiusX="3" RadiusY="3" />
+    <RectangleGeometry x:Key="LayeronDockSelectorLeftGlyphGeometry" Rect="11,11,9,18" RadiusX="3" RadiusY="3" />
+    <RectangleGeometry x:Key="LayeronDockSelectorRightGlyphGeometry" Rect="20,11,9,18" RadiusX="3" RadiusY="3" />
+    <RectangleGeometry x:Key="LayeronDockSelectorCenterGlyphGeometry" Rect="11,11,18,18" RadiusX="3" RadiusY="3" />
 
     <DrawingImage x:Key="LayeronDockSelectorTopImage">
         <DrawingImage.Drawing>
@@ -100,14 +108,16 @@
                 <GeometryDrawing Brush="{StaticResource LayeronPopupBackgroundBrush}" Geometry="{StaticResource LayeronDockSelectorCardGeometry}" />
                 <GeometryDrawing Geometry="{StaticResource LayeronDockSelectorCardGeometry}">
                     <GeometryDrawing.Pen>
-                        <Pen Brush="{StaticResource LayeronAccentBrush}" Thickness="1" />
+                        <Pen Brush="{StaticResource LayeronDockSelectorEdgeBrush}" Thickness="1" />
                     </GeometryDrawing.Pen>
                 </GeometryDrawing>
-                <GeometryDrawing Geometry="{StaticResource LayeronDockSelectorTopArrowGeometry}">
+                <GeometryDrawing Brush="{StaticResource LayeronDockSelectorWellBrush}" Geometry="{StaticResource LayeronDockSelectorWellGeometry}" />
+                <GeometryDrawing Geometry="{StaticResource LayeronDockSelectorWellGeometry}">
                     <GeometryDrawing.Pen>
-                        <Pen Brush="{StaticResource LayeronAccentBrush}" Thickness="1.6" LineCap="Round" LineJoin="Round" />
+                        <Pen Brush="{StaticResource LayeronDockSelectorEdgeBrush}" Thickness="1" />
                     </GeometryDrawing.Pen>
                 </GeometryDrawing>
+                <GeometryDrawing Brush="{StaticResource LayeronAccentBrush}" Geometry="{StaticResource LayeronDockSelectorTopGlyphGeometry}" />
             </DrawingGroup>
         </DrawingImage.Drawing>
     </DrawingImage>
@@ -118,14 +128,16 @@
                 <GeometryDrawing Brush="{StaticResource LayeronPopupBackgroundBrush}" Geometry="{StaticResource LayeronDockSelectorCardGeometry}" />
                 <GeometryDrawing Geometry="{StaticResource LayeronDockSelectorCardGeometry}">
                     <GeometryDrawing.Pen>
-                        <Pen Brush="{StaticResource LayeronAccentBrush}" Thickness="1" />
+                        <Pen Brush="{StaticResource LayeronDockSelectorEdgeBrush}" Thickness="1" />
                     </GeometryDrawing.Pen>
                 </GeometryDrawing>
-                <GeometryDrawing Geometry="{StaticResource LayeronDockSelectorBottomArrowGeometry}">
+                <GeometryDrawing Brush="{StaticResource LayeronDockSelectorWellBrush}" Geometry="{StaticResource LayeronDockSelectorWellGeometry}" />
+                <GeometryDrawing Geometry="{StaticResource LayeronDockSelectorWellGeometry}">
                     <GeometryDrawing.Pen>
-                        <Pen Brush="{StaticResource LayeronAccentBrush}" Thickness="1.6" LineCap="Round" LineJoin="Round" />
+                        <Pen Brush="{StaticResource LayeronDockSelectorEdgeBrush}" Thickness="1" />
                     </GeometryDrawing.Pen>
                 </GeometryDrawing>
+                <GeometryDrawing Brush="{StaticResource LayeronAccentBrush}" Geometry="{StaticResource LayeronDockSelectorBottomGlyphGeometry}" />
             </DrawingGroup>
         </DrawingImage.Drawing>
     </DrawingImage>
@@ -136,14 +148,16 @@
                 <GeometryDrawing Brush="{StaticResource LayeronPopupBackgroundBrush}" Geometry="{StaticResource LayeronDockSelectorCardGeometry}" />
                 <GeometryDrawing Geometry="{StaticResource LayeronDockSelectorCardGeometry}">
                     <GeometryDrawing.Pen>
-                        <Pen Brush="{StaticResource LayeronAccentBrush}" Thickness="1" />
+                        <Pen Brush="{StaticResource LayeronDockSelectorEdgeBrush}" Thickness="1" />
                     </GeometryDrawing.Pen>
                 </GeometryDrawing>
-                <GeometryDrawing Geometry="{StaticResource LayeronDockSelectorLeftArrowGeometry}">
+                <GeometryDrawing Brush="{StaticResource LayeronDockSelectorWellBrush}" Geometry="{StaticResource LayeronDockSelectorWellGeometry}" />
+                <GeometryDrawing Geometry="{StaticResource LayeronDockSelectorWellGeometry}">
                     <GeometryDrawing.Pen>
-                        <Pen Brush="{StaticResource LayeronAccentBrush}" Thickness="1.6" LineCap="Round" LineJoin="Round" />
+                        <Pen Brush="{StaticResource LayeronDockSelectorEdgeBrush}" Thickness="1" />
                     </GeometryDrawing.Pen>
                 </GeometryDrawing>
+                <GeometryDrawing Brush="{StaticResource LayeronAccentBrush}" Geometry="{StaticResource LayeronDockSelectorLeftGlyphGeometry}" />
             </DrawingGroup>
         </DrawingImage.Drawing>
     </DrawingImage>
@@ -154,14 +168,16 @@
                 <GeometryDrawing Brush="{StaticResource LayeronPopupBackgroundBrush}" Geometry="{StaticResource LayeronDockSelectorCardGeometry}" />
                 <GeometryDrawing Geometry="{StaticResource LayeronDockSelectorCardGeometry}">
                     <GeometryDrawing.Pen>
-                        <Pen Brush="{StaticResource LayeronAccentBrush}" Thickness="1" />
+                        <Pen Brush="{StaticResource LayeronDockSelectorEdgeBrush}" Thickness="1" />
                     </GeometryDrawing.Pen>
                 </GeometryDrawing>
-                <GeometryDrawing Geometry="{StaticResource LayeronDockSelectorRightArrowGeometry}">
+                <GeometryDrawing Brush="{StaticResource LayeronDockSelectorWellBrush}" Geometry="{StaticResource LayeronDockSelectorWellGeometry}" />
+                <GeometryDrawing Geometry="{StaticResource LayeronDockSelectorWellGeometry}">
                     <GeometryDrawing.Pen>
-                        <Pen Brush="{StaticResource LayeronAccentBrush}" Thickness="1.6" LineCap="Round" LineJoin="Round" />
+                        <Pen Brush="{StaticResource LayeronDockSelectorEdgeBrush}" Thickness="1" />
                     </GeometryDrawing.Pen>
                 </GeometryDrawing>
+                <GeometryDrawing Brush="{StaticResource LayeronAccentBrush}" Geometry="{StaticResource LayeronDockSelectorRightGlyphGeometry}" />
             </DrawingGroup>
         </DrawingImage.Drawing>
     </DrawingImage>
@@ -172,7 +188,7 @@
                 <GeometryDrawing Brush="{StaticResource LayeronPopupBackgroundBrush}" Geometry="{StaticResource LayeronDockSelectorCardGeometry}" />
                 <GeometryDrawing Geometry="{StaticResource LayeronDockSelectorCardGeometry}">
                     <GeometryDrawing.Pen>
-                        <Pen Brush="{StaticResource LayeronAccentBrush}" Thickness="1" />
+                        <Pen Brush="{StaticResource LayeronDockSelectorEdgeBrush}" Thickness="1" />
                     </GeometryDrawing.Pen>
                 </GeometryDrawing>
                 <GeometryDrawing Brush="{StaticResource LayeronAccentBrush}" Geometry="{StaticResource LayeronDockSelectorCenterGlyphGeometry}" />

@@ -177,6 +177,14 @@
         <Setter Property="BorderThickness" Value="1,0,1,1" />
     </Style>
 
+    <!--
+        工具标签模板不读取控件自身的 CornerRadius，所以把圆角直接作用到模板里的 Border。
+        标签贴在工具窗底边，上沿与内容连通，只圆下沿才不会在内容与标签之间露出缺口。
+    -->
+    <Style Selector="dock|ToolTabStripItem /template/ Panel > Border">
+        <Setter Property="CornerRadius" Value="{StaticResource DockToolTabItemCornerRadius}" />
+    </Style>
+
     <!-- 工具窗底边不画线：底部保持干净，不再额外补一条 1px 边框。 -->
     <Style Selector="dock|ToolTabStrip">
         <Setter Property="BorderThickness" Value="0" />
@@ -225,7 +233,7 @@
         <Setter Property="Width" Value="16" />
         <Setter Property="Height" Value="14" />
         <Setter Property="Padding" Value="2" />
-        <Setter Property="CornerRadius" Value="2" />
+        <Setter Property="CornerRadius" Value="4" />
     </Style>
 
     <!--

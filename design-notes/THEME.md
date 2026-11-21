@@ -147,13 +147,13 @@
 | **ColorPicker** `ColorPicker` | 部件微调 | 高度 28、4px 圆角 |
 | **ColorPicker** `ColorView` / `ColorSpectrum` | 部件微调 | 6px / 4px 圆角；内部 TabItem、ListBox、ComboBox 复用核心主题 |
 | **Dock.Avalonia** 表面/边框 | 资源 token | `DockSurface*`、`DockBorder*`、`DockSeparator*`、`DockSplitter*` |
-| **Dock.Avalonia** 标签页 | 资源 token + 局部样式 | 标签条 `LayeronDockTabStripColor`、活动页 `LayeronDockTabActiveColor`、悬停 `LayeronDockTabHoverColor`；活动文档页只换背景/前景，不改变边框和字重，避免选中时标签重排；关闭标签间分隔线；工具标签选中时左/右/下各 1px，顶部不画线；上边缘由 `PART_BorderLeftFill` / `RightFill` 提供并在选中标签处让开，底边只在选中标签下 |
+| **Dock.Avalonia** 标签页 | 资源 token + 局部样式 | 标签条 `LayeronDockTabStripColor`、活动页 `LayeronDockTabActiveColor`、悬停 `LayeronDockTabHoverColor`；活动文档页只换背景/前景，不改变边框和字重，避免选中时标签重排；关闭标签间分隔线；文档与工具标签均为 6px 圆角，文档标签只圆上沿、工具标签只圆下沿，与各自贴合的内容区连通；工具标签选中时左/右/下各 1px，顶部不画线；上边缘由 `PART_BorderLeftFill` / `RightFill` 提供并在选中标签处让开，底边只在选中标签下 |
 | **Dock.Avalonia** 工具窗标题栏 | 局部样式 | `ToolChromeControl.BorderBrush` 统一为 `LayeronDockDocumentBorderBrush`，标题栏边框与标题/内容分隔线同宽同色 |
 | **Dock.Avalonia** 身份隔离 | 能力/分组约束 | 工具 `CanDockAsDocument=false`；文档 `DockGroup=Documents`，文档 Dock 同样归组；工具保持未分组以保留全局停靠。工具与文档不能互相变成对方的标签页 |
 | **Dock.Avalonia** 文档区/工具窗边界 | 资源 token + 局部样式 | 文档内容边框与工具窗 `PART_Border` 都使用 `LayeronDockDocumentBorderBrush`（深色 `#44546C` / 浅色 `#CBD6E4`），与选中工具标签的 1px 边界一致；分屏线使用 `ThemeBorderMidColor` |
 | **Dock.Avalonia** 工具窗按钮 | 资源 token + 局部样式 | `DockChromeButton*`、`DockToolChromeIconBrush`；约束标题栏模板按钮 `MinHeight=0`，修复固定图标被 28px Button 主题撑大 |
 | **Dock.Avalonia** 拖放指示 | 资源 token + 局部样式 | `LayeronDockDropTop/Bottom/Left/RightBrush` 渐变，边缘实、内部渐隐，替代默认整块强调色 |
-| **Dock.Avalonia** 五向选择器 | 矢量资源 + 局部样式 | `LayeronDockSelectorTop/Bottom/Left/Right/CenterImage` 替换默认白底橙箭头位图；30px 圆角卡片，保留原 40×40 命中区域，不使用 `RenderTransform`，避免破坏 Dock 的局部坐标命中测试 |
+| **Dock.Avalonia** 五向选择器 | 矢量资源 + 局部样式 | `LayeronDockSelectorTop/Bottom/Left/Right/CenterImage` 替换默认白底橙箭头位图；30px 圆角卡片内是 18px 圆角面板，落点方向用半块实心强调色矩形表示（居中则整块填满），直接预演拖动后占用的区域；保留原 40×40 命中区域，不使用 `RenderTransform`，避免破坏 Dock 的局部坐标命中测试 |
 | **Dock.Avalonia** 拖放/对话框 | 资源 token | `DockSelectorOverlay*`、`DockDragPreview*`、`DockDialog*` |
 | **Dock.Avalonia** 尺寸 | 资源 token | 标题栏 24、标签 28、标签项 24、按钮 16×14 等，见第 3 节 |
 
