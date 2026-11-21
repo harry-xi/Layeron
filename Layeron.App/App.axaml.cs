@@ -1,9 +1,11 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Styling;
 using System;
 using System.IO;
 using Layeron.App.Logging;
+using Layeron.App.Service;
 using Layeron.App.Session;
 using Layeron.App.ViewModels;
 using Layeron.App.Views;
@@ -17,6 +19,11 @@ public class App : Application
     {
         StartupTrace.Mark("app-initialize-begin");
         AvaloniaXamlLoader.Load(this);
+
+        // 启动时先恢复上次的外观偏好，再显示窗口，避免先渲染深色再跳到浅色。
+        AppearanceSettings.Load();
+        RequestedThemeVariant = AppearanceSettings.CurrentTheme;
+
         StartupTrace.Mark("app-initialize-end");
         
 #if DEBUG

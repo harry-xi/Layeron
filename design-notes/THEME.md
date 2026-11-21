@@ -1,7 +1,8 @@
 # Layeron 主题：基于 Simple 的现代化改造
 
 > 目标：保留 Avalonia `SimpleTheme` 的轻量结构和紧凑尺寸，替换颜色、层次、圆角与状态反馈。
-> 默认主题变体仍是深色（`App.axaml` 的 `RequestedThemeVariant="Dark"`），浅色同样可用。
+> 默认主题变体是深色（`App.axaml` 的 `RequestedThemeVariant="Dark"`）；设置 → 常规里的
+> 「深色主题」开关可在深/浅之间切换，选择保存在 `%AppData%/Layeron/appearance.theme`。
 
 ---
 
