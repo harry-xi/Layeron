@@ -197,7 +197,16 @@ internal sealed class OnnxToolViewModel : ReactiveObject, IDisposable
         }
     } = 0.6d;
 
-    public string ThresholdText => $"{Threshold * 100:F0}%";
+    public string ThresholdText
+    {
+        get => (Threshold * 100).ToString("0");
+        set
+        {
+            if (double.TryParse(value?.Trim(), out var percent))
+                Threshold = percent / 100d;
+            this.RaisePropertyChanged(nameof(ThresholdText));
+        }
+    }
 
     /// <summary>Low end of the source range mapped to 0, or null for the identity mapping.</summary>
     public double? SourceMin

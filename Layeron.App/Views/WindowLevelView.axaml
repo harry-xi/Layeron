@@ -29,10 +29,12 @@
                         Maximum="{Binding HighMax}"
                         Value="{Binding Low, Mode=TwoWay}"
                         VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="2"
-                           Text="{Binding Low, StringFormat={}{0:0}}"
-                           TextAlignment="Right"
-                           VerticalAlignment="Center"/>
+                <TextBox Grid.Column="2"
+                         Width="64"
+                         TextAlignment="Right"
+                         VerticalAlignment="Center"
+                         ToolTip.Tip="可直接输入，数值仍限制在灰度范围内"
+                         Text="{Binding LowText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"/>
             </Grid>
 
             <Grid ColumnDefinitions="64,*,64" ColumnSpacing="8">
@@ -42,10 +44,12 @@
                         Maximum="{Binding HighMax}"
                         Value="{Binding High, Mode=TwoWay}"
                         VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="2"
-                           Text="{Binding High, StringFormat={}{0:0}}"
-                           TextAlignment="Right"
-                           VerticalAlignment="Center"/>
+                <TextBox Grid.Column="2"
+                         Width="64"
+                         TextAlignment="Right"
+                         VerticalAlignment="Center"
+                         ToolTip.Tip="可直接输入，数值仍限制在灰度范围内"
+                         Text="{Binding HighText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"/>
             </Grid>
 
             <Button Content="重置" Command="{Binding ResetCommand}" HorizontalAlignment="Left"/>

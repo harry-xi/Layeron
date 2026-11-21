@@ -144,6 +144,7 @@ public class WindowLevelViewModel : Tool
             _low = v;
             OnRangeChanged();
             this.RaisePropertyChanged(nameof(Low));
+            this.RaisePropertyChanged(nameof(LowText));
         }
     }
 
@@ -158,6 +159,37 @@ public class WindowLevelViewModel : Tool
             _high = v;
             OnRangeChanged();
             this.RaisePropertyChanged(nameof(High));
+            this.RaisePropertyChanged(nameof(HighText));
+        }
+    }
+
+    /// <summary>
+    /// Direct numeric entry for the lower bound. Parsing goes through <see cref="Low"/>, so the
+    /// existing range rules still apply.
+    /// </summary>
+    public string LowText
+    {
+        get => Low.ToString("0");
+        set
+        {
+            if (double.TryParse(value?.Trim(), out var parsed))
+                Low = parsed;
+            this.RaisePropertyChanged(nameof(LowText));
+        }
+    }
+
+    /// <summary>
+    /// Direct numeric entry for the upper bound. Parsing goes through <see cref="High"/>, so the
+    /// existing range rules still apply.
+    /// </summary>
+    public string HighText
+    {
+        get => High.ToString("0");
+        set
+        {
+            if (double.TryParse(value?.Trim(), out var parsed))
+                High = parsed;
+            this.RaisePropertyChanged(nameof(HighText));
         }
     }
 
@@ -199,6 +231,8 @@ public class WindowLevelViewModel : Tool
         RebuildLut();
         this.RaisePropertyChanged(nameof(Low));
         this.RaisePropertyChanged(nameof(High));
+        this.RaisePropertyChanged(nameof(LowText));
+        this.RaisePropertyChanged(nameof(HighText));
         WindowLevelChanged?.Invoke();
     }
 

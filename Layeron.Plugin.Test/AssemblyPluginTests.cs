@@ -82,6 +82,44 @@ public sealed class AssemblyPluginTests
     }
 
     /// <summary>
+    /// The morphology plugin contributes one lazy tool panel. Activation must not create the view or
+    /// touch a mask, and unloading must leave no reachable reference to the plugin's load context.
+    /// </summary>
+    [TestMethod]
+    public void MaskMorphologyPlugin_LoadsContributesToolAndCollectsContext()
+    {
+        var adapter = new TestHostAdapter(TestVolumes.Small());
+        var manager = new PluginManager(adapter);
+
+        var (id, name) = LoadInspectAndUnloadMorphology(manager, adapter);
+
+        Assert.AreEqual("layeron.maskmorphology", id, "the id must come from the assembly metadata");
+        Assert.AreEqual("Mask Morphology", name);
+        Assert.AreEqual(0, adapter.Tools.Count, "tools must be detached on unload");
+        Assert.AreEqual(0, manager.Plugins.Count);
+
+        var leaked = manager.VerifyUnloaded();
+        Assert.AreEqual(0, leaked.Count, $"leaked load contexts: {string.Join(", ", leaked)}");
+        manager.Dispose();
+    }
+
+    private static (string Id, string Name) LoadInspectAndUnloadMorphology(
+        PluginManager manager, TestHostAdapter adapter)
+    {
+        manager.LoadAssembly(TestPaths.MaskMorphologyPluginAssembly);
+
+        var plugin = manager.Plugins.Single();
+        Assert.IsTrue(adapter.Tools.ContainsKey("layeron.maskmorphology::morphology"),
+            "the morphology panel must be attached to the host");
+        Assert.AreEqual(1, adapter.Tools.Count);
+        Assert.AreEqual(0, adapter.Opened.Count, "loading the plugin must not create the panel");
+
+        var result = (plugin.Descriptor.Id, plugin.Descriptor.Name ?? "");
+        manager.Unload("layeron.maskmorphology");
+        return result;
+    }
+
+    /// <summary>
     /// Same frame rule as <see cref="LoadInspectAndUnload"/>: the plugin instance must be out of scope
     /// before the leak check, so only value types may cross back into the caller's frame.
     /// </summary>

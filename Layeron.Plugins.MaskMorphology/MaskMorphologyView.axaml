@@ -1,0 +1,77 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="using:Layeron.Plugins.MaskMorphology"
+             mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="520"
+             x:Class="Layeron.Plugins.MaskMorphology.MaskMorphologyView"
+             x:DataType="local:MaskMorphologyViewModel">
+
+  <StackPanel Spacing="8" Margin="8">
+    <TextBlock Text="掩膜形态学" FontWeight="SemiBold" />
+
+    <TextBlock Text="源掩膜" FontSize="11" Opacity="0.7" />
+    <ComboBox ItemsSource="{Binding Layers}"
+              SelectedItem="{Binding SelectedLayer, Mode=TwoWay}"
+              HorizontalAlignment="Stretch">
+      <ComboBox.ItemTemplate>
+        <DataTemplate x:DataType="local:MaskLayerChoice">
+          <TextBlock Text="{Binding Name}" />
+        </DataTemplate>
+      </ComboBox.ItemTemplate>
+    </ComboBox>
+    <TextBlock Text="没有掩膜图层。请先在遮罩管理器中新建或绘制一层掩膜。"
+               IsVisible="{Binding !HasMasks}"
+               TextWrapping="Wrap" FontSize="11" Opacity="0.7" />
+
+    <TextBlock Text="操作" FontSize="11" Opacity="0.7" />
+    <ComboBox ItemsSource="{Binding Operations}"
+              SelectedItem="{Binding SelectedOperation, Mode=TwoWay}"
+              HorizontalAlignment="Stretch">
+      <ComboBox.ItemTemplate>
+        <DataTemplate x:DataType="local:MaskOperationChoice">
+          <TextBlock Text="{Binding Label}" />
+        </DataTemplate>
+      </ComboBox.ItemTemplate>
+    </ComboBox>
+
+    <TextBlock Text="结构元素" FontSize="11" Opacity="0.7" />
+    <ComboBox ItemsSource="{Binding Kernels}"
+              SelectedItem="{Binding SelectedKernel, Mode=TwoWay}"
+              HorizontalAlignment="Stretch">
+      <ComboBox.ItemTemplate>
+        <DataTemplate x:DataType="local:MaskKernelChoice">
+          <TextBlock Text="{Binding Label}" />
+        </DataTemplate>
+      </ComboBox.ItemTemplate>
+    </ComboBox>
+
+    <Grid ColumnDefinitions="Auto,*,Auto">
+      <TextBlock Text="半径" VerticalAlignment="Center" />
+      <Slider Grid.Column="1" Margin="8,0"
+              Minimum="0" Maximum="16"
+              TickFrequency="1" IsSnapToTickEnabled="True"
+              VerticalAlignment="Center"
+              ToolTip.Tip="滑动条始终限制在 0–16；大于 16 的值请用右侧输入框"
+              Value="{Binding SliderRadius, Mode=TwoWay}" />
+      <TextBox Grid.Column="2" Width="64" VerticalAlignment="Center"
+               TextAlignment="Right"
+               ToolTip.Tip="可直接输入任意非负整数；滑动条只是快捷输入"
+               Text="{Binding RadiusText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+    </Grid>
+
+    <CheckBox Content="输出为新图层（保留源掩膜）"
+              IsChecked="{Binding CreateCopy, Mode=TwoWay}" />
+
+    <StackPanel Orientation="Horizontal" Spacing="6">
+      <Button Content="执行" Command="{Binding ApplyCommand}" />
+      <Button Content="取消" Command="{Binding CancelCommand}" />
+    </StackPanel>
+
+    <ProgressBar Value="{Binding ProgressValue}" Minimum="0" Maximum="100" />
+    <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" />
+
+    <TextBlock TextWrapping="Wrap" FontSize="10" Opacity="0.6"
+               Text="滑动条固定为 0–16；更大的半径请直接在输入框输入（滑动条会停在 16，拖动滑动条则把数值拉回 0–16）。边界按复制边缘处理，半径 0 等同于复制；球体内核在较大半径时会更慢。" />
+  </StackPanel>
+</UserControl>

@@ -95,9 +95,35 @@ public sealed class ThresholdToolViewModel : ReactiveObject, IDisposable
         private set => this.RaiseAndSetIfChanged(ref field, value);
     }
 
-    public string LowText => ((long)Low).ToString();
+    /// <summary>
+    /// Direct numeric entry for the lower bound. Parsing goes through <see cref="Low"/>, so the
+    /// existing [0, Maximum] domain rules still apply.
+    /// </summary>
+    public string LowText
+    {
+        get => ((long)Low).ToString();
+        set
+        {
+            if (double.TryParse(value?.Trim(), out var parsed))
+                Low = parsed;
+            this.RaisePropertyChanged(nameof(LowText));
+        }
+    }
 
-    public string HighText => ((long)High).ToString();
+    /// <summary>
+    /// Direct numeric entry for the upper bound. Parsing goes through <see cref="High"/>, so the
+    /// existing [0, Maximum] domain rules still apply.
+    /// </summary>
+    public string HighText
+    {
+        get => ((long)High).ToString();
+        set
+        {
+            if (double.TryParse(value?.Trim(), out var parsed))
+                High = parsed;
+            this.RaisePropertyChanged(nameof(HighText));
+        }
+    }
 
     public string StatusText
     {

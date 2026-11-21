@@ -51,8 +51,13 @@
         <TextBlock Text="结构阈值" VerticalAlignment="Center" />
         <Slider Grid.Column="1" Width="120" VerticalAlignment="Center"
                 Minimum="0" Maximum="1" Value="{Binding Threshold, Mode=TwoWay}" />
-        <TextBlock Grid.Column="2" Text="{Binding ThresholdText}"
-                   VerticalAlignment="Center" MinWidth="40" TextAlignment="Right" />
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
+                    VerticalAlignment="Center">
+          <TextBox Width="56" TextAlignment="Right"
+                   ToolTip.Tip="可直接输入百分比，数值仍限制在 0–100"
+                   Text="{Binding ThresholdText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+          <TextBlock Text="%" VerticalAlignment="Center" />
+        </StackPanel>
       </Grid>
 
       <Grid ColumnDefinitions="Auto,*,Auto,*">

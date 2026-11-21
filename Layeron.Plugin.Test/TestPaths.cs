@@ -25,6 +25,11 @@ internal static class TestPaths
         Path.Combine(RepositoryRoot, "Layeron.Plugins.Filters", "bin", Configuration, "net10.0",
             "Layeron.Plugins.Filters.dll");
 
+    /// <summary>The mask morphology plugin: referenced for its kernel, and loaded by path for activation coverage.</summary>
+    public static string MaskMorphologyPluginAssembly { get; } =
+        Path.Combine(RepositoryRoot, "Layeron.Plugins.MaskMorphology", "bin", Configuration, "net10.0",
+            "Layeron.Plugins.MaskMorphology.dll");
+
     public static string ScriptHostPluginAssembly { get; } =
         Path.Combine(RepositoryRoot, "Layeron.Plugins.ScriptHost", "bin", Configuration, "net10.0",
             "Layeron.Plugins.ScriptHost.dll");

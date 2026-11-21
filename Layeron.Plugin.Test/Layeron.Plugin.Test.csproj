@@ -50,6 +50,11 @@
     -->
     <ProjectReference Include="..\Layeron.Plugins.Filters\Layeron.Plugins.Filters.csproj" />
     <!--
+      The mask morphology plugin is referenced so its kernel can be tested directly against a
+      brute-force reference, in addition to being loaded and unloaded through the plugin manager.
+    -->
+    <ProjectReference Include="..\Layeron.Plugins.MaskMorphology\Layeron.Plugins.MaskMorphology.csproj" />
+    <!--
       Referenced, not just built: the Python engine's numpy bridge can only be verified against a real
       interpreter, and its internal types are exposed to this assembly. This does add an assembly to the test
       output that is also a plugin, but the tests never scan the output folder for plugins - they load the
