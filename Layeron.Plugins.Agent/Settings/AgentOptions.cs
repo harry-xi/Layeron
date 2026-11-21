@@ -33,6 +33,7 @@ public sealed class AgentOptions
         public const string MaxTokens = "agent.max-tokens";
         public const string SystemPrompt = "agent.system-prompt";
         public const string KeepAttachments = "agent.attach.keep";
+        public const string AutoApproveTools = "agent.tools.auto-approve";
     }
 
     /// <summary>
@@ -197,6 +198,16 @@ public sealed class AgentOptions
     /// <summary>Whether the input area keeps its attachments after a successful send.</summary>
     public bool KeepAttachments => Read(Keys.KeepAttachments, false);
 
+    /// <summary>
+    /// Whether tool calls that normally wait for a human decision run without asking.
+    /// <para>
+    /// On by default: a run that stops at every file write or script would need someone watching it, and
+    /// the long analyses this panel is for are usually left to finish. Turning it off restores per-call
+    /// confirmation for the tools that change something outside the conversation.
+    /// </para>
+    /// </summary>
+    public bool AutoApproveTools => Read(Keys.AutoApproveTools, true);
+
     private T Read<T>(string key, T fallback)
     {
         var raw = _values.GetValueOrDefault(key);
@@ -359,6 +370,14 @@ public sealed class AgentOptions
                 Description = "关闭时，发送成功即清空输入区的附件。",
                 Kind = SettingKind.Boolean,
                 DefaultValue = false
+            },
+            new SettingItem
+            {
+                Key = Keys.AutoApproveTools,
+                Title = "自动通过工具调用",
+                Description = "开启时，需要确认的工具（写文件、删除文件、执行 Python 代码或脚本）不再逐次询问，直接执行；关闭后恢复逐次确认。",
+                Kind = SettingKind.Boolean,
+                DefaultValue = true
             }
         ]
     };

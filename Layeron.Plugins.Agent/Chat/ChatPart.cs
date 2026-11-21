@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using System.Windows.Input;
-using Avalonia.Media;
 using ReactiveUI;
 
 namespace Layeron.Plugins.Agent;
@@ -13,9 +12,9 @@ namespace Layeron.Plugins.Agent;
 /// gathered into one field per kind - a field per kind could only ever regroup the reply.
 /// </para>
 /// <para>
-/// Every brush travels with the part instead of being read from the ambient theme. The bubble is drawn on a
-/// dark background the app theme knows nothing about, so a part that fell back to the theme's default
-/// foreground would be black text on a dark bubble.
+/// Colours travel with the theme rather than the part: the transcript is drawn on the panel surface, so a
+/// part inherits the same foreground, muted text and error colour as the rest of the window in both light
+/// and dark modes.
 /// </para>
 /// <para>
 /// A part that grows - streamed prose, reasoning - notifies instead of being replaced, so its view row keeps
@@ -56,9 +55,6 @@ public abstract class ChatPart : ReactiveObject
 
     /// <summary>The part's text, for the kinds that are nothing but text.</summary>
     public virtual string Body => _body;
-
-    /// <summary>The colour this part's text is drawn in, chosen against the bubble rather than the theme.</summary>
-    public virtual IBrush BodyBrush => ChatPalette.Answer;
 
     /// <summary>Extends the part's text, which is how a streamed reply is accumulated.</summary>
     public void Append(string text)
@@ -103,8 +99,6 @@ public sealed class ChatReasoningPart : ChatPart
     public override string Header => Body.Length == 0 || IsExpanded
         ? "思考"
         : $"思考 · {Summarize(Body)}";
-
-    public override IBrush BodyBrush => ChatPalette.Muted;
 }
 
 /// <summary>
@@ -169,11 +163,12 @@ public sealed class ChatToolCallPart : ChatPart
                     ? "调用中…"
                     : "已返回";
 
-    public IBrush StatusBrush => Calls.Any(call => call.Approval == ChatToolApprovalState.Rejected || call.Failed)
-        ? ChatPalette.Failed
-        : Calls.Any(call => call.Approval == ChatToolApprovalState.Pending)
-            ? ChatPalette.Answer
-            : ChatPalette.Muted;
+    /// <summary>Whether any call in the run is waiting on the user (accent colour).</summary>
+    public bool IsPending => Calls.Any(call => call.Approval == ChatToolApprovalState.Pending);
+
+    /// <summary>Whether any call in the run failed or was rejected (error colour).</summary>
+    public bool IsFailed =>
+        Calls.Any(call => call.Approval == ChatToolApprovalState.Rejected || call.Failed);
 
     /// <summary>Adds a call, or returns the existing row when the same call is reported again.</summary>
     public ChatToolCall Add(string callId, string name, string arguments)
@@ -187,14 +182,16 @@ public sealed class ChatToolCallPart : ChatPart
         call.PropertyChanged += (_, _) =>
         {
             this.RaisePropertyChanged(nameof(StatusText));
-            this.RaisePropertyChanged(nameof(StatusBrush));
+            this.RaisePropertyChanged(nameof(IsPending));
+            this.RaisePropertyChanged(nameof(IsFailed));
         };
 
         Calls.Add(call);
 
         this.RaisePropertyChanged(nameof(Header));
         this.RaisePropertyChanged(nameof(StatusText));
-        this.RaisePropertyChanged(nameof(StatusBrush));
+        this.RaisePropertyChanged(nameof(IsPending));
+        this.RaisePropertyChanged(nameof(IsFailed));
 
         return call;
     }
@@ -281,7 +278,8 @@ public sealed class ChatToolCall : ReactiveObject
             this.RaisePropertyChanged();
             this.RaisePropertyChanged(nameof(NeedsApproval));
             this.RaisePropertyChanged(nameof(StatusText));
-            this.RaisePropertyChanged(nameof(StatusBrush));
+            this.RaisePropertyChanged(nameof(IsPending));
+            this.RaisePropertyChanged(nameof(IsFailed));
         }
     }
 
@@ -306,11 +304,11 @@ public sealed class ChatToolCall : ReactiveObject
         _ => _completed ? (_failed ? "失败" : "已返回") : "调用中…"
     };
 
-    public IBrush StatusBrush => _approval is ChatToolApprovalState.Pending
-        ? ChatPalette.Answer
-        : _approval == ChatToolApprovalState.Rejected || _failed
-            ? ChatPalette.Failed
-            : ChatPalette.Muted;
+    /// <summary>Whether the call is waiting on the user (accent colour).</summary>
+    public bool IsPending => _approval is ChatToolApprovalState.Pending;
+
+    /// <summary>Whether the call failed or was rejected (error colour).</summary>
+    public bool IsFailed => _approval == ChatToolApprovalState.Rejected || _failed;
 
     /// <summary>Arguments are always shown, so a tool that takes none still reads as a call that was made.</summary>
     public string ArgumentsText => Arguments.Length > 0 ? Arguments : "（无参数）";
@@ -320,9 +318,6 @@ public sealed class ChatToolCall : ReactiveObject
 
     /// <summary>Whether there is an outcome worth drawing yet.</summary>
     public bool HasResult => _completed;
-
-    /// <summary>Result colour: a failed call must not read like a successful one.</summary>
-    public IBrush ResultBrush => _failed ? ChatPalette.Failed : ChatPalette.Answer;
 
     /// <summary>
     /// Turns the row into a question and wires the two answers. The commands are created here rather than
@@ -361,36 +356,12 @@ public sealed class ChatToolCall : ReactiveObject
         Failed = failed;
         Completed = true;
 
-        // The caption and the colours are derived from the values above, so they change with the completion
-        // even when the values being set did not themselves move.
+        // The caption and the status classes are derived from the values above, so they change with the
+        // completion even when the values being set did not themselves move.
         this.RaisePropertyChanged(nameof(StatusText));
-        this.RaisePropertyChanged(nameof(StatusBrush));
+        this.RaisePropertyChanged(nameof(IsPending));
+        this.RaisePropertyChanged(nameof(IsFailed));
         this.RaisePropertyChanged(nameof(ResultText));
-        this.RaisePropertyChanged(nameof(ResultBrush));
         this.RaisePropertyChanged(nameof(HasResult));
     }
-}
-
-/// <summary>
-/// The colours the transcript draws with, declared once because the transcript is a dark surface inside a
-/// themed window and cannot inherit the theme's own foregrounds.
-/// </summary>
-internal static class ChatPalette
-{
-    public static readonly IBrush Bubble = new SolidColorBrush(Color.Parse("#2B2B2B"));
-
-    /// <summary>The answer, and anything read as content: the one colour that must stay legible on the bubble.</summary>
-    public static readonly IBrush Answer = new SolidColorBrush(Color.Parse("#E8E8E8"));
-
-    /// <summary>Reasoning, captions and argument text: present, but plainly not the answer.</summary>
-    public static readonly IBrush Muted = new SolidColorBrush(Color.Parse("#A8A8A8"));
-
-    public static readonly IBrush Failed = new SolidColorBrush(Color.Parse("#E08A8A"));
-    public static readonly IBrush UserBubble = new SolidColorBrush(Color.Parse("#2D6CDF"));
-
-    /// <summary>Guidance is still the user speaking, but mid-turn: a quieter blue says so.</summary>
-    public static readonly IBrush GuidanceBubble = new SolidColorBrush(Color.Parse("#2A4E7A"));
-
-    public static readonly IBrush UserText = Brushes.White;
-    public static readonly IBrush SystemText = new SolidColorBrush(Color.Parse("#909090"));
 }

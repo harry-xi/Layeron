@@ -111,7 +111,7 @@ public sealed class ChatModelTests
 
     /// <summary>
     /// Both the fold and its content have to be legible: the chevron is drawn by the theme's template, the
-    /// captions are drawn by the panel, and the two must agree about what "on a dark bubble" means.
+    /// captions are drawn by the panel, and the two must agree about which surface they sit on.
     /// </summary>
     [TestMethod]
     public void FoldableParts_CarryACaptionForTheCollapsedState()
@@ -348,9 +348,9 @@ public sealed class ChatModelTests
     }
 
     /// <summary>
-    /// The panels' folds and the style that makes them readable on a dark bubble are declared in two files,
+    /// The panels' folds and the style that gives them a readable themed surface are declared in two files,
     /// so this is the check that they still agree: a fold tagged with a class no style targets would open
-    /// onto a black chevron and a black caption.
+    /// onto an unstyled chevron and caption.
     /// </summary>
     [TestMethod]
     public void TheFoldsThePanelDeclares_UseTheStyleThatColoursThem()

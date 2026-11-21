@@ -225,6 +225,28 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
         ? "AI 正在工作；输入补充指导后点「指导」"
         : "输入消息后点发送";
 
+    // -----------------------------------------------------------------------
+    //  Options
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// The panel's copy of the auto-approval preference. It is the same stored value the Agent settings
+    /// page edits, exposed here because it changes how the next run behaves and is worth reaching without
+    /// leaving the conversation.
+    /// </summary>
+    public bool AutoApproveTools
+    {
+        get => _options.AutoApproveTools;
+        set
+        {
+            if (value == _options.AutoApproveTools)
+                return;
+
+            _options.Set(AgentOptions.Keys.AutoApproveTools, value);
+            this.RaisePropertyChanged();
+        }
+    }
+
     public bool IsBusy
     {
         get => _busy;
@@ -393,7 +415,7 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
             });
 
             // The next assistant content belongs after the guidance, not above it: closing the current
-            // bubble is what keeps the transcript's order the order things were said in.
+            // reply is what keeps the transcript's order the order things were said in.
             _splitReply = true;
 
             StatusText = "已发送指导，AI 会在下一次模型调用时采纳";
@@ -418,14 +440,14 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
     /// <summary>
     /// Drains one turn into the transcript, including the approval round-trips it needs.
     /// <para>
-    /// The transcript is a log and a reply arrives in pieces, so a bubble has to be appended on the first
+    /// The transcript is a log and a reply arrives in pieces, so a reply has to be appended on the first
     /// piece and then grown in place. A tool call is a piece like any other, and an approval request is a
     /// call that has stopped to ask: it becomes a row with a decision, and the run resumes only once every
     /// pending call has an answer - the framework binds all of them to the session and auto-rejects any
     /// request left unanswered.
     /// </para>
     /// <para>
-    /// Reasoning is folded into the same bubble as a named section. It is not the answer, but hiding it
+    /// Reasoning is folded into the same reply as a named section. It is not the answer, but hiding it
     /// entirely is worse: when a model returns reasoning and nothing else, a panel that dropped it would
     /// show an empty reply and look broken.
     /// </para>
@@ -444,22 +466,22 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
 
         var answer = new StringBuilder();
         var reasoning = new StringBuilder();
-        ChatMessage? bubble = null;
+        ChatMessage? reply = null;
         var callOwners = new Dictionary<string, ChatMessage>();
         var toolCalls = 0;
         var pending = new List<PendingApproval>();
 
-        // Guidance closes the reply that was on screen. The next piece of prose opens a new bubble below
-        // the guidance message, while a tool result still belongs to the bubble that made the call.
-        ChatMessage CurrentBubble()
+        // Guidance closes the reply that was on screen. The next piece of prose opens a new reply below
+        // the guidance message, while a tool result still belongs to the reply that made the call.
+        ChatMessage CurrentReply()
         {
             if (_splitReply)
             {
                 _splitReply = false;
-                bubble = null;
+                reply = null;
             }
 
-            return bubble ??= AppendBubble();
+            return reply ??= AppendReply();
         }
 
         void Consume(AgentResponseUpdate update)
@@ -469,15 +491,15 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
                 switch (content)
                 {
                     case TextReasoningContent { Text.Length: > 0 } reasoningChunk:
-                        var reasoningBubble = CurrentBubble();
+                        var reasoningReply = CurrentReply();
                         reasoning.Append(reasoningChunk.Text);
-                        reasoningBubble.AppendReasoning(reasoningChunk.Text);
+                        reasoningReply.AppendReasoning(reasoningChunk.Text);
                         break;
 
                     case TextContent { Text.Length: > 0 } text:
-                        var textBubble = CurrentBubble();
+                        var textReply = CurrentReply();
                         answer.Append(text.Text);
-                        textBubble.AppendText(text.Text);
+                        textReply.AppendText(text.Text);
                         break;
 
                     // The call and its result are two events, not one, because they happen at different
@@ -485,21 +507,21 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
                     // show and a single combined event could not. The id is the only thing that joins them.
                     case FunctionCallContent call:
                         var knownCall = callOwners.TryGetValue(call.CallId, out var existing);
-                        var callBubble = knownCall ? existing! : CurrentBubble();
-                        callOwners[call.CallId] = callBubble;
+                        var callReply = knownCall ? existing! : CurrentReply();
+                        callOwners[call.CallId] = callReply;
                         if (!knownCall)
                             toolCalls++;
-                        callBubble.AddToolCall(call.CallId, call.Name, ChatFormat.Arguments(call.Arguments));
+                        callReply.AddToolCall(call.CallId, call.Name, ChatFormat.Arguments(call.Arguments));
                         StatusText = $"调用工具 {call.Name}…";
                         break;
 
                     case FunctionResultContent result:
-                        // A result belongs to the bubble that made the call, wherever a guidance message
-                        // has moved the current bubble to.
-                        var resultBubble = callOwners.TryGetValue(result.CallId, out var owner)
+                        // A result belongs to the reply that made the call, wherever a guidance message
+                        // has moved the current reply to.
+                        var resultReply = callOwners.TryGetValue(result.CallId, out var owner)
                             ? owner
-                            : CurrentBubble();
-                        resultBubble.CompleteToolCall(
+                            : CurrentReply();
+                        resultReply.CompleteToolCall(
                             result.CallId,
                             ChatFormat.Result(result.Result),
                             result.Exception is not null);
@@ -524,15 +546,28 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
             // An approval for a call that is already on screen stays with that call's row, even if a
             // guidance message has since moved the reply on.
             var knownApproval = callOwners.TryGetValue(call.CallId, out var owner);
-            var approvalBubble = knownApproval ? owner! : CurrentBubble();
-            callOwners[call.CallId] = approvalBubble;
+            var approvalReply = knownApproval ? owner! : CurrentReply();
+            callOwners[call.CallId] = approvalReply;
             if (!knownApproval)
                 toolCalls++;
 
             var decision = new PendingApproval(approval);
             pending.Add(decision);
 
-            decision.Call = approvalBubble.AddToolApproval(call.CallId, name, arguments, decision.Complete);
+            if (_options.AutoApproveTools)
+            {
+                // No question is asked, so no question row is built. The call row alone records what ran,
+                // and resolving the approval the same way a click would keeps the transcript's state
+                // honest without leaving a button nobody needs to press.
+                decision.Call = approvalReply.AddToolCall(call.CallId, name, arguments);
+                decision.Complete(approved: true);
+
+                StatusText = $"自动通过：{name}";
+                _services.Log.Info("工具 {Tool} 已自动通过，调用 {CallId}。", name, call.CallId);
+                return;
+            }
+
+            decision.Call = approvalReply.AddToolApproval(call.CallId, name, arguments, decision.Complete);
 
             StatusText = $"等待确认：{name}";
             _services.Log.Info("工具 {Tool} 需要确认，调用 {CallId}。", name, call.CallId);
@@ -564,7 +599,7 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
 
         // Appended on the first piece so the rest of the reply is visibly the same turn, and so a
         // cancellation mid-answer leaves what already arrived on screen.
-        ChatMessage AppendBubble()
+        ChatMessage AppendReply()
         {
             var message = new ChatMessage { Role = ChatRole.Assistant };
             Append(message);
@@ -606,7 +641,7 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
     {
         public ToolApprovalRequestContent Request { get; } = request;
 
-        /// <summary>The transcript row, set once the row has been added to the bubble.</summary>
+        /// <summary>The transcript row, set once the row has been added to the transcript.</summary>
         public ChatToolCall? Call { get; set; }
 
         public TaskCompletionSource<bool> Decision { get; } =

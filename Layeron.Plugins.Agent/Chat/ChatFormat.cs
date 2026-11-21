@@ -62,7 +62,7 @@ internal static class ChatFormat
 
     /// <summary>
     /// Both the transcript row and the log line carry argument and result text, and neither should be able to
-    /// grow a chat bubble to the size of a file because a tool returned one.
+    /// grow a transcript row to the size of a file because a tool returned one.
     /// </summary>
     private static string Truncate(string text) => text.Length <= 400 ? text : text[..400] + "…";
 }

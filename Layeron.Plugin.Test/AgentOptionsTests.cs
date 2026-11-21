@@ -77,6 +77,21 @@ public sealed class AgentOptionsTests
         Assert.AreEqual("https://api.openai.com/v1", options.Endpoint);
         Assert.AreEqual("gpt-4o-mini", options.Model);
         Assert.AreEqual("", options.ApiKey);
+        Assert.IsTrue(options.AutoApproveTools, "an agent that stops at every side effect cannot run unattended");
+    }
+
+    /// <summary>
+    /// Auto-approval is on by default but remains a choice: turning it off restores per-call confirmation,
+    /// which is the only way a user can keep a hand on the tools that change something outside the chat.
+    /// </summary>
+    [TestMethod]
+    public void ToolApproval_CanBeTurnedOffAndStaysOff()
+    {
+        var options = NewOptions();
+        options.Set(AgentOptions.Keys.AutoApproveTools, false);
+
+        Assert.IsFalse(options.AutoApproveTools);
+        Assert.IsFalse(NewOptions().AutoApproveTools, "the choice has to survive a restart");
     }
 
     [TestMethod]

@@ -7,95 +7,178 @@
              x:Class="Layeron.Plugins.Agent.AgentChatView"
              x:DataType="local:AgentChatViewModel">
   <UserControl.Resources>
-    <!--
-      颜色在这里声明一次，而不是让控件去继承：气泡是深色的，主题的前景色对它一无所知，
-      任何没写颜色的控件都会拿到主题的黑字，在深色气泡上等于看不见。
-    -->
-    <SolidColorBrush x:Key="ChatAnswerBrush" Color="#E8E8E8"/>
-    <SolidColorBrush x:Key="ChatMutedBrush" Color="#A8A8A8"/>
-    <SolidColorBrush x:Key="ChatFailedBrush" Color="#E08A8A"/>
-    <SolidColorBrush x:Key="ChatRaisedBrush" Color="#1C1C1C"/>
     <FontFamily x:Key="ChatMonoFont">Cascadia Code, Consolas, Menlo, Monospace</FontFamily>
-    <!-- 气泡最大宽度按面板宽度算，见 BubbleWidthConverter。 -->
-    <local:BubbleWidthConverter x:Key="BubbleWidth"/>
   </UserControl.Resources>
 
   <UserControl.Styles>
     <!--
-      折叠头（思考 / 调用工具）必须自己定色：Expander 的模板既不设 Foreground 也不给展开箭头定色，
-      两者都走主题的 ThemeForegroundBrush——在深色气泡上就是黑字配黑箭头，等于没有折叠头。
-      这些样式限定在 chatFold 上，别的 Expander 不受影响。
-    -->
-    <Style Selector="Expander.chatFold">
-      <Setter Property="Foreground" Value="{StaticResource ChatMutedBrush}"/>
-      <Setter Property="Background" Value="{StaticResource ChatRaisedBrush}"/>
-      <Setter Property="CornerRadius" Value="6"/>
-      <Setter Property="Padding" Value="6,2"/>
-      <Setter Property="MinHeight" Value="0"/>
-      <Setter Property="HorizontalAlignment" Value="Stretch"/>
-      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-    </Style>
-    <Style Selector="Expander.chatFold /template/ Path">
-      <Setter Property="Fill" Value="{StaticResource ChatMutedBrush}"/>
-    </Style>
-    <Style Selector="Expander.chatFold:pointerover /template/ Border">
-      <Setter Property="BorderBrush" Value="{StaticResource ChatMutedBrush}"/>
-    </Style>
-
-    <!--
-      对话名称平时就是工具栏里的一行字；只有获得焦点时才出现边框和淡背景，直接改名字，
-      不需要额外的重命名按钮。提交时机见 AgentChatView.axaml.cs。
+      对话框名称平时就是一行字：边框和背景都透明，只有获得焦点时才浮出输入框。
+      提交时机见 AgentChatView.axaml.cs。
     -->
     <Style Selector="TextBox.chatTitle">
       <Setter Property="Background" Value="Transparent"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="BorderBrush" Value="Transparent"/>
-      <Setter Property="Padding" Value="3,1"/>
+      <Setter Property="Padding" Value="4,1"/>
       <Setter Property="MinHeight" Value="0"/>
       <Setter Property="FontSize" Value="11"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/>
     </Style>
     <Style Selector="TextBox.chatTitle:focus">
-      <Setter Property="BorderBrush" Value="{StaticResource ChatMutedBrush}"/>
-      <Setter Property="Background" Value="#20808080"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderMidBrush}"/>
+      <Setter Property="Background" Value="{DynamicResource ThemeControlLowBrush}"/>
+    </Style>
+
+    <!--
+      消息不再画成气泡：每一条是一条带角色色条的记录，正文占满面板宽度。
+      颜色全部来自主题，浅色和深色切换时不需要另一套聊天配色。
+    -->
+    <Style Selector="Grid.chatMessage">
+      <Setter Property="Margin" Value="0,0,0,18"/>
+    </Style>
+    <Style Selector="Border.chatRail">
+      <Setter Property="Width" Value="3"/>
+      <Setter Property="CornerRadius" Value="1.5"/>
+      <Setter Property="Background" Value="{DynamicResource ThemeBorderMidBrush}"/>
+    </Style>
+    <Style Selector="Grid.chatMessage.user Border.chatRail">
+      <Setter Property="Background" Value="{DynamicResource LayeronAccentBrush}"/>
+    </Style>
+    <Style Selector="Grid.chatMessage.system Border.chatRail">
+      <Setter Property="Background" Value="Transparent"/>
+    </Style>
+
+    <Style Selector="TextBlock.chatRole">
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Foreground" Value="{DynamicResource ThemeForegroundBrush}"/>
+    </Style>
+    <Style Selector="Grid.chatMessage.user TextBlock.chatRole">
+      <Setter Property="Foreground" Value="{DynamicResource LayeronAccentBrush}"/>
+    </Style>
+    <Style Selector="Grid.chatMessage.system TextBlock.chatRole">
+      <Setter Property="Foreground" Value="{DynamicResource ThemeForegroundLowBrush}"/>
+    </Style>
+
+    <Style Selector="TextBlock.chatTime">
+      <Setter Property="FontSize" Value="10"/>
+      <Setter Property="Foreground" Value="{DynamicResource ThemeForegroundLowBrush}"/>
+      <Setter Property="Opacity" Value="0.7"/>
+    </Style>
+
+    <Style Selector="TextBlock.chatBody">
+      <Setter Property="TextWrapping" Value="Wrap"/>
+      <Setter Property="LineHeight" Value="19"/>
+      <Setter Property="Foreground" Value="{DynamicResource ThemeForegroundBrush}"/>
+    </Style>
+    <Style Selector="Grid.chatMessage.system TextBlock.chatBody">
+      <Setter Property="Foreground" Value="{DynamicResource ThemeForegroundLowBrush}"/>
+      <Setter Property="FontStyle" Value="Italic"/>
+    </Style>
+
+    <Style Selector="TextBlock.chatStatus">
+      <Setter Property="FontSize" Value="10"/>
+      <Setter Property="Foreground" Value="{DynamicResource ThemeForegroundLowBrush}"/>
+    </Style>
+    <Style Selector="TextBlock.chatStatus.pending">
+      <Setter Property="Foreground" Value="{DynamicResource LayeronAccentBrush}"/>
+    </Style>
+    <Style Selector="TextBlock.chatStatus.failed">
+      <Setter Property="Foreground" Value="{DynamicResource ErrorBrush}"/>
+    </Style>
+
+    <Style Selector="TextBlock.chatMono">
+      <Setter Property="FontFamily" Value="{StaticResource ChatMonoFont}"/>
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+      <Setter Property="Foreground" Value="{DynamicResource ThemeForegroundLowBrush}"/>
+    </Style>
+    <Style Selector="TextBlock.chatMono.failed">
+      <Setter Property="Foreground" Value="{DynamicResource ErrorBrush}"/>
+    </Style>
+
+    <!--
+      思考 / 工具调用仍是可折叠的次要内容，但改成主题表面的圆角卡片，而不是更暗的气泡内层。
+    -->
+    <Style Selector="Expander.chatFold">
+      <Setter Property="Foreground" Value="{DynamicResource ThemeForegroundLowBrush}"/>
+      <Setter Property="Background" Value="{DynamicResource ThemeControlMidBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderLowBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="6"/>
+      <Setter Property="Padding" Value="8,3"/>
+      <Setter Property="MinHeight" Value="0"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+    </Style>
+    <Style Selector="Expander.chatFold /template/ Path">
+      <Setter Property="Fill" Value="{DynamicResource ThemeForegroundLowBrush}"/>
+    </Style>
+    <Style Selector="Expander.chatFold:pointerover /template/ Border">
+      <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderMidBrush}"/>
+    </Style>
+
+    <Style Selector="Border.chatChip">
+      <Setter Property="Background" Value="{DynamicResource ThemeControlMidBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderLowBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="4"/>
+      <Setter Property="Padding" Value="6,1"/>
+    </Style>
+
+    <Style Selector="TextBox.chatInput">
+      <Setter Property="CornerRadius" Value="6"/>
     </Style>
   </UserControl.Styles>
 
   <DockPanel>
     <!--
-      顶部工具栏只留对话级操作（取消、新建对话）：发送按钮已经下移到输入框旁边，和常见聊天软件一致，
-      这两个动作改变的是整轮对话的状态，所以留在上面而不是挤在发送旁边。
-      新建对话不删除当前记录：历史由独立的「Agent 历史」工具窗口管理。
+      顶部只保留对话级操作（历史、取消、新建）：它们改变的是整轮对话，不跟输入框抢位置。
     -->
-    <Border DockPanel.Dock="Top" Background="{DynamicResource ThemeControlMidBrush}" Padding="6,4">
-      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-        <TextBox Grid.Column="0" Classes="chatTitle"
+    <Border DockPanel.Dock="Top"
+            Background="{DynamicResource ThemeControlMidBrush}"
+            BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+            BorderThickness="0,0,0,1"
+            Padding="8,5">
+      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+        <Border Grid.Column="0" Width="20" Height="20" CornerRadius="6"
+                Background="{DynamicResource LayeronAccentBrush}">
+          <TextBlock Text="A" FontSize="11" FontWeight="Bold"
+                     Foreground="{DynamicResource LayeronAccentTextBrush}"
+                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+
+        <TextBox Grid.Column="1" Classes="chatTitle"
                  Text="{Binding ConversationTitleDraft, Mode=TwoWay}"
                  LostFocus="TitleBox_LostFocus"
                  KeyDown="TitleBox_KeyDown"
+                 VerticalAlignment="Center"
                  ToolTip.Tip="点击修改对话名称；Enter 保存，Esc 取消"/>
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
-          <Button Content="历史" Command="{Binding OpenHistoryCommand}"
+
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+          <Button Classes="ghost compact" Content="历史" Command="{Binding OpenHistoryCommand}"
                   ToolTip.Tip="打开独立的「Agent 历史」窗口"/>
-          <Button Content="取消" Command="{Binding CancelCommand}" IsEnabled="{Binding IsBusy}"/>
-          <!--
-            新建对话而不是清空：当前对话已经自动保存在历史里，这里只是开始另一场，
-            要删除旧对话请用独立的「Agent 历史」工具窗口。
-          -->
-          <Button Content="新建对话" Command="{Binding NewConversationCommand}"
+          <Button Classes="ghost compact" Content="取消" Command="{Binding CancelCommand}"
+                  IsEnabled="{Binding IsBusy}"/>
+          <Button Classes="compact" Content="新建对话" Command="{Binding NewConversationCommand}"
                   ToolTip.Tip="开始一场新对话；当前对话仍保留在历史中"/>
-          <ProgressBar Width="80" Height="4" VerticalAlignment="Center"
+          <ProgressBar Width="56" Height="4" VerticalAlignment="Center"
                        IsIndeterminate="True" IsVisible="{Binding IsBusy}"/>
         </StackPanel>
       </Grid>
     </Border>
 
-    <Border DockPanel.Dock="Bottom" Padding="6">
-      <StackPanel Spacing="4">
-        <!-- 待发附件：换行排布，附件多时不会把输入框挤出窗口。 -->
+    <!--
+      输入区：附件在上，正文居中，状态与发送按钮同一行。底色比正文略深，形成一条稳定的输入带。
+    -->
+    <Border DockPanel.Dock="Bottom" Padding="8,6"
+            Background="{DynamicResource ThemeControlMidBrush}"
+            BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+            BorderThickness="0,1,0,0">
+      <StackPanel Spacing="6">
         <DockPanel IsVisible="{Binding HasAttachments}">
-          <Button DockPanel.Dock="Right" Content="全部移除" FontSize="11" Padding="6,1"
+          <Button DockPanel.Dock="Right" Classes="ghost compact" Content="全部移除"
                   VerticalAlignment="Top" Margin="6,0,0,0"
                   Command="{Binding RemoveAllAttachmentsCommand}"/>
           <ItemsControl ItemsSource="{Binding Attachments}">
@@ -106,13 +189,12 @@
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
               <DataTemplate DataType="local:AgentAttachment">
-                <Border Background="#20808080" CornerRadius="10" Padding="8,2" Margin="0,0,6,4"
-                        ToolTip.Tip="{Binding Tooltip}">
-                  <StackPanel Orientation="Horizontal" Spacing="6">
-                    <TextBlock Text="{Binding DisplayText}" FontSize="11" VerticalAlignment="Center"
+                <Border Classes="chatChip" Margin="0,0,4,4" ToolTip.Tip="{Binding Tooltip}">
+                  <StackPanel Orientation="Horizontal" Spacing="4">
+                    <TextBlock Text="{Binding DisplayText}" FontSize="10" VerticalAlignment="Center"
                                MaxWidth="200" TextTrimming="CharacterEllipsis"/>
-                    <Button Content="✕" FontSize="10" Padding="4,0" Background="Transparent"
-                            BorderThickness="0" VerticalAlignment="Center"
+                    <Button Classes="ghost" Content="✕" FontSize="10" Width="16" Height="16"
+                            MinWidth="0" MinHeight="0" Padding="0" VerticalAlignment="Center"
                             Command="{Binding RemoveCommand}"/>
                   </StackPanel>
                 </Border>
@@ -121,140 +203,148 @@
           </ItemsControl>
         </DockPanel>
 
-        <TextBox Text="{Binding Draft, Mode=TwoWay}"
+        <TextBox Classes="chatInput"
+                 Text="{Binding Draft, Mode=TwoWay}"
                  AcceptsReturn="True"
                  TextWrapping="Wrap"
-                 MinHeight="56" MaxHeight="140"
+                 MinHeight="60" MaxHeight="150"
                  PlaceholderText="{Binding InputHint}"/>
 
-        <!--
-          发送按钮在输入框正下方、右对齐：写完就往下按，是聊天软件的常规动线。
-          AI 工作时同一个按钮变成「指导」，把输入送进正在运行的一轮，而不是另起一轮。
-          状态文字与它同一行左端，因为"现在在干什么"正是按下按钮前后要看的东西。
-        -->
-        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-          <TextBlock Grid.Column="0" Text="{Binding StatusText}" FontSize="11" Opacity="0.7"
+        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+          <TextBlock Grid.Column="0" Text="{Binding StatusText}" FontSize="11" Opacity="0.65"
                      VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-          <Button Grid.Column="1" Content="{Binding SendLabel}" MinWidth="72"
+          <!--
+            与 Agent 设置页中的开关是同一个存储值：放在状态行旁边，是因为它决定下一次工具调用
+            是否停下来问人，属于运行时的选择，不该逼用户离开对话去设置窗口。
+          -->
+          <CheckBox Grid.Column="1" Content="自动通过" FontSize="11"
+                    IsChecked="{Binding AutoApproveTools, Mode=TwoWay}"
+                    VerticalAlignment="Center"
+                    ToolTip.Tip="开启后，写文件、删除文件、执行 Python 代码或脚本不再逐次确认；与 Agent 设置页中的开关相同"/>
+          <Button Grid.Column="2" Classes="accent" Content="{Binding SendLabel}" MinWidth="76"
                   Command="{Binding SendCommand}" IsEnabled="{Binding CanSend}"/>
         </Grid>
 
         <!--
-          添加附件只有两条不依赖插件类型的入口：从磁盘选，或手填路径。具体路径怎么来
-          （拖放、历史记录、某种外部对象）由调用方决定，面板只负责把它变成一条附件。
+          添加附件只有两条不依赖插件类型的入口：从磁盘选，或手填路径。
         -->
         <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
-          <Button Grid.Column="0" Content="添加文件…" Command="{Binding BrowseAttachmentCommand}"/>
+          <Button Grid.Column="0" Classes="ghost compact" Content="添加文件…"
+                  Command="{Binding BrowseAttachmentCommand}"/>
           <TextBox Grid.Column="1" Text="{Binding ExternalPath, Mode=TwoWay}"
                    PlaceholderText="或粘贴一个文件路径"/>
-          <Button Grid.Column="2" Content="添加路径" Command="{Binding AddPathAttachmentCommand}"/>
-          <Button Grid.Column="3" Content="存为文本附件" Command="{Binding AddTextAttachmentCommand}"
+          <Button Grid.Column="2" Classes="ghost compact" Content="添加路径"
+                  Command="{Binding AddPathAttachmentCommand}"/>
+          <Button Grid.Column="3" Classes="ghost compact" Content="存为文本附件"
+                  Command="{Binding AddTextAttachmentCommand}"
                   ToolTip.Tip="把输入框里的内容变成一个文本附件"/>
         </Grid>
       </StackPanel>
     </Border>
 
     <!--
-      消息列表。气泡按角色左右分开：谁说的要一眼可见，而不是靠读标题。
+      对话记录：扁平列表，不再使用左右气泡。角色由左侧色条、名称和时间表达，
+      正文使用主题前景色，思考/工具调用折叠成主题表面的小卡片。
     -->
-    <ScrollViewer x:Name="MessageScroller" VerticalScrollBarVisibility="Auto">
-      <ItemsControl ItemsSource="{Binding Messages}" Margin="6">
-        <ItemsControl.ItemTemplate>
-          <DataTemplate DataType="local:ChatMessage">
-            <StackPanel HorizontalAlignment="{Binding BubbleAlignment}" Margin="0,0,0,10">
-              <TextBlock Text="{Binding Header}" FontSize="10" Opacity="0.55" Margin="4,0,4,2"
-                         HorizontalAlignment="{Binding BubbleAlignment}"/>
-              <!--
-                宽度按面板宽度的 80% 走：窗口拉宽时气泡跟着变宽，但仍留出一条明显的空白，
-                左右对齐的气泡才仍然分得清是谁说的。
-              -->
-              <Border Background="{Binding BubbleBrush}" CornerRadius="10" Padding="10,6"
-                      MaxWidth="{Binding $parent[ScrollViewer].Bounds.Width, Converter={StaticResource BubbleWidth}}">
-                <StackPanel Spacing="4">
+    <Panel>
+      <ScrollViewer x:Name="MessageScroller" VerticalScrollBarVisibility="Auto"
+                    Padding="10,10,10,2">
+        <ItemsControl ItemsSource="{Binding Messages}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="local:ChatMessage">
+              <Grid Classes="chatMessage"
+                    Classes.user="{Binding IsUser}"
+                    Classes.assistant="{Binding IsAssistant}"
+                    Classes.system="{Binding IsSystem}"
+                    ColumnDefinitions="3,*" ColumnSpacing="10">
+                <Border Grid.Column="0" Classes="chatRail" Margin="0,2,0,2"/>
+
+                <StackPanel Grid.Column="1" Spacing="6">
+                  <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="6">
+                    <TextBlock Grid.Column="0" Classes="chatRole" Text="{Binding RoleLabel}"
+                               VerticalAlignment="Center"/>
+                    <Border Grid.Column="1" IsVisible="{Binding IsGuidance}"
+                            Background="{DynamicResource LayeronAccentSubtleBrush}"
+                            CornerRadius="3" Padding="4,0" VerticalAlignment="Center">
+                      <TextBlock Text="指导" FontSize="9"
+                                 Foreground="{DynamicResource LayeronAccentBrush}"/>
+                    </Border>
+                    <TextBlock Grid.Column="3" Classes="chatTime" Text="{Binding TimeText}"
+                               VerticalAlignment="Center"/>
+                  </Grid>
+
                   <!--
-                    用户的正文与 Agent 的回复只会有其中一种，所以这里是二选一而不是并列：
-                    用户消息是一段普通正文，Agent 回复则是一串按产生顺序排列的部分
-                    （思考、工具调用、回答），顺序本身就是它要表达的东西。
+                    用户/系统消息是一段正文；Agent 回复是一串按产生顺序排列的部分
+                    （思考、工具调用、回答）。
                   -->
-                  <TextBlock Text="{Binding Body}" TextWrapping="Wrap"
-                             Foreground="{Binding BodyBrush}"
-                             IsVisible="{Binding HasBody}"/>
+                  <TextBlock Classes="chatBody" Text="{Binding Body}" IsVisible="{Binding HasBody}"/>
+
                   <ItemsControl ItemsSource="{Binding Parts}" IsVisible="{Binding HasParts}">
                     <ItemsControl.ItemsPanel>
                       <ItemsPanelTemplate>
-                        <StackPanel Spacing="4"/>
+                        <StackPanel Spacing="6"/>
                       </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.DataTemplates>
                       <DataTemplate DataType="local:ChatTextPart">
-                        <TextBlock Text="{Binding Body}" TextWrapping="Wrap"
-                                   Foreground="{Binding BodyBrush}"/>
+                        <TextBlock Classes="chatBody" Text="{Binding Body}"/>
                       </DataTemplate>
 
-                      <!--
-                        思考块默认折叠：思考很长，展开会把对话挤没，而它只是回答的来路，不是回答。
-                        折叠头带上前五个字的摘要，所以两条思路不用展开也分得清；底色比气泡更深，
-                        折起来时它就是一条可以点开的横条。
-                      -->
+                      <!-- 思考：默认折叠，折叠头带摘要。 -->
                       <DataTemplate DataType="local:ChatReasoningPart">
                         <Expander Classes="chatFold" Header="{Binding Header}"
                                   IsExpanded="{Binding IsExpanded, Mode=TwoWay}">
                           <TextBlock Text="{Binding Body}" TextWrapping="Wrap" FontSize="11"
-                                     Margin="0,2,0,0"
-                                     Foreground="{Binding BodyBrush}"/>
+                                     LineHeight="18" Margin="0,2,0,0"
+                                     Foreground="{DynamicResource ThemeForegroundLowBrush}"/>
                         </Expander>
                       </DataTemplate>
 
-                      <!--
-                        一次工具调用：工具名 + 参数 + 结果。调用与结果合成一行，是因为它们本来就是
-                        一回事：没有结果的调用就是"还在跑"，拆成两行反而看不出配对关系。
-                        默认折叠，所以折叠头必须自己说清状态（调用中／已返回／有失败），
-                        否则用户要点开才知道刚才发生了什么。
-                      -->
+                      <!-- 工具调用：调用与结果合成一行，状态在折叠头上就能看见。 -->
                       <DataTemplate DataType="local:ChatToolCallPart">
                         <Expander Classes="chatFold" IsExpanded="{Binding IsExpanded, Mode=TwoWay}">
                           <Expander.Header>
                             <DockPanel>
                               <TextBlock DockPanel.Dock="Right" Text="{Binding StatusText}"
-                                         Foreground="{Binding StatusBrush}" FontSize="10"
+                                         Classes="chatStatus"
+                                         Classes.pending="{Binding IsPending}"
+                                         Classes.failed="{Binding IsFailed}"
                                          Margin="6,0,0,0"/>
                               <TextBlock Text="{Binding Header}" FontSize="11"
-                                         Foreground="{StaticResource ChatMutedBrush}"/>
+                                         Foreground="{DynamicResource ThemeForegroundLowBrush}"/>
                             </DockPanel>
                           </Expander.Header>
                           <ItemsControl ItemsSource="{Binding Calls}" Margin="0,2,0,0">
                             <ItemsControl.ItemTemplate>
                               <DataTemplate DataType="local:ChatToolCall">
-                                <StackPanel Spacing="1" Margin="0,0,0,4">
-                                  <DockPanel>
-                                    <TextBlock DockPanel.Dock="Right" Text="{Binding StatusText}"
-                                               Foreground="{Binding StatusBrush}" FontSize="10"/>
-                                    <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="SemiBold"
-                                               Foreground="{StaticResource ChatAnswerBrush}"
+                                <StackPanel Spacing="3" Margin="0,0,0,6">
+                                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                    <TextBlock Grid.Column="0" Text="{Binding Name}" FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource ThemeForegroundBrush}"
                                                TextTrimming="CharacterEllipsis"/>
-                                  </DockPanel>
-                                  <TextBlock Text="{Binding ArgumentsText}" FontSize="11"
-                                             TextWrapping="Wrap"
-                                             Foreground="{StaticResource ChatMutedBrush}"
-                                             FontFamily="{StaticResource ChatMonoFont}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding StatusText}"
+                                               Classes="chatStatus"
+                                               Classes.pending="{Binding IsPending}"
+                                               Classes.failed="{Binding IsFailed}"/>
+                                  </Grid>
+                                  <TextBlock Text="{Binding ArgumentsText}" Classes="chatMono"/>
                                   <!--
-                                    需要确认的调用在这里给出决定：确认按钮就在参数下方，用户不必先看懂
-                                    工具名再去找另一个地方回答。决定之后这两个按钮消失，状态行改说结果。
+                                    需要确认的调用就在这里给出决定：按钮挨着参数，用户不必
+                                    先看懂工具名再去别处回答。决定后按钮消失，状态行改说结果。
                                   -->
                                   <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,0,0"
                                               IsVisible="{Binding NeedsApproval}">
-                                    <Button Content="允许" Command="{Binding ApproveCommand}"
-                                            FontSize="11" Padding="8,1"
+                                    <Button Classes="accent compact" Content="允许"
+                                            Command="{Binding ApproveCommand}"
                                             ToolTip.Tip="批准后执行这个工具"/>
-                                    <Button Content="拒绝" Command="{Binding RejectCommand}"
-                                            FontSize="11" Padding="8,1"
+                                    <Button Classes="danger compact" Content="拒绝"
+                                            Command="{Binding RejectCommand}"
                                             ToolTip.Tip="拒绝后不会执行这个工具"/>
                                   </StackPanel>
-                                  <!-- 结果只在真的到了之后才占一行，未返回的调用就是这样一眼可辨的。 -->
                                   <TextBlock Text="{Binding ResultText}" IsVisible="{Binding HasResult}"
-                                             FontSize="11" TextWrapping="Wrap"
-                                             Foreground="{Binding ResultBrush}"
-                                             FontFamily="{StaticResource ChatMonoFont}"/>
+                                             Classes="chatMono"
+                                             Classes.failed="{Binding IsFailed}"/>
                                 </StackPanel>
                               </DataTemplate>
                             </ItemsControl.ItemTemplate>
@@ -263,26 +353,46 @@
                       </DataTemplate>
                     </ItemsControl.DataTemplates>
                   </ItemsControl>
+
                   <ItemsControl ItemsSource="{Binding Attachments}" IsVisible="{Binding HasAttachments}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal"/>
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                       <DataTemplate DataType="local:AgentAttachment">
-                        <!--
-                          附件行只说明"引用了什么"：气泡背景已经区分了角色，这里再挑颜色只会让一条
-                          消息里的两段文字看起来属于不同的人。颜色仍然跟着消息走，而不是留给主题——
-                          在深色气泡里继承到的黑字和看不见没有区别。
-                        -->
-                        <TextBlock Text="{Binding TranscriptText}" FontSize="11"
-                                   Foreground="{Binding $parent[ItemsControl].DataContext.BodyBrush}"
-                                   TextWrapping="Wrap"/>
+                        <Border Classes="chatChip" Margin="0,0,4,4" ToolTip.Tip="{Binding Tooltip}">
+                          <TextBlock Text="{Binding TranscriptText}" FontSize="10"
+                                     MaxWidth="260" TextTrimming="CharacterEllipsis"
+                                     Foreground="{DynamicResource ThemeForegroundLowBrush}"/>
+                        </Border>
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
                 </StackPanel>
-              </Border>
-            </StackPanel>
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
-    </ScrollViewer>
+              </Grid>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+
+      <!-- 空状态说明下一步，而不是留一块像加载失败的空白。 -->
+      <StackPanel IsVisible="{Binding !HasMessages}" IsHitTestVisible="False"
+                  VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8">
+        <Border Width="40" Height="40" CornerRadius="10"
+                Background="{DynamicResource LayeronAccentSubtleBrush}"
+                HorizontalAlignment="Center">
+          <TextBlock Text="A" FontSize="17" FontWeight="Bold"
+                     Foreground="{DynamicResource LayeronAccentBrush}"
+                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <TextBlock Text="向 Agent 提问" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+        <TextBlock Text="可以描述要查看的切片、要执行的操作，或附上一张切片 / 一个文件。"
+                   FontSize="11" Opacity="0.6" MaxWidth="280"
+                   TextWrapping="Wrap" TextAlignment="Center"
+                   HorizontalAlignment="Center"/>
+      </StackPanel>
+    </Panel>
   </DockPanel>
 </UserControl>

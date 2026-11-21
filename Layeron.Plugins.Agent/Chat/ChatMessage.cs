@@ -1,6 +1,4 @@
 using System.Collections.ObjectModel;
-using Avalonia.Layout;
-using Avalonia.Media;
 using ReactiveUI;
 
 namespace Layeron.Plugins.Agent;
@@ -32,8 +30,9 @@ public enum ChatRole
 /// apart could only ever render that reply as three things that never interleaved.
 /// </para>
 /// <para>
-/// Alignment and brushes are view facts rather than agent facts, and they live here instead of in a converter
-/// because the bubble is the only thing that varies by role.
+/// Role flags and labels are view facts rather than agent facts, and they live here instead of in a converter
+/// because the transcript header is the only thing that varies by role; the colours it draws with come from
+/// the application theme.
 /// </para>
 /// </summary>
 public sealed class ChatMessage : ReactiveObject
@@ -86,23 +85,26 @@ public sealed class ChatMessage : ReactiveObject
         _ => Timestamp.ToString("HH:mm")
     };
 
-    public IBrush BubbleBrush => Role switch
+    /// <summary>
+    /// Role as it reads in the transcript header. Guidance is still the user speaking; the view marks it
+    /// with a small badge next to this label instead of inventing a third role.
+    /// </summary>
+    public string RoleLabel => Role switch
     {
-        ChatRole.User when IsGuidance => ChatPalette.GuidanceBubble,
-        ChatRole.User => ChatPalette.UserBubble,
-        ChatRole.Assistant => ChatPalette.Bubble,
-        _ => Brushes.Transparent
+        ChatRole.User => "你",
+        ChatRole.Assistant => "Agent",
+        _ => "系统"
     };
 
-    public IBrush BodyBrush => Role switch
-    {
-        ChatRole.User => ChatPalette.UserText,
-        ChatRole.Assistant => ChatPalette.Answer,
-        _ => ChatPalette.SystemText
-    };
+    /// <summary>Local wall-clock time, the smallest thing that separates two messages from the same minute.</summary>
+    public string TimeText => Timestamp.ToString("HH:mm");
 
-    public HorizontalAlignment BubbleAlignment =>
-        Role == ChatRole.User ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+    /// <summary>Role flags for the view's conditional classes; colours themselves stay in the theme.</summary>
+    public bool IsUser => Role == ChatRole.User;
+
+    public bool IsAssistant => Role == ChatRole.Assistant;
+
+    public bool IsSystem => Role == ChatRole.System;
 
     /// <summary>
     /// Appends streamed answer text. Text that continues the previous text extends that part, so a reply that
