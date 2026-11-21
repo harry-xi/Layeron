@@ -40,6 +40,13 @@
     <PackageReference Include="Microsoft.Agents.AI" Version="1.25.0" />
     <PackageReference Include="Microsoft.Agents.AI.OpenAI" Version="1.25.0" />
     <!--
+      安全密钥存储：Git Credential Manager 的凭据库实现，来自 external/CredentialManager 子模块
+      （与参考实现一致，固定在同一个提交）。只引用 Core 一个项目——GCM 的静态工厂、命令行与
+      认证流程都不要；本插件自行按平台挑选凭据库（见 Settings/SecureApiKeyStore.cs）。
+      这是插件私有的运行时依赖，随插件目录部署（CopyLocalLockFileAssemblies 见上）。
+    -->
+    <ProjectReference Include="..\external\CredentialManager\src\Core\Core.csproj" />
+    <!--
       ImageSharp 只用于把视觉模型不接受的位图格式（BMP、TIFF 等）转换成 PNG。
       宿主也引用同一版本；插件保留运行资产，使测试宿主和独立加载都不依赖宿主是否携带它。
     -->

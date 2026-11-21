@@ -13,7 +13,7 @@ namespace Layeron.Plugins.Agent;
 /// <para>
 /// Values are written to <c>agent.settings.json</c> in the plugin's data directory as they change, so the
 /// endpoint, model and generation parameters survive a restart. The key is the one deliberate exception:
-/// see <see cref="ApiKey"/>.
+/// it never touches that file - see <see cref="ApiKey"/>.
 /// </para>
 /// <para>
 /// This is configuration only. The transcript is durable too, but it is a record of a conversation rather
@@ -48,6 +48,7 @@ public sealed class AgentOptions
 
     private readonly string? _filePath;
     private readonly Dictionary<string, object?> _values = new(StringComparer.Ordinal);
+    private readonly SecureApiKeyStore _secureKeys;
 
     /// <summary>
     /// Creates the options, restoring what was stored when a data directory is available.
@@ -63,7 +64,20 @@ public sealed class AgentOptions
     /// </para>
     /// </summary>
     public AgentOptions(string? dataDirectory = null)
+        : this(dataDirectory, secureKeys: null)
     {
+    }
+
+    /// <summary>
+    /// The full constructor: <paramref name="secureKeys"/> is where a typed key is durably kept. The default
+    /// points at the user's real credential store; tests hand in one rooted at a scratch directory. Creation
+    /// itself cannot fail - an unusable platform is absorbed by the store, and every lookup then comes back
+    /// empty.
+    /// </summary>
+    internal AgentOptions(string? dataDirectory, SecureApiKeyStore? secureKeys)
+    {
+        _secureKeys = secureKeys ?? new SecureApiKeyStore();
+
         if (string.IsNullOrWhiteSpace(dataDirectory))
             return;
 
@@ -87,6 +101,13 @@ public sealed class AgentOptions
     public void Set(string key, object? value)
     {
         _values[key] = value;
+
+        // The key is written through to the credential store the moment it is typed, not on the next
+        // restart: a value that only becomes durable later is a value the user believes they have
+        // saved but have not.
+        if (key == Keys.ApiKey)
+            PersistApiKey(value);
+
         Save();
     }
 
@@ -96,18 +117,18 @@ public sealed class AgentOptions
     public string Endpoint => Read(Keys.Endpoint, "https://api.openai.com/v1");
 
     /// <summary>
-    /// Credential for <see cref="Endpoint"/>: what the user typed on the settings page, or - when that is
-    /// empty - the value of <see cref="ApiKeyEnvironmentVariable"/>.
+    /// Credential for <see cref="Endpoint"/>. The chain is: what the user typed on the settings page this
+    /// session, then the key saved in <see cref="SecureApiKeyStore"/> - the OS credential facility (DPAPI
+    /// file, keychain or secret service) that a typed key is written through to, so it outlives the
+    /// process without ever appearing in the settings file - then <see cref="ApiKeyEnvironmentVariable"/>.
     /// <para>
     /// Empty is a valid configuration, because a local runtime often wants no key, so it is not treated as a
     /// missing value.
     /// </para>
     /// <para>
-    /// A typed value is used for this session only: it can always be recalled and replaced before the next
-    /// send, so it is never written to disk. A key that has to outlive the process therefore comes from the
-    /// environment variable, which is also the only form that survives a restart without being readable in a
-    /// text file. Note that the host renders this key in its ordinary single-line text box, which cannot mask
-    /// input, so it is visible while it is being typed.
+    /// Clearing the text box and saving deletes the stored key, which is the only way to retire one; the
+    /// host renders this key in its ordinary single-line text box, which cannot mask input, so the value is
+    /// visible while it is being typed - it is never echoed back from the store on later sessions.
     /// </para>
     /// </summary>
     public string ApiKey
@@ -118,7 +139,16 @@ public sealed class AgentOptions
             // become the credential that is sent to the provider.
             var typed = _values.GetValueOrDefault(Keys.ApiKey) as string ?? "";
             typed = typed.Trim();
-            return typed.Length > 0 ? typed : EnvironmentApiKey();
+            if (typed.Length > 0)
+                return typed;
+
+            // A key the user saved is more recent than a variable that may have been exported months ago,
+            // so the environment stays the last resort of the chain.
+            var stored = _secureKeys.Load();
+            if (!string.IsNullOrWhiteSpace(stored))
+                return stored.Trim();
+
+            return EnvironmentApiKey();
         }
     }
 
@@ -136,6 +166,24 @@ public sealed class AgentOptions
         {
             return "";
         }
+    }
+
+    /// <summary>
+    /// Writes the typed key through to <see cref="SecureApiKeyStore"/>. A non-empty value replaces whatever
+    /// was saved, an emptied text box retires it - that gesture is the delete button the page has no room
+    /// for. A non-text value is left alone entirely: it is rejected as a key for this session, so it must
+    /// not be able to rewrite - let alone erase - a credential that was saved on purpose.
+    /// </summary>
+    private void PersistApiKey(object? value)
+    {
+        if (value is not string text)
+            return;
+
+        var trimmed = text.Trim();
+        if (trimmed.Length > 0)
+            _secureKeys.Save(trimmed);
+        else
+            _secureKeys.Delete();
     }
 
     public string Model => Read(Keys.Model, "gpt-4o-mini");
@@ -266,7 +314,7 @@ public sealed class AgentOptions
             {
                 Key = Keys.ApiKey,
                 Title = "API Key",
-                Description = "留空时改用环境变量 LAYERON_AGENT_API_KEY。这里填写的密钥只用于本次运行，不会写入配置文件，且明文显示。",
+                Description = "输入即保存到本机凭据库（Windows 为 DPAPI 加密文件，macOS 为钥匙串，Linux 为 Secret Service），重启后自动读取；清空并保存即删除已存密钥。也可留空改用环境变量 LAYERON_AGENT_API_KEY。",
                 Kind = SettingKind.Text,
                 DefaultValue = ""
             },

@@ -15,13 +15,17 @@ namespace Layeron.Plugin.Test;
 [TestClass]
 public sealed class AgentOptionsTests
 {
+    private string _root = string.Empty;
     private string _dataFolder = string.Empty;
     private string? _ambientKey;
 
     [TestInitialize]
     public void Setup()
     {
-        _dataFolder = Path.Combine(Path.GetTempPath(), "layeron-agent-test", Guid.NewGuid().ToString("N"));
+        // Both stores get their own scratch tree: the settings file so one test cannot read another's
+        // leftovers, and the credential store so a test never touches the user's real saved key.
+        _root = Path.Combine(Path.GetTempPath(), "layeron-agent-test", Guid.NewGuid().ToString("N"));
+        _dataFolder = Path.Combine(_root, "data");
 
         // The machine running the tests may well have a real key exported; a test that asserted on the
         // environment would then fail for a reason that has nothing to do with the code.
@@ -34,14 +38,19 @@ public sealed class AgentOptionsTests
     {
         Environment.SetEnvironmentVariable(AgentOptions.ApiKeyEnvironmentVariable, _ambientKey);
 
-        if (Directory.Exists(_dataFolder))
-            Directory.Delete(_dataFolder, recursive: true);
+        if (Directory.Exists(_root))
+            Directory.Delete(_root, recursive: true);
     }
+
+    /// <summary>The options under test, with the credential store pointed at the scratch tree.</summary>
+    private AgentOptions NewOptions() => new(_dataFolder, new SecureApiKeyStore(KeyStoreRoot));
+
+    private string KeyStoreRoot => Path.Combine(_root, "keys");
 
     [TestMethod]
     public void Options_SurviveARestart()
     {
-        var first = new AgentOptions(_dataFolder);
+        var first = NewOptions();
         first.Set(AgentOptions.Keys.Endpoint, "http://localhost:11434/v1");
         first.Set(AgentOptions.Keys.Model, "qwen3:8b");
         first.Set(AgentOptions.Keys.Temperature, 0.25d);
@@ -49,7 +58,7 @@ public sealed class AgentOptionsTests
         first.Set(AgentOptions.Keys.SystemPrompt, "只回答一句话。");
         first.Set(AgentOptions.Keys.KeepAttachments, true);
 
-        var second = new AgentOptions(_dataFolder);
+        var second = NewOptions();
 
         Assert.AreEqual("http://localhost:11434/v1", second.Endpoint);
         Assert.AreEqual("qwen3:8b", second.Model);
@@ -63,7 +72,7 @@ public sealed class AgentOptionsTests
     public void Options_WithoutAStoreYet_UseTheDropInDefaults()
     {
         // Nothing was ever written, so the panel must offer a usable configuration rather than blanks.
-        var options = new AgentOptions(_dataFolder);
+        var options = NewOptions();
 
         Assert.AreEqual("https://api.openai.com/v1", options.Endpoint);
         Assert.AreEqual("gpt-4o-mini", options.Model);
@@ -81,13 +90,14 @@ public sealed class AgentOptionsTests
     }
 
     /// <summary>
-    /// The key is the one setting that must not become a file on disk: a settings page cannot mask its input,
-    /// so a key typed into it is already visible, and leaving a copy behind would outlive the gesture.
+    /// The settings file is still no place for the key: a settings page cannot mask its input, so a key
+    /// typed into it is already visible, and a plaintext copy would outlive the gesture. What changed is
+    /// where the key does live - the credential store, which a restart reads back.
     /// </summary>
     [TestMethod]
-    public void ApiKey_IsAppliedButNeverWrittenToDisk()
+    public void ApiKey_IsAppliedAndPersistedInTheCredentialStore()
     {
-        var options = new AgentOptions(_dataFolder);
+        var options = NewOptions();
         options.Set(AgentOptions.Keys.ApiKey, "sk-typed-into-the-panel");
 
         Assert.AreEqual("sk-typed-into-the-panel", options.ApiKey, "the typed key must apply to this session");
@@ -99,8 +109,21 @@ public sealed class AgentOptionsTests
         Assert.IsFalse(text.Contains("sk-typed-into-the-panel", StringComparison.Ordinal),
             $"the settings file must not contain the key; it was: {text}");
 
-        // And a restart, which is what the file is for, must not resurrect it.
-        Assert.AreEqual("", new AgentOptions(_dataFolder).ApiKey);
+        // A restart does keep the key now - read back from the credential store, not from the file.
+        Assert.AreEqual("sk-typed-into-the-panel", NewOptions().ApiKey);
+    }
+
+    /// <summary>An emptied text box is the gesture that retires a stored key; there is no delete button.</summary>
+    [TestMethod]
+    public void ApiKey_ClearedInputRemovesTheStoredKey()
+    {
+        var options = NewOptions();
+        options.Set(AgentOptions.Keys.ApiKey, "sk-once-saved");
+        Assert.AreEqual("sk-once-saved", NewOptions().ApiKey, "the key was just saved, so a restart reads it back");
+
+        options.Set(AgentOptions.Keys.ApiKey, "   ");
+
+        Assert.AreEqual("", NewOptions().ApiKey, "clearing the input must remove the stored key, not keep it");
     }
 
     [TestMethod]
@@ -108,7 +131,7 @@ public sealed class AgentOptionsTests
     {
         Environment.SetEnvironmentVariable(AgentOptions.ApiKeyEnvironmentVariable, "sk-from-the-environment");
 
-        Assert.AreEqual("sk-from-the-environment", new AgentOptions(_dataFolder).ApiKey);
+        Assert.AreEqual("sk-from-the-environment", NewOptions().ApiKey);
     }
 
     /// <summary>
@@ -120,7 +143,7 @@ public sealed class AgentOptionsTests
     {
         Environment.SetEnvironmentVariable(AgentOptions.ApiKeyEnvironmentVariable, "sk-from-the-environment");
 
-        var options = new AgentOptions(_dataFolder);
+        var options = NewOptions();
         options.Set(AgentOptions.Keys.ApiKey, "  sk-typed  ");
 
         Assert.AreEqual("sk-typed", options.ApiKey, "the typed key wins, and surrounding space is ignored");
@@ -128,15 +151,20 @@ public sealed class AgentOptionsTests
 
     /// <summary>
     /// The key is an ordinary setting value, so it is read the same way every other value is - which means a
-    /// stray non-string cannot be allowed to throw and take the whole send with it.
+    /// stray non-string cannot be allowed to throw and take the whole send with it. Nor may it touch the
+    /// credential store: it was rejected as a key, so it must not become one - or erase one that was saved
+    /// on purpose.
     /// </summary>
     [TestMethod]
     public void ApiKey_IgnoresANonTextValue()
     {
-        var options = new AgentOptions(_dataFolder);
+        var options = NewOptions();
+        options.Set(AgentOptions.Keys.ApiKey, "sk-saved-on-purpose");
         options.Set(AgentOptions.Keys.ApiKey, 42L);
 
-        Assert.AreEqual("", options.ApiKey);
+        Assert.AreEqual("sk-saved-on-purpose", options.ApiKey, "the typed key still wins over the store");
+        Assert.AreEqual(42L, options.Get(AgentOptions.Keys.ApiKey), "the stray value itself is kept as typed");
+        Assert.AreEqual("sk-saved-on-purpose", NewOptions().ApiKey, "the stored key must survive the stray write");
     }
 
     /// <summary>
@@ -149,12 +177,12 @@ public sealed class AgentOptionsTests
         Directory.CreateDirectory(_dataFolder);
         File.WriteAllText(Path.Combine(_dataFolder, "agent.settings.json"), "{ this is not json");
 
-        var options = new AgentOptions(_dataFolder);
+        var options = NewOptions();
 
         Assert.AreEqual("gpt-4o-mini", options.Model);
 
         options.Set(AgentOptions.Keys.Model, "recovered");
-        Assert.AreEqual("recovered", new AgentOptions(_dataFolder).Model, "the next save must repair the file");
+        Assert.AreEqual("recovered", NewOptions().Model, "the next save must repair the file");
     }
 
     /// <summary>
@@ -163,7 +191,7 @@ public sealed class AgentOptionsTests
     [TestMethod]
     public void SettingsPage_DescribesEveryKeyOnce()
     {
-        var page = new AgentOptions(_dataFolder).CreateSettingsPage();
+        var page = NewOptions().CreateSettingsPage();
         var keys = typeof(AgentOptions.Keys)
             .GetFields()
             .Select(f => (string)f.GetRawConstantValue()!)
@@ -181,13 +209,13 @@ public sealed class AgentOptionsTests
     [TestMethod]
     public void ReloadedValues_ArePlainClrTypes()
     {
-        var first = new AgentOptions(_dataFolder);
+        var first = NewOptions();
         first.Set(AgentOptions.Keys.MaxTokens, 512L);
 
         var file = Path.Combine(_dataFolder, "agent.settings.json");
         using var document = JsonDocument.Parse(File.ReadAllText(file));
         Assert.AreEqual(JsonValueKind.Number, document.RootElement.GetProperty(AgentOptions.Keys.MaxTokens).ValueKind);
 
-        Assert.AreEqual(512L, new AgentOptions(_dataFolder).MaxTokens);
+        Assert.AreEqual(512L, NewOptions().MaxTokens);
     }
 }

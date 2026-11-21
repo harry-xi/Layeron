@@ -1,0 +1,3 @@
+[submodule "external/CredentialManager"]
+	path = external/CredentialManager
+	url = https://github.com/devlooped/CredentialManager.git
