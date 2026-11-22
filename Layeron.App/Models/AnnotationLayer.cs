@@ -103,6 +103,7 @@ public sealed class AnnotationLayer : INotifyPropertyChanged, IAnnotationLayer
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AnnotationCount)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AnnotationCountText)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsAnnotationsEmpty)));
         };
     }
 
@@ -115,6 +116,9 @@ public sealed class AnnotationLayer : INotifyPropertyChanged, IAnnotationLayer
     public int AnnotationCount => Annotations.Count;
 
     public string AnnotationCountText => $"{Annotations.Count} annotation(s)";
+
+    /// <summary>Lets the panel show a hint instead of a blank, indented block.</summary>
+    public bool IsAnnotationsEmpty => Annotations.Count == 0;
 
     public string Name
     {

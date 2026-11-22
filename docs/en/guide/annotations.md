@@ -16,25 +16,25 @@ Because an annotation is only a few vertices, it is drawn as vector geometry: zo
 
 ## Annotation Manager panel
 
-Open it with `Tools → Annotation Manager`. Each layer body is compressed into two rows: colour, name, annotation count, visibility and collapse control on the first; a read-only alpha display and save/delete on the second.
+Open it with `Tools → Annotation Manager`. Each layer body is compressed into two rows: colour, name and annotation count/expander on the first; visibility, label drawing, an alpha readout and save/delete on the second.
 
 | Control | Effect |
 |---|---|
 | **Add Layer** | Creates an annotation layer |
-| **Load** | Loads a layer from a `.la.json` file |
-| **Tool** | `Point`, `Line`, `Polygon`, or `None` |
-| **Cancel** | Discards the shape currently being drawn |
+| **Load** | Loads one or more layers from `.la.json` files |
+| **Tool** | Segmented picker: `None`, `Point`, `Line`, or `Polygon` |
+| **Cancel** | Discards the shape currently being drawn; it appears while a multi-click shape is in progress |
 | **Show** | Layer visibility |
-| **Text** | Whether this layer's annotation names are drawn on the slice image |
+| **T** | Whether this layer's annotation names are drawn on the slice image |
 | **Name / Color** | Layer name and colour; the picker's **Alpha** is the layer opacity |
 | **Save** | Saves the layer to a `.la.json` file |
 | **✕** | Deletes the whole layer |
-| **▾ / ▸** | Collapses or expands that layer's annotation list |
+| **Count + ▾ / ▸** | Collapses or expands that layer's annotation list; the number is its annotation count |
 | List under each layer | That layer's annotations, with editable names, highlighting and per-item removal |
 
-A new annotation receives a generated name, numbered per kind: `Point 1`, `Point 2`, `Line 1`. Names are edited directly in the list; each layer's **Text** checkbox controls whether that layer's names are painted on the slice image. `Text` and the collapsed state are view-only and are not written to `.la.json`.
+A new annotation receives a generated name, numbered per kind: `Point 1`, `Point 2`, `Line 1`. Names are edited directly in the list; each layer's **T** toggle controls whether that layer's names are painted on the slice image. `T` and the collapsed state are view-only and are not written to `.la.json`.
 
-The colour picker already provides transparency: its **Alpha** is the layer opacity. The `α` percentage in the panel is a read-only view of that value; there is no second opacity slider.
+The colour picker's **Alpha** is the layer opacity. The `α` percentage in the panel is a read-only readout of that value; there is no second opacity slider. **Load** accepts several files at once, so a set of related layers can be restored in one step.
 
 The `◎` button on an annotation row highlights it: it is drawn with a thicker outline, a larger point or a stronger fill, and above the other annotations on the same slice. Only one annotation is highlighted at a time; click again to clear it.
 

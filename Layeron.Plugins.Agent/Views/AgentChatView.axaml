@@ -203,12 +203,13 @@
           </ItemsControl>
         </DockPanel>
 
-        <TextBox Classes="chatInput"
+        <TextBox x:Name="InputBox" Classes="chatInput"
                  Text="{Binding Draft, Mode=TwoWay}"
                  AcceptsReturn="True"
                  TextWrapping="Wrap"
                  MinHeight="60" MaxHeight="150"
-                 PlaceholderText="{Binding InputHint}"/>
+                 PlaceholderText="{Binding InputHint}"
+                 ToolTip.Tip="Ctrl+Enter 发送；Enter 换行"/>
 
         <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
           <TextBlock Grid.Column="0" Text="{Binding StatusText}" FontSize="11" Opacity="0.65"

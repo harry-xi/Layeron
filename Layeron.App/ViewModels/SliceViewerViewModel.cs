@@ -641,7 +641,10 @@ public class SliceViewerViewModel : Document
     private void OnMaskLayerChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (sender is not MaskLayer) return;
-        if (e.PropertyName == nameof(MaskLayer.Name)) return;
+        // AlphaPercent is derived from Color and always accompanies it; only the colour notification
+        // needs to refresh the slice.
+        if (e.PropertyName is nameof(MaskLayer.Name) or nameof(MaskLayer.AlphaPercent))
+            return;
         RefreshSlice();
     }
 

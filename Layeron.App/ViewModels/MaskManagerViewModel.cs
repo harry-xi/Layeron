@@ -38,7 +38,11 @@ public class MaskManagerViewModel : Tool
         LoadMaskCommand.ThrownExceptions.Subscribe(HandleCommandError);
         SaveMaskCommand.ThrownExceptions.Subscribe(HandleCommandError);
 
-        Masks.CollectionChanged += (_, _) => this.RaisePropertyChanged(nameof(LayersCountText));
+        Masks.CollectionChanged += (_, _) =>
+        {
+            this.RaisePropertyChanged(nameof(LayersCountText));
+            this.RaisePropertyChanged(nameof(HasNoMasks));
+        };
     }
 
     // [TEMP-DEMO] log-and-swallow for mask commands
@@ -49,7 +53,10 @@ public class MaskManagerViewModel : Tool
 
     public ObservableCollection<MaskLayer> Masks { get; } = [];
 
-    public string LayersCountText => $"{Masks.Count} layer(s)";
+    public string LayersCountText => Masks.Count == 1 ? "1 mask" : $"{Masks.Count} masks";
+
+    /// <summary>True when the panel should show its empty hint instead of a list.</summary>
+    public bool HasNoMasks => Masks.Count == 0;
 
     /// <summary>The mask layer that slice tools and paint-style plugins write into.</summary>
     public MaskLayer? ActiveMask
@@ -161,13 +168,14 @@ public class MaskManagerViewModel : Tool
         var topLevel = GetTopLevel();
         if (topLevel == null) return;
 
-        var ax = _sharedData?.Array;
-        if (ax == null) return;
+        var volume = _sharedData?.Array;
+        if (volume == null) return;
 
         var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Load Mask",
-            AllowMultiple = false,
+            Title = "Load Masks",
+            // Several files can be selected in one dialog; they are appended in the order chosen.
+            AllowMultiple = true,
             FileTypeFilter =
             [
                 new FilePickerFileType("Mask Files") { Patterns = ["*.b3m"] },
@@ -177,45 +185,57 @@ public class MaskManagerViewModel : Tool
 
         if (files.Count == 0) return;
 
-        var path = files[0].Path.LocalPath;
+        var (x, y, z) = (volume.X, volume.Y, volume.Z);
+        var loaded = 0;
+        var failed = 0;
 
-        try
+        foreach (var file in files)
         {
-            var (x, y, z) = (ax.X, ax.Y, ax.Z);
-            var started = Stopwatch.StartNew();
-            // Decoding a large mask takes long enough to notice; keep it off the UI thread the
-            // same way the volume loader does.
-            var layer = await Task.Run(() =>
-            {
-                using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
-                    bufferSize: 1024 * 1024, FileOptions.SequentialScan);
-                return MaskLayer.LoadStream(fs, x, y, z);
-            });
-            var decodeMs = started.ElapsedMilliseconds;
+            var path = file.Path.LocalPath;
 
-            if (layer == null)
+            try
             {
-                // LoadStream returns null only for a dimensions mismatch. Saying so is the difference
-                // between "the file is fine, the data changed" and a load button that appears to do
-                // nothing.
-                Log.Warn("Masks",
-                    "Mask '{Path}' does not match the current volume {SizeX}x{SizeY}x{SizeZ}.",
-                    path, ax.X, ax.Y, ax.Z);
-                return;
+                var started = Stopwatch.StartNew();
+                // Decoding a large mask takes long enough to notice; keep it off the UI thread the
+                // same way the volume loader does.
+                var layer = await Task.Run(() =>
+                {
+                    using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
+                        bufferSize: 1024 * 1024, FileOptions.SequentialScan);
+                    return MaskLayer.LoadStream(fs, x, y, z);
+                });
+                var decodeMs = started.ElapsedMilliseconds;
+
+                if (layer == null)
+                {
+                    // LoadStream returns null only for a dimensions mismatch. Saying so is the difference
+                    // between "the file is fine, the data changed" and a load button that appears to do
+                    // nothing.
+                    failed++;
+                    Log.Warn("Masks",
+                        "Mask '{Path}' does not match the current volume {SizeX}x{SizeY}x{SizeZ}.",
+                        path, x, y, z);
+                    continue;
+                }
+
+                // Same path as every other layer, so the plugin mask service and the slice views learn
+                // about a loaded mask exactly as they do about one drawn or produced by a plugin.
+                AddLayer(layer);
+                loaded++;
+                Log.Info("Masks", "Loaded {Name} in {Decode} ms decode + {Refresh} ms UI refresh",
+                    layer.Name, decodeMs, started.ElapsedMilliseconds - decodeMs);
             }
+            catch (Exception ex)
+            {
+                // A malformed or truncated .b3m used to disappear without a trace. It stays non-fatal -
+                // the session is untouched - and the remaining files are still attempted.
+                failed++;
+                Log.Error("Masks", ex, "Could not load mask from {Path}", path);
+            }
+        }
 
-            // Same path as every other layer, so the plugin mask service and the slice views learn about
-            // a loaded mask exactly as they do about one drawn or produced by a plugin.
-            AddLayer(layer);
-            Log.Info("Masks", "Loaded {Name} in {Decode} ms decode + {Refresh} ms UI refresh",
-                layer.Name, decodeMs, started.ElapsedMilliseconds - decodeMs);
-        }
-        catch (Exception ex)
-        {
-            // A malformed or truncated .b3m used to disappear without a trace. It stays non-fatal - the
-            // session is untouched - but it is no longer invisible in the log.
-            Log.Error("Masks", ex, "Could not load mask from {Path}", path);
-        }
+        if (files.Count > 1)
+            Log.Info("Masks", "Loaded {Loaded} of {Total} masks ({Failed} failed)", loaded, files.Count, failed);
     }
 
     private async Task SaveMaskAsync(MaskLayer? layer)

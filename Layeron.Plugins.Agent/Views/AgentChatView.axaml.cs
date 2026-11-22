@@ -27,6 +27,10 @@ public sealed partial class AgentChatView : UserControl, IDisposable
         DataContext = _viewModel;
         InitializeComponent();
 
+        // Tunneling because the text box owns Enter: a plain subscription runs after its class handling,
+        // and Ctrl+Enter would already have inserted a line break.
+        InputBox.AddHandler(KeyDownEvent, InputBox_PreviewKeyDown, RoutingStrategies.Tunnel);
+
         // A new message should be the thing in view in a transcript that grows downwards. Done here rather
         // than in the view model because it is a fact about where the scrollbar is, not about what a
         // message means.
@@ -70,6 +74,22 @@ public sealed partial class AgentChatView : UserControl, IDisposable
                 e.Handled = true;
                 break;
         }
+    }
+
+    /// <summary>
+    /// Ctrl+Enter sends the composed message (or guidance while the agent is running). Plain Enter is left
+    /// alone so the input still supports line breaks.
+    /// </summary>
+    private void InputBox_PreviewKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter || !e.KeyModifiers.HasFlag(KeyModifiers.Control))
+            return;
+
+        if (_viewModel is not { CanSend: true })
+            return;
+
+        _viewModel.SendCommand.Execute(null);
+        e.Handled = true;
     }
 
     private void ScrollToEnd() => Dispatcher.UIThread.Post(

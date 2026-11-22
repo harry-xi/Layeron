@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -71,20 +72,19 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
     private readonly ComboBox? _methodBox;
     private readonly Button? _generateButton;
     private readonly Button? _importButton;
-    private readonly Button? _exportButton;
-    private readonly Button? _removeButton;
     private readonly Button? _clearButton;
     private readonly Button? _showViewButton;
     private readonly ListBox? _modelList;
-    private readonly ColorPicker? _colorPicker;
-    private readonly TextBlock? _colorHint;
     private readonly TextBlock? _emptyModels;
+    private readonly TextBlock? _modelCount;
     private readonly ProgressBar? _progress;
     private readonly TextBlock? _status;
 
+    /// <summary>Colour views whose colour is being written by the panel rather than by the user.</summary>
+    private readonly HashSet<ColorView> _syncingColors = [];
+
     private bool _disposed;
     private bool _busy;
-    private bool _syncingColor;
     private CancellationTokenSource? _generation;
 
     /// <summary>Design-time / runtime-XAML constructor; builds the visual tree only.</summary>
@@ -105,14 +105,11 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
         _methodBox = this.FindControl<ComboBox>("MethodBox");
         _generateButton = this.FindControl<Button>("GenerateButton");
         _importButton = this.FindControl<Button>("ImportButton");
-        _exportButton = this.FindControl<Button>("ExportButton");
-        _removeButton = this.FindControl<Button>("RemoveButton");
         _clearButton = this.FindControl<Button>("ClearButton");
         _showViewButton = this.FindControl<Button>("ShowViewButton");
         _modelList = this.FindControl<ListBox>("ModelList");
-        _colorPicker = this.FindControl<ColorPicker>("ModelColorPicker");
-        _colorHint = this.FindControl<TextBlock>("ColorHint");
         _emptyModels = this.FindControl<TextBlock>("EmptyModels");
+        _modelCount = this.FindControl<TextBlock>("ModelCountText");
         _progress = this.FindControl<ProgressBar>("Progress");
         _status = this.FindControl<TextBlock>("StatusText");
 
@@ -129,25 +126,13 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
         }
 
         if (_modelList is { } list)
-        {
             list.ItemsSource = _models.Models;
-            list.SelectionChanged += OnModelSelectionChanged;
-        }
-
-        if (_colorPicker is { } colorPicker)
-            colorPicker.ColorChanged += OnModelColorChanged;
 
         if (_generateButton is { } generate)
             generate.Click += OnGenerateClick;
 
         if (_importButton is { } import)
             import.Click += OnImportClick;
-
-        if (_exportButton is { } export)
-            export.Click += OnExportClick;
-
-        if (_removeButton is { } remove)
-            remove.Click += OnRemoveClick;
 
         if (_clearButton is { } clear)
             clear.Click += OnClearClick;
@@ -176,9 +161,9 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
     private async void OnGenerateClick(object? sender, RoutedEventArgs e) => await GenerateAsync();
 
     /// <summary>
-    /// Loads a glTF/GLB file and adds it to the model list. Parsing runs off the UI thread because
-    /// reading external buffers and building the scene is file work; tangent completion and the
-    /// manager entry happen back on the UI thread.
+    /// Loads one or more glTF/GLB files and adds them to the model list. Parsing runs off the UI
+    /// thread because reading external buffers and building the scene is file work; tangent
+    /// completion and the manager entry happen back on the UI thread.
     /// </summary>
     private async void OnImportClick(object? sender, RoutedEventArgs e)
     {
@@ -194,7 +179,8 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
             files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
             {
                 Title = "导入 3D 模型",
-                AllowMultiple = false,
+                // Several files can be selected in one dialog; they are appended in the order chosen.
+                AllowMultiple = true,
                 FileTypeFilter = [GltfFileType],
             });
         }
@@ -208,40 +194,66 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
         if (files.Count == 0 || _disposed)
             return;
 
-        var path = files[0].TryGetLocalPath();
-        if (string.IsNullOrEmpty(path))
-        {
-            SetStatus("只能加载本地文件");
-            return;
-        }
+        var loaded = 0;
+        var failed = 0;
+        Mask3DModel? lastEntry = null;
 
         SetBusy(true);
-        SetStatus($"正在加载 {Path.GetFileName(path)}…");
 
         try
         {
-            var model = await Task.Run(() => LoadModel(path));
-            if (_disposed)
-                return;
+            for (var i = 0; i < files.Count; i++)
+            {
+                if (_disposed)
+                    return;
 
-            var entry = models.AddImported(
-                model,
-                Path.GetFileNameWithoutExtension(path),
-                $"glTF · {model.Meshes.Count:N0} 个网格");
+                var path = files[i].TryGetLocalPath();
+                if (string.IsNullOrEmpty(path))
+                {
+                    failed++;
+                    services.Log.Warn("Mask 3D: '{File}' is not a local file.", files[i].Name);
+                    continue;
+                }
 
-            if (_modelList is { } list)
-                list.SelectedItem = entry;
+                SetStatus($"正在加载 {i + 1}/{files.Count}：{Path.GetFileName(path)}…");
 
-            SetStatus($"已添加 {entry.Name}");
-        }
-        catch (Exception ex)
-        {
-            services.Log.Error("Mask 3D: loading the glTF model failed.", ex);
-            SetStatus($"加载失败：{ex.Message}");
+                try
+                {
+                    var model = await Task.Run(() => LoadModel(path));
+                    if (_disposed)
+                        return;
+
+                    var entry = models.AddImported(
+                        model,
+                        Path.GetFileNameWithoutExtension(path),
+                        $"glTF · {model.Meshes.Count:N0} 个网格");
+
+                    lastEntry = entry;
+                    loaded++;
+                }
+                catch (Exception ex)
+                {
+                    // One unreadable file must not discard the files selected with it.
+                    failed++;
+                    services.Log.Error("Mask 3D: loading {Path} failed.", ex, path);
+                }
+            }
+
+            if (lastEntry is not null && _modelList is { } list)
+                list.SelectedItem = lastEntry;
+
+            SetStatus((loaded, failed) switch
+            {
+                (0, > 0) => $"导入失败：{failed} 个文件未能读取",
+                (_, > 0) => $"已导入 {loaded} 个模型，{failed} 个失败",
+                _ when files.Count == 1 && lastEntry is not null => $"已添加 {lastEntry.Name}",
+                _ => $"已导入 {loaded} 个模型"
+            });
         }
         finally
         {
-            SetBusy(false);
+            if (!_disposed)
+                SetBusy(false);
         }
     }
 
@@ -251,15 +263,23 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
             : ModelLoader.LoadGltfModel(path);
 
     /// <summary>
-    /// Saves the selected model. Only extracted surfaces can be written: an imported model still has
-    /// its original file, so re-encoding it would just lose data.
+    /// Saves one model from its row. Only extracted surfaces can be written: an imported model still
+    /// has its original file, so re-encoding it would just lose data.
     /// </summary>
-    private async void OnExportClick(object? sender, RoutedEventArgs e)
+    private async void OnRowExportClick(object? sender, RoutedEventArgs e)
     {
-        if (_services is not { } services || _disposed || _busy)
+        if (_disposed || _busy)
             return;
 
-        if (_modelList?.SelectedItem is not Mask3DModel { Surface: { } surface } model)
+        if (sender is not Button { DataContext: Mask3DModel { Surface: { } surface } model })
+            return;
+
+        await ExportModelAsync(model, surface);
+    }
+
+    private async Task ExportModelAsync(Mask3DModel model, Mask3DGeometry.SurfaceMesh surface)
+    {
+        if (_services is not { } services || _disposed || _busy)
             return;
 
         if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage)
@@ -331,16 +351,17 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
         }
         finally
         {
-            SetBusy(false);
+            if (!_disposed)
+                SetBusy(false);
         }
     }
 
-    private void OnRemoveClick(object? sender, RoutedEventArgs e)
+    private void OnRowRemoveClick(object? sender, RoutedEventArgs e)
     {
         if (_disposed || _busy || _models is not { } models)
             return;
 
-        if (_modelList?.SelectedItem is not Mask3DModel model)
+        if (sender is not Button { DataContext: Mask3DModel model })
             return;
 
         if (models.Remove(model))
@@ -478,24 +499,48 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
         });
     }
 
-    private void OnModelSelectionChanged(object? sender, SelectionChangedEventArgs e) => RefreshActions();
-
     /// <summary>
-    /// Applies the picker's colour to the selected model. The guard keeps the programmatic sync in
-    /// <see cref="RefreshActions"/> from looking like a user edit - otherwise merely selecting an
-    /// imported model would repaint it with the picker's placeholder grey.
+    /// Pushes a model's colour into the picker that lives in its row. Called when the row is created,
+    /// before any user edit, so the call itself must not count as an edit.
     /// </summary>
-    private void OnModelColorChanged(object? sender, ColorChangedEventArgs e)
+    private void OnRowColorLoaded(object? sender, RoutedEventArgs e)
     {
-        if (_syncingColor || _busy || _disposed)
+        if (_disposed || sender is not ColorView view || view.DataContext is not Mask3DModel model)
             return;
 
-        if (_modelList?.SelectedItem is not Mask3DModel model || _models is not { } models)
+        SyncRowColor(view, model);
+    }
+
+    private void OnRowColorChanged(object? sender, ColorChangedEventArgs e)
+    {
+        if (_disposed || _busy || sender is not ColorView view || _syncingColors.Contains(view))
+            return;
+
+        if (view.DataContext is not Mask3DModel model || _models is not { } models)
             return;
 
         var color = e.NewColor;
         if (models.SetColor(model, Rgb.FromBytes(color.R, color.G, color.B)))
             SetStatus($"已更新 {model.Name} 的颜色");
+    }
+
+    private void SyncRowColor(ColorView view, Mask3DModel model)
+    {
+        _syncingColors.Add(view);
+
+        try
+        {
+            view.Color = model.Color is { } color
+                ? Color.FromRgb(
+                    RgbBrushConverter.ToByte(color.R),
+                    RgbBrushConverter.ToByte(color.G),
+                    RgbBrushConverter.ToByte(color.B))
+                : Colors.Gray;
+        }
+        finally
+        {
+            _syncingColors.Remove(view);
+        }
     }
 
     private void SetBusy(bool busy)
@@ -508,10 +553,9 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
         RefreshActions();
     }
 
-    /// <summary>Keeps the buttons consistent with the selection, the model list and the busy state.</summary>
+    /// <summary>Keeps the toolbar buttons consistent with the model list and the busy state.</summary>
     private void RefreshActions()
     {
-        var selected = _modelList?.SelectedItem as Mask3DModel;
         var count = _models?.Models.Count ?? 0;
         var hasLayers = _services?.Masks.Layers.Count > 0;
 
@@ -521,54 +565,14 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
         if (_importButton is { } import)
             import.IsEnabled = !_busy;
 
-        if (_exportButton is { } export)
-            export.IsEnabled = !_busy && selected is { CanExport: true };
-
-        if (_removeButton is { } remove)
-            remove.IsEnabled = !_busy && selected is not null;
-
         if (_clearButton is { } clear)
             clear.IsEnabled = !_busy && count > 0;
 
         if (_emptyModels is { } hint)
             hint.IsVisible = count == 0;
 
-        if (_colorPicker is { } picker)
-        {
-            picker.IsEnabled = !_busy && selected is not null;
-            SyncColor(picker, selected);
-        }
-
-        if (_colorHint is { } colorHint)
-        {
-            colorHint.Text = selected switch
-            {
-                null => "选中模型后可改颜色",
-                { Surface: null, Color: null } => "设置颜色会覆盖导入模型自带的材质",
-                { Surface: null } => "已覆盖导入模型自带的材质",
-                _ => "掩膜表面的显示颜色",
-            };
-        }
-    }
-
-    /// <summary>Pushes the selected model's colour into the picker without triggering an edit.</summary>
-    private void SyncColor(ColorPicker picker, Mask3DModel? model)
-    {
-        _syncingColor = true;
-
-        try
-        {
-            picker.Color = model?.Color is { } color
-                ? Color.FromRgb(
-                    RgbBrushConverter.ToByte(color.R),
-                    RgbBrushConverter.ToByte(color.G),
-                    RgbBrushConverter.ToByte(color.B))
-                : Colors.Gray;
-        }
-        finally
-        {
-            _syncingColor = false;
-        }
+        if (_modelCount is { } modelCount)
+            modelCount.Text = $"{count} 个";
     }
 
     private void SetStatus(string text)
@@ -615,23 +619,11 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
         if (_models is { } models)
             models.Changed -= OnModelsChanged;
 
-        if (_modelList is { } list)
-            list.SelectionChanged -= OnModelSelectionChanged;
-
-        if (_colorPicker is { } colorPicker)
-            colorPicker.ColorChanged -= OnModelColorChanged;
-
         if (_generateButton is { } generate)
             generate.Click -= OnGenerateClick;
 
         if (_importButton is { } import)
             import.Click -= OnImportClick;
-
-        if (_exportButton is { } export)
-            export.Click -= OnExportClick;
-
-        if (_removeButton is { } remove)
-            remove.Click -= OnRemoveClick;
 
         if (_clearButton is { } clear)
             clear.Click -= OnClearClick;
@@ -639,6 +631,7 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
         if (_showViewButton is { } show)
             show.Click -= OnShowViewClick;
 
+        _syncingColors.Clear();
         _generation?.Cancel();
         _generation?.Dispose();
         _generation = null;

@@ -79,12 +79,19 @@ public sealed class AnnotationManagerViewModel : Tool
         ToggleHighlightCommand.ThrownExceptions.Subscribe(HandleCommandError);
         CancelPendingCommand.ThrownExceptions.Subscribe(HandleCommandError);
 
-        Layers.CollectionChanged += (_, _) => this.RaisePropertyChanged(nameof(LayersCountText));
+        Layers.CollectionChanged += (_, _) =>
+        {
+            this.RaisePropertyChanged(nameof(LayersCountText));
+            this.RaisePropertyChanged(nameof(HasNoLayers));
+        };
     }
 
     public ObservableCollection<AnnotationLayer> Layers { get; } = [];
 
-    public string LayersCountText => $"{Layers.Count} layer(s)";
+    public string LayersCountText => Layers.Count == 1 ? "1 layer" : $"{Layers.Count} layers";
+
+    /// <summary>True when the panel should show its empty hint instead of a list.</summary>
+    public bool HasNoLayers => Layers.Count == 0;
 
     public SharedDataSourceViewModel? SharedData
     {
@@ -118,21 +125,60 @@ public sealed class AnnotationManagerViewModel : Tool
         {
             if (_activeTool == value) return;
             this.RaiseAndSetIfChanged(ref _activeTool, value);
-            this.RaisePropertyChanged(nameof(ActiveToolIndex));
+            this.RaisePropertyChanged(nameof(IsToolNone));
+            this.RaisePropertyChanged(nameof(IsToolPoint));
+            this.RaisePropertyChanged(nameof(IsToolLine));
+            this.RaisePropertyChanged(nameof(IsToolPolygon));
             this.RaisePropertyChanged(nameof(InteractionHint));
             CancelPending();
         }
     }
 
-    /// <summary>Index binding for the panel's tool picker.</summary>
-    public int ActiveToolIndex
+    /// <summary>
+    /// One flag per segment of the panel's tool picker. Selecting one is enough; clicking the
+    /// segment that is already active leaves the tool unchanged instead of checking nothing.
+    /// </summary>
+    public bool IsToolNone
     {
-        get => (int)ActiveTool;
-        set
+        get => ActiveTool == AnnotationTool.None;
+        set => SetToolFromPicker(AnnotationTool.None, value);
+    }
+
+    public bool IsToolPoint
+    {
+        get => ActiveTool == AnnotationTool.Point;
+        set => SetToolFromPicker(AnnotationTool.Point, value);
+    }
+
+    public bool IsToolLine
+    {
+        get => ActiveTool == AnnotationTool.Line;
+        set => SetToolFromPicker(AnnotationTool.Line, value);
+    }
+
+    public bool IsToolPolygon
+    {
+        get => ActiveTool == AnnotationTool.Polygon;
+        set => SetToolFromPicker(AnnotationTool.Polygon, value);
+    }
+
+    private void SetToolFromPicker(AnnotationTool tool, bool isChecked)
+    {
+        if (isChecked)
         {
-            if (value < 0 || value > (int)AnnotationTool.Polygon) return;
-            ActiveTool = (AnnotationTool)value;
+            ActiveTool = tool;
+            return;
         }
+
+        // A two-way ToggleButton unchecks itself before the setter runs. Re-raise the flag so the
+        // picker always shows exactly one selected tool, even when the active segment is clicked again.
+        this.RaisePropertyChanged(tool switch
+        {
+            AnnotationTool.None => nameof(IsToolNone),
+            AnnotationTool.Point => nameof(IsToolPoint),
+            AnnotationTool.Line => nameof(IsToolLine),
+            _ => nameof(IsToolPolygon)
+        });
     }
 
     /// <summary>
@@ -247,7 +293,8 @@ public sealed class AnnotationManagerViewModel : Tool
         var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
             Title = "Load Annotations",
-            AllowMultiple = false,
+            // Several files can be selected in one dialog; they are appended in the order chosen.
+            AllowMultiple = true,
             FileTypeFilter =
             [
                 new FilePickerFileType("Annotation Files") { Patterns = ["*.la.json", "*.json"] },
@@ -258,23 +305,45 @@ public sealed class AnnotationManagerViewModel : Tool
         if (files.Count == 0)
             return;
 
-        try
-        {
-            var path = files[0].Path.LocalPath;
-            AnnotationLayer? layer;
-            await using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
-                             bufferSize: 64 * 1024, FileOptions.SequentialScan))
-            {
-                layer = AnnotationLayer.LoadStream(fs);
-            }
+        var loaded = 0;
+        var failed = 0;
 
-            if (layer != null)
-                AddLayer(layer);
-        }
-        catch (Exception ex)
+        foreach (var file in files)
         {
-            Log.Error("Annotations", ex, "Failed to load annotations");
+            var path = file.Path.LocalPath;
+
+            try
+            {
+                // JSON parsing is cheap per layer, but a multi-file selection should still keep the
+                // panel responsive.
+                var layer = await Task.Run(() =>
+                {
+                    using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
+                        bufferSize: 64 * 1024, FileOptions.SequentialScan);
+                    return AnnotationLayer.LoadStream(fs);
+                });
+
+                if (layer == null)
+                {
+                    failed++;
+                    Log.Warn("Annotations", "'{Path}' is not a valid annotation layer.", path);
+                    continue;
+                }
+
+                AddLayer(layer);
+                loaded++;
+            }
+            catch (Exception ex)
+            {
+                // One unreadable file must not discard the files that were selected with it.
+                failed++;
+                Log.Error("Annotations", ex, "Failed to load annotations from {Path}", path);
+            }
         }
+
+        if (files.Count > 1)
+            Log.Info("Annotations", "Loaded {Loaded} of {Total} annotation layers ({Failed} failed)",
+                loaded, files.Count, failed);
     }
 
     private async Task SaveLayerAsync(AnnotationLayer? layer)
@@ -382,6 +451,7 @@ public sealed class AnnotationManagerViewModel : Tool
         if (e.PropertyName is nameof(AnnotationLayer.Name)
             or nameof(AnnotationLayer.AnnotationCount)
             or nameof(AnnotationLayer.AnnotationCountText)
+            or nameof(AnnotationLayer.IsAnnotationsEmpty)
             or nameof(AnnotationLayer.IsAnnotationsExpanded)
             or nameof(AnnotationLayer.ExpandGlyph)
             or nameof(AnnotationLayer.AlphaPercent))
@@ -463,6 +533,7 @@ public sealed class AnnotationManagerViewModel : Tool
         _pending.Add(new AnnotationVertex(u, v));
         PendingPlane = plane;
         PendingIndex = index;
+        this.RaisePropertyChanged(nameof(HasPending));
 
         if (ActiveTool == AnnotationTool.Line && _pending.Count == 2)
         {
@@ -481,6 +552,7 @@ public sealed class AnnotationManagerViewModel : Tool
             return;
 
         _pending.Clear();
+        this.RaisePropertyChanged(nameof(HasPending));
         ContentChanged?.Invoke();
     }
 

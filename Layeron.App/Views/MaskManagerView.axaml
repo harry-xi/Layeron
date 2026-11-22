@@ -3,7 +3,8 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Layeron.App.ViewModels"
-             mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="400"
+             xmlns:models="using:Layeron.App.Models"
+             mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="420"
              x:Class="Layeron.App.Views.MaskManagerView"
              x:DataType="vm:MaskManagerViewModel">
 
@@ -11,86 +12,205 @@
         <vm:MaskManagerViewModel/>
     </Design.DataContext>
 
-    <Border Background="{DynamicResource LayeronCardBrush}"
-            CornerRadius="8"
-            Margin="8">
-        <DockPanel>
-            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-                <Button Content="Add" Command="{Binding AddMaskCommand}"/>
-                <Button Content="Load" Command="{Binding LoadMaskCommand}"/>
-                <TextBlock Text="{Binding LayersCountText}"
-                           VerticalAlignment="Center"
-                           FontSize="12"/>
-            </StackPanel>
+    <UserControl.Styles>
+        <!--
+            The panel lives in a narrow tool dock. These are the one place that decides how tight a
+            layer row is, so the list can show more masks instead of repeating full-size controls.
+        -->
+        <Style Selector="TextBox.compact">
+            <Setter Property="MinHeight" Value="22"/>
+            <Setter Property="Padding" Value="6,1"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
 
-            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <Style Selector="CheckBox.compact">
+            <Setter Property="MinHeight" Value="22"/>
+            <Setter Property="Padding" Value="5,0,0,0"/>
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style Selector="Button.mini">
+            <Setter Property="Width" Value="22"/>
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="MinWidth" Value="22"/>
+            <Setter Property="MinHeight" Value="22"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- Colour chip: a button, because clicking it opens the picker. -->
+        <Style Selector="Button.swatch">
+            <Setter Property="Width" Value="22"/>
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="MinWidth" Value="22"/>
+            <Setter Property="MinHeight" Value="22"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="CornerRadius" Value="5"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderHighBrush}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Button.swatch:pointerover">
+            <Setter Property="BorderBrush" Value="{DynamicResource LayeronAccentBrush}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Border Background="{DynamicResource LayeronCardBrush}"
+            BorderBrush="{DynamicResource LayeronCardBorderBrush}"
+            BorderThickness="1"
+            CornerRadius="8"
+            Margin="4">
+        <DockPanel>
+            <!-- One compact toolbar row: actions on the left, count on the right. -->
+            <Border DockPanel.Dock="Top"
+                    Background="{DynamicResource LayeronSurfaceRaisedBrush}"
+                    BorderBrush="{DynamicResource LayeronCardBorderBrush}"
+                    BorderThickness="0,0,0,1"
+                    CornerRadius="7,7,0,0"
+                    Padding="6,4">
+                <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="4">
+                    <Button Classes="accent compact"
+                            Content="Add"
+                            ToolTip.Tip="Create a mask layer for the current volume"
+                            Command="{Binding AddMaskCommand}"/>
+                    <Button Grid.Column="1"
+                            Classes="compact"
+                            Content="Load"
+                            ToolTip.Tip="Load one or more .b3m masks"
+                            Command="{Binding LoadMaskCommand}"/>
+                    <TextBlock Grid.Column="2"
+                               Text="{Binding LayersCountText}"
+                               FontSize="11"
+                               Opacity="0.65"
+                               HorizontalAlignment="Right"
+                               VerticalAlignment="Center"/>
+                </Grid>
+            </Border>
+
+            <Panel>
                 <ListBox x:Name="MaskList"
                          ItemsSource="{Binding Masks}"
                          SelectedItem="{Binding ActiveMask, Mode=TwoWay}"
                          Background="Transparent"
-                         BorderThickness="0">
+                         BorderThickness="0"
+                         Padding="6"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                     <ListBox.ItemsPanel>
                         <ItemsPanelTemplate>
                             <StackPanel/>
                         </ItemsPanelTemplate>
                     </ListBox.ItemsPanel>
+                    <!--
+                        The row itself is the card. Letting the ListBoxItem own the background means the
+                        selection and hover states also cover the whole row, and the content stretches to
+                        the panel width instead of shrinking around the controls.
+                    -->
+                    <ListBox.ItemContainerTheme>
+                        <ControlTheme TargetType="ListBoxItem"
+                                      BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                            <Setter Property="Background" Value="{DynamicResource LayeronSurfaceRaisedBrush}"/>
+                            <Setter Property="CornerRadius" Value="6"/>
+                            <!--
+                                Keep the border width constant in every state. The selected/focused style
+                                in the base theme switches it on, and without a reserved 1px the whole row
+                                would shrink when the item gained focus.
+                            -->
+                            <Setter Property="BorderThickness" Value="1"/>
+                            <Setter Property="BorderBrush" Value="Transparent"/>
+                            <Setter Property="Padding" Value="5"/>
+                            <Setter Property="Margin" Value="0,0,0,4"/>
+                            <Setter Property="MinHeight" Value="0"/>
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                        </ControlTheme>
+                    </ListBox.ItemContainerTheme>
                     <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <Border Background="{DynamicResource LayeronSurfaceRaisedBrush}"
-                                    CornerRadius="6"
-                                    Padding="8"
-                                    Margin="0,0,0,6">
-                                <StackPanel Spacing="6">
-                                    <DockPanel>
-                                        <Button x:Name="ColorButton"
-                                                DockPanel.Dock="Left"
-                                                Width="32" Height="28"
-                                                CornerRadius="4"
-                                                Padding="0"
-                                                Margin="0,0,8,0"
-                                                HorizontalContentAlignment="Center">
-                                            <Button.Background>
-                                                <SolidColorBrush Color="{Binding Color}"/>
-                                            </Button.Background>
-                                            <Button.Flyout>
-                                                <Flyout>
-                                                    <ColorView Color="{Binding Color, Mode=TwoWay}"
+                        <DataTemplate x:DataType="models:MaskLayer">
+                            <Grid RowDefinitions="Auto,Auto" RowSpacing="5">
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
+                                    <Button Grid.Column="0"
+                                            Classes="swatch"
+                                            ToolTip.Tip="Layer colour and transparency">
+                                        <Button.Background>
+                                            <SolidColorBrush Color="{Binding Color}"/>
+                                        </Button.Background>
+                                        <Button.Flyout>
+                                            <Flyout>
+                                                <ColorView Color="{Binding Color, Mode=TwoWay}"
                                                            IsAlphaVisible="True"
                                                            IsAlphaEnabled="True"/>
-                                                </Flyout>
-                                            </Button.Flyout>
-                                        </Button>
-                                        <CheckBox DockPanel.Dock="Right"
-                                                  Content="Show"
-                                                  IsChecked="{Binding IsVisible}"
-                                                  VerticalAlignment="Center"
-                                                  Margin="4,0,0,0"/>
-                                        <TextBlock DockPanel.Dock="Right"
-                                                   Text="{Binding AlphaPercent}"
-                                                   FontSize="11"
-                                                   Opacity="0.75"
-                                                   VerticalAlignment="Center"/>
-                                        <TextBox Text="{Binding Name, Mode=TwoWay}"
-                                                 VerticalContentAlignment="Center"/>
-                                    </DockPanel>
+                                            </Flyout>
+                                        </Button.Flyout>
+                                    </Button>
 
-                                    <DockPanel>
-                                        <Button Content="Remove"
-                                                Command="{Binding DataContext.RemoveMaskCommand, ElementName=MaskList}"
-                                                CommandParameter="{Binding}"
-                                                HorizontalAlignment="Left"/>
-                                        <Button Content="Save"
-                                                Command="{Binding DataContext.SaveMaskCommand, ElementName=MaskList}"
-                                                CommandParameter="{Binding}"
-                                                DockPanel.Dock="Right"
-                                                HorizontalAlignment="Right"/>
-                                    </DockPanel>
-                                </StackPanel>
-                            </Border>
+                                    <TextBox Grid.Column="1"
+                                             Classes="compact"
+                                             Text="{Binding Name, Mode=TwoWay}"
+                                             ToolTip.Tip="Mask name"/>
+
+                                    <CheckBox Grid.Column="2"
+                                              Classes="compact"
+                                              Content="Show"
+                                              IsChecked="{Binding IsVisible}"
+                                              ToolTip.Tip="Draw this mask on the slice images"/>
+                                </Grid>
+
+                                <!-- Opacity is set in the colour picker; the row keeps a read-only readout. -->
+                                <Grid Grid.Row="1"
+                                      ColumnDefinitions="Auto,Auto,*,Auto,Auto"
+                                      ColumnSpacing="6">
+                                    <TextBlock Grid.Column="0"
+                                               Text="α"
+                                               FontSize="11"
+                                               Opacity="0.65"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding AlphaPercent}"
+                                               Width="32"
+                                               TextAlignment="Right"
+                                               FontSize="11"
+                                               Opacity="0.65"
+                                               VerticalAlignment="Center"
+                                               ToolTip.Tip="Overlay opacity, set by the colour picker"/>
+                                    <Button Grid.Column="3"
+                                            Classes="compact"
+                                            Content="Save"
+                                            ToolTip.Tip="Save this mask as .b3m"
+                                            Command="{Binding DataContext.SaveMaskCommand, ElementName=MaskList}"
+                                            CommandParameter="{Binding}"/>
+                                    <Button Grid.Column="4"
+                                            Classes="mini"
+                                            Content="✕"
+                                            ToolTip.Tip="Remove this mask"
+                                            Command="{Binding DataContext.RemoveMaskCommand, ElementName=MaskList}"
+                                            CommandParameter="{Binding}"/>
+                                </Grid>
+                            </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
-            </ScrollViewer>
+
+                <StackPanel IsVisible="{Binding HasNoMasks}"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="4"
+                            Margin="16">
+                    <TextBlock Text="No masks yet"
+                               FontWeight="SemiBold"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="Add a layer, then paint it with the slice tools."
+                               FontSize="11"
+                               Opacity="0.6"
+                               TextAlignment="Center"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
+            </Panel>
         </DockPanel>
     </Border>
 </UserControl>

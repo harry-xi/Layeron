@@ -222,8 +222,8 @@ public sealed class AgentChatViewModel : ReactiveObject, IDisposable
 
     /// <summary>The input box's placeholder, which says what pressing the button will do.</summary>
     public string InputHint => _busy
-        ? "AI 正在工作；输入补充指导后点「指导」"
-        : "输入消息后点发送";
+        ? "AI 正在工作；输入补充指导后按 Ctrl+Enter 发送"
+        : "输入消息后按 Ctrl+Enter 发送";
 
     // -----------------------------------------------------------------------
     //  Options

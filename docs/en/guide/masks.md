@@ -15,14 +15,14 @@ A mask can be saved and loaded on its own, so an annotation can outlive and trav
 | Control | Effect |
 |---|---|
 | **Add** | Create a new empty mask layer |
-| **Load** | Load a mask layer from a file |
+| **Load** | Load one or more mask layers from files |
 | **Show** | Whether the layer is visible |
 | **Name** | Layer name (editable) |
 | **Color** | Layer colour; the picker's Alpha is the overlay opacity |
 | **Remove** | Delete the layer |
 | **Save** | Save the layer to a file |
 
-The panel header shows the current layer count.
+The panel header shows the current layer count. **Load** accepts several files at once, so a set of masks can be restored in one step.
 
 ### Painting
 
@@ -33,10 +33,10 @@ Hold `Ctrl` and drag with the left button on any slice view to paint into the **
 The `layeron.model3d` sample plugin contributes two surfaces:
 
 - A **"3D Model" tool panel** (plugin menu → tools) owns creation and management: pick a mask layer, a downsample factor
-  and a rebuild method, then click "Generate". "Import model…" loads a glTF/GLB instead. Every generated or imported model
-  appears in the panel's list, where it can be shown/hidden, removed, or cleared. Selecting a model lets you change its
-  display colour below the list (mask models start with the layer colour; recolouring an import replaces its material
-  colour). A selected model can be exported as binary STL or GLB.
+  and a rebuild method, then click "Generate". "Import…" loads one or more glTF/GLB files at once. Every generated or
+  imported model appears in the panel's list, and each row carries its own colour picker, visibility toggle, export and
+  remove actions. Mask models start with the layer colour; recolouring an import replaces its material colour. The
+  toolbar also clears the whole scene.
 - A **"mask 3D model" document tab** only displays: it draws every visible model in the list, opens automatically for the
   first model, and can stay open for comparison. Drag to orbit (drag right turns the model right), `Shift`+drag to pan,
   wheel to zoom (wheel up zooms in). Clicking a mask surface moves the crosshair. The camera frames the union of the

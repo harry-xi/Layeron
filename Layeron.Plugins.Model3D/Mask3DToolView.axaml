@@ -3,103 +3,196 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:m3d="clr-namespace:Layeron.Plugins.Model3D;assembly=Layeron.Plugins.Model3D"
-             mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="560"
+             mc:Ignorable="d" d:DesignWidth="320" d:DesignHeight="640"
              x:Class="Layeron.Plugins.Model3D.Mask3DToolView">
 
   <UserControl.Resources>
     <m3d:RgbBrushConverter x:Key="RgbBrush" />
   </UserControl.Resources>
 
+  <UserControl.Styles>
+    <!-- The panel is narrow; form pickers only need to be one compact row tall. -->
+    <Style Selector="ComboBox.compact">
+      <Setter Property="MinHeight" Value="24" />
+      <Setter Property="Padding" Value="6,1" />
+      <Setter Property="FontSize" Value="11.5" />
+    </Style>
+
+    <Style Selector="CheckBox.tight">
+      <Setter Property="MinHeight" Value="22" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style Selector="Button.mini">
+      <Setter Property="Width" Value="22" />
+      <Setter Property="Height" Value="22" />
+      <Setter Property="MinWidth" Value="22" />
+      <Setter Property="MinHeight" Value="22" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- Same colour chip as the mask/annotation managers: the swatch itself opens the picker. -->
+    <Style Selector="Button.swatch">
+      <Setter Property="Width" Value="28" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="MinWidth" Value="28" />
+      <Setter Property="MinHeight" Value="28" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderHighBrush}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.swatch:pointerover">
+      <Setter Property="BorderBrush" Value="{DynamicResource LayeronAccentBrush}" />
+    </Style>
+  </UserControl.Styles>
+
   <!--
     The management panel: mask selection and surface creation, the list of models currently in the
     3D document, and the per-model actions. The document tab is only the viewport.
   -->
-  <ScrollViewer>
-    <StackPanel Spacing="8" Margin="8">
+  <Border Background="{DynamicResource LayeronCardBrush}"
+          BorderBrush="{DynamicResource LayeronCardBorderBrush}"
+          BorderThickness="1"
+          CornerRadius="8"
+          Margin="4">
+    <DockPanel>
 
-      <TextBlock Text="3D 模型" FontWeight="SemiBold" />
+      <!-- Creation form: labels and controls sit in three tight rows. -->
+      <Border DockPanel.Dock="Top"
+              BorderBrush="{DynamicResource LayeronCardBorderBrush}"
+              BorderThickness="0,0,0,1"
+              Padding="6,5">
+        <StackPanel Spacing="4">
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+            <TextBlock Text="从掩膜创建" FontSize="11" Opacity="0.7" VerticalAlignment="Center" />
+            <Button x:Name="GenerateButton" Grid.Column="1" Classes="accent compact" Content="生成模型" />
+          </Grid>
 
-      <TextBlock Text="从掩膜创建" FontSize="11" Opacity="0.7" />
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+            <TextBlock Text="掩膜" FontSize="11.5" VerticalAlignment="Center" />
+            <ComboBox x:Name="LayerBox" Grid.Column="1" Classes="compact" HorizontalAlignment="Stretch" />
+          </Grid>
 
-      <Grid ColumnDefinitions="Auto,*">
-        <TextBlock Text="掩膜" VerticalAlignment="Center" Margin="0,0,6,0" />
-        <ComboBox x:Name="LayerBox" Grid.Column="1" HorizontalAlignment="Stretch" />
-      </Grid>
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+            <TextBlock Text="降采样" FontSize="11.5" VerticalAlignment="Center" />
+            <ComboBox x:Name="FactorBox" Grid.Column="1" Classes="compact" HorizontalAlignment="Stretch" />
+          </Grid>
 
-      <Grid ColumnDefinitions="Auto,*">
-        <TextBlock Text="降采样" VerticalAlignment="Center" Margin="0,0,6,0" />
-        <ComboBox x:Name="FactorBox" Grid.Column="1" HorizontalAlignment="Stretch" />
-      </Grid>
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+            <TextBlock Text="重建方式" FontSize="11.5" VerticalAlignment="Center" />
+            <ComboBox x:Name="MethodBox" Grid.Column="1" Classes="compact" HorizontalAlignment="Stretch" />
+          </Grid>
 
-      <Grid ColumnDefinitions="Auto,*">
-        <TextBlock Text="重建方式" VerticalAlignment="Center" Margin="0,0,6,0" />
-        <ComboBox x:Name="MethodBox" Grid.Column="1" HorizontalAlignment="Stretch" />
-      </Grid>
+          <ProgressBar x:Name="Progress" Height="4" IsIndeterminate="True" IsVisible="False" />
+        </StackPanel>
+      </Border>
 
-      <StackPanel Orientation="Horizontal" Spacing="6">
-        <Button x:Name="GenerateButton" Content="生成模型" />
-        <ProgressBar x:Name="Progress" Width="90" IsIndeterminate="True" IsVisible="False"
+      <!-- Model list toolbar: importing adds to the list, so it belongs here. -->
+      <Border DockPanel.Dock="Top"
+              BorderBrush="{DynamicResource LayeronCardBorderBrush}"
+              BorderThickness="0,0,0,1"
+              Padding="6,4">
+        <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto" ColumnSpacing="4">
+          <TextBlock Text="模型" FontSize="11" Opacity="0.7" VerticalAlignment="Center" />
+          <TextBlock x:Name="ModelCountText" Grid.Column="1" FontSize="11" Opacity="0.5"
                      VerticalAlignment="Center" />
-      </StackPanel>
+          <Button x:Name="ShowViewButton" Grid.Column="3" Classes="compact" Content="3D 视图"
+                  ToolTip.Tip="打开只显示 3D 场景的文档标签页" />
+          <Button x:Name="ImportButton" Grid.Column="4" Classes="compact" Content="导入…"
+                  ToolTip.Tip="可以一次选择多个 glTF / GLB 文件" />
+          <Button x:Name="ClearButton" Grid.Column="5" Classes="compact danger" Content="清空"
+                  IsEnabled="False" ToolTip.Tip="从场景中移除所有模型" />
+        </Grid>
+      </Border>
 
-      <Separator />
+      <!-- Status stays at the bottom; per-model actions live in their rows. -->
+      <Border DockPanel.Dock="Bottom"
+              Background="{DynamicResource LayeronSurfaceRaisedBrush}"
+              BorderBrush="{DynamicResource LayeronCardBorderBrush}"
+              BorderThickness="0,1,0,0"
+              Padding="6,4">
+        <TextBlock x:Name="StatusText" TextWrapping="Wrap" FontSize="11" Opacity="0.8" />
+      </Border>
 
-      <Grid ColumnDefinitions="*,Auto">
-        <TextBlock Text="模型列表" FontSize="11" Opacity="0.7" VerticalAlignment="Center" />
-        <Button x:Name="ClearButton" Grid.Column="1" Content="清空" FontSize="11"
-                IsEnabled="False" />
-      </Grid>
+      <!-- The list takes every pixel the fixed sections leave, instead of a 220px cap. -->
+      <Panel>
+        <ListBox x:Name="ModelList"
+                 Background="Transparent"
+                 BorderThickness="0"
+                 Padding="6"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+          <ListBox.ItemContainerTheme>
+            <ControlTheme TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+              <Setter Property="Background" Value="{DynamicResource LayeronSurfaceRaisedBrush}" />
+              <Setter Property="CornerRadius" Value="6" />
+              <!--
+                  Reserve the border in every state: the selected/focused style switches it on, and
+                  without the fixed 1px the row would shrink when the item gained focus.
+              -->
+              <Setter Property="BorderThickness" Value="1" />
+              <Setter Property="BorderBrush" Value="Transparent" />
+              <Setter Property="Padding" Value="5" />
+              <Setter Property="Margin" Value="0,0,0,4" />
+              <Setter Property="MinHeight" Value="0" />
+              <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            </ControlTheme>
+          </ListBox.ItemContainerTheme>
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="m3d:Mask3DModel">
+              <!-- Old row shape: visibility on the left, text in the middle, actions on the right. -->
+              <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="6">
+                <CheckBox Grid.Column="0" Classes="tight"
+                          IsChecked="{Binding IsVisible, Mode=TwoWay}"
+                          VerticalAlignment="Center"
+                          ToolTip.Tip="显示或隐藏这个模型" />
 
-      <TextBlock x:Name="EmptyModels" Text="还没有模型，先生成一个或导入一个。"
-                 FontSize="11" Opacity="0.6" TextWrapping="Wrap" />
+                <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding Detail}" FontSize="11" Opacity="0.65"
+                             TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Detail}" />
+                </StackPanel>
 
-      <ListBox x:Name="ModelList" MaxHeight="220">
-        <ListBox.ItemTemplate>
-          <DataTemplate x:DataType="m3d:Mask3DModel">
-            <Grid ColumnDefinitions="Auto,*,Auto">
-              <CheckBox IsChecked="{Binding IsVisible, Mode=TwoWay}"
-                        VerticalAlignment="Center"
-                        ToolTip.Tip="显示或隐藏这个模型" />
-              <StackPanel Grid.Column="1" Margin="2,0,0,0">
-                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                <TextBlock Text="{Binding Detail}" FontSize="11" Opacity="0.65"
-                           TextWrapping="Wrap" />
-              </StackPanel>
-              <Border Grid.Column="2" Width="16" Height="16" Margin="6,0,0,0"
-                      CornerRadius="3" VerticalAlignment="Center"
-                      BorderThickness="1"
-                      BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
-                      Background="{Binding Color, Converter={StaticResource RgbBrush}}"
-                      ToolTip.Tip="模型颜色；为空表示仍使用导入模型自带的材质" />
-            </Grid>
-          </DataTemplate>
-        </ListBox.ItemTemplate>
-      </ListBox>
+                <Button Grid.Column="2" Classes="swatch"
+                        Background="{Binding Color, Converter={StaticResource RgbBrush}}"
+                        ToolTip.Tip="模型颜色；点击修改，为空表示仍使用导入模型自带的材质">
+                  <Button.Flyout>
+                    <Flyout>
+                      <ColorView Loaded="OnRowColorLoaded"
+                                 ColorChanged="OnRowColorChanged"
+                                 IsAlphaVisible="False"
+                                 IsAlphaEnabled="False" />
+                    </Flyout>
+                  </Button.Flyout>
+                </Button>
 
-      <StackPanel Orientation="Horizontal" Spacing="6">
-        <Button x:Name="ExportButton" Content="导出选中…" IsEnabled="False" />
-        <Button x:Name="RemoveButton" Content="删除选中" IsEnabled="False" />
-      </StackPanel>
+                <Button Grid.Column="3" Classes="compact" Content="导出"
+                        IsEnabled="{Binding CanExport}"
+                        ToolTip.Tip="把这个模型的 STL 或 GLB 写入文件"
+                        Click="OnRowExportClick" />
+                <Button Grid.Column="4" Classes="mini" Content="✕"
+                        ToolTip.Tip="从场景中移除这个模型"
+                        Click="OnRowRemoveClick" />
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
 
-      <Grid ColumnDefinitions="Auto,Auto,*">
-        <TextBlock Text="颜色" VerticalAlignment="Center" />
-        <ColorPicker x:Name="ModelColorPicker" Grid.Column="1" Width="52" Margin="6,0,0,0"
-                     IsEnabled="False" IsAlphaEnabled="False" IsAlphaVisible="False"
-                     ToolTip.Tip="设置选中模型的显示颜色" />
-        <TextBlock x:Name="ColorHint" Grid.Column="2" Margin="6,0,0,0"
-                   VerticalAlignment="Center" FontSize="11" Opacity="0.6"
-                   Text="选中模型后可改颜色" TextWrapping="Wrap" />
-      </Grid>
+        <TextBlock x:Name="EmptyModels" Text="还没有模型，先生成一个或导入一个。"
+                   IsVisible="False"
+                   FontSize="11" Opacity="0.55" TextWrapping="Wrap"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                   TextAlignment="Center" Margin="16" />
+      </Panel>
 
-      <Separator />
-
-      <StackPanel Orientation="Horizontal" Spacing="6">
-        <Button x:Name="ImportButton" Content="导入模型…" />
-        <Button x:Name="ShowViewButton" Content="打开 3D 视图" />
-      </StackPanel>
-
-      <TextBlock x:Name="StatusText" TextWrapping="Wrap" FontSize="11" Opacity="0.8" />
-
-    </StackPanel>
-  </ScrollViewer>
+    </DockPanel>
+  </Border>
 </UserControl>
