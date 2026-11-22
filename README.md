@@ -37,3 +37,7 @@ dotnet test
 - 设计与实现记录：`design-notes/`
 
 更多细节请直接阅读源码和上述文档。
+
+## 许可证
+
+本项目采用 [MIT 许可证](LICENSE)。
