@@ -98,6 +98,11 @@ public static class MaskMorphologyEngine
                 return Uniform(source, operation, ct, progress);
         }
 
+        // The packed row window shifts within a 64-bit word, so radii of 64 or more must stay on the
+        // slice fallback. The packed path is used whenever one volume fits in the fast-path budget.
+        if (kernel.Radius < 64 && MaskMorphologyPacked.CanUse(source))
+            return MaskMorphologyPacked.Apply(source, operation, kernel, ct, progress);
+
         return operation switch
         {
             MaskMorphologyOperation.Erode => Morph(source, kernel, dilate: false, ct, progress),
@@ -108,17 +113,14 @@ public static class MaskMorphologyEngine
         };
     }
 
-    /// <summary>Returns an independent copy of the mask, slice by slice.</summary>
+    /// <summary>Returns an independent copy of the mask, block by block.</summary>
     public static Big3DBitMap Copy(
         Big3DBitMap source,
         CancellationToken ct = default,
         Action<double>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(source);
-
-        var destination = new Big3DBitMap(source.SizeX, source.SizeY, source.SizeZ);
-        CopyInto(source, destination, ct, progress);
-        return destination;
+        return MaskMorphologyPacked.Copy(source, ct, progress);
     }
 
     /// <summary>
@@ -145,13 +147,8 @@ public static class MaskMorphologyEngine
                 nameof(destination));
         }
 
-        var depth = source.SizeZ;
-        for (var z = 0; z < depth; z++)
-        {
-            ct.ThrowIfCancellationRequested();
-            destination.SetXYSlice(z, source.GetXYSlice(z));
-            progress?.Invoke((z + 1) / (double)depth);
-        }
+        // Block-level copy: 32 KB per block instead of a per-voxel slice round trip.
+        MaskMorphologyPacked.CopyInto(source, destination, ct, progress);
     }
 
     private static Big3DBitMap TwoPass(

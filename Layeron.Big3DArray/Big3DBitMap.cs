@@ -1,5 +1,4 @@
 ﻿using System.Buffers.Binary;
-using System.Collections;
 using System.IO.Compression;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -11,8 +10,8 @@ namespace Layeron.Big3DArray
     /// Total dimensions are fixed at construction time.
     /// Storage is always a dense Block?[,,] array keyed by block index; blocks are
     /// created lazily only where data exists and released again when they become empty.
-    /// Block backing uses BitArray (from System.Collections) and a small counter for fast
-    /// all-zero/all-one detection. Coordinates are ints (0..size-1). Indexer this[x,y,z]
+    /// Block backing uses packed 64-bit words (one word per local (z, y) row) and a small counter
+    /// for fast all-zero/all-one detection. Coordinates are ints (0..size-1). Indexer this[x,y,z]
     /// provides get/set access.
     /// </summary>
     public class Big3DBitMap
@@ -26,6 +25,14 @@ namespace Layeron.Big3DArray
 
         /// <summary>Number of elements in one storage block (<see cref="BlockEdge"/>^3).</summary>
         public const int BlockVolumeElements = BlockEdge * BlockEdge * BlockEdge;
+
+        /// <summary>
+        /// Number of 64-bit words in one packed block. Each word holds the 64 X bits of one
+        /// <c>(z, y)</c> row, and word index is <c>(localZ &lt;&lt; 6) | localY</c>.
+        /// This is the canonical packed layout used by <see cref="CopyBlockPacked"/> and
+        /// <see cref="SetBlockPacked"/>.
+        /// </summary>
+        public const int BlockWordCount = BlockVolumeElements / 64;
 
         // overall sizes (in elements)
         private readonly int _sizeX, _sizeY, _sizeZ;
@@ -103,24 +110,44 @@ namespace Layeron.Big3DArray
             if (values.Length != BlockVolumeElements)
                 throw new ArgumentException($"Block buffer must hold {BlockVolumeElements} values.", nameof(values));
 
-            var setCount = 0;
-            for (var i = 0; i < BlockVolumeElements; i++)
-                if (values[i])
-                    setCount++;
+            _array[blockX, blockY, blockZ] = Block.FromValues(values);
+        }
 
-            if (setCount == 0)
-            {
-                _array[blockX, blockY, blockZ] = null;
-                return;
-            }
+        /// <summary>
+        /// Copies one whole storage block into <paramref name="destination"/> in the canonical packed
+        /// layout: <see cref="BlockWordCount"/> 64-bit words, word index <c>(localZ &lt;&lt; 6) | localY</c>,
+        /// bit <c>localX</c> inside each word. Empty blocks produce all-zero words, full blocks produce
+        /// all-one words. The buffer is copy-based so callers never receive a span into the map's
+        /// backing storage.
+        /// </summary>
+        public void CopyBlockPacked(int blockX, int blockY, int blockZ, Span<ulong> destination)
+        {
+            if ((uint)blockX >= (uint)_blocksX || (uint)blockY >= (uint)_blocksY || (uint)blockZ >= (uint)_blocksZ)
+                throw new ArgumentOutOfRangeException(nameof(blockX));
+            if (destination.Length != BlockWordCount)
+                throw new ArgumentException($"Destination must hold {BlockWordCount} words.", nameof(destination));
 
-            if (setCount == BlockVolumeElements)
-            {
-                _array[blockX, blockY, blockZ] = Block.Full;
-                return;
-            }
+            var block = _array[blockX, blockY, blockZ];
+            if (block is null)
+                destination.Clear();
+            else
+                block.CopyWordsTo(destination);
+        }
 
-            _array[blockX, blockY, blockZ] = Block.FromValues(values, setCount);
+        /// <summary>
+        /// Replaces one whole storage block from <paramref name="values"/> in the canonical packed
+        /// layout used by <see cref="CopyBlockPacked"/>. All-zero words release the block, all-one
+        /// words collapse it to the shared full block. Bits outside the volume (edge-block padding)
+        /// must be zero, matching <see cref="SetBlock"/>.
+        /// </summary>
+        public void SetBlockPacked(int blockX, int blockY, int blockZ, ReadOnlySpan<ulong> values)
+        {
+            if ((uint)blockX >= (uint)_blocksX || (uint)blockY >= (uint)_blocksY || (uint)blockZ >= (uint)_blocksZ)
+                throw new ArgumentOutOfRangeException(nameof(blockX));
+            if (values.Length != BlockWordCount)
+                throw new ArgumentException($"Block buffer must hold {BlockWordCount} words.", nameof(values));
+
+            _array[blockX, blockY, blockZ] = Block.FromWords(values);
         }
 
         /// <summary>
@@ -645,16 +672,16 @@ namespace Layeron.Big3DArray
         {
             // 0 = all zero, 1 = all one, 2 = normal
             private byte _state;
-            private BitArray? _bits;
+            private ulong[]? _words;
             private int _setCount;
 
             public bool IsAllZero => _state == 0;
             public bool IsAllOne => _state == 1;
 
-            private Block(byte state, BitArray? bits, int setCount)
+            private Block(byte state, ulong[]? words, int setCount)
             {
                 _state = state;
-                _bits = bits;
+                _words = words;
                 _setCount = setCount;
             }
 
@@ -671,16 +698,63 @@ namespace Layeron.Big3DArray
             public static Block CreateEmpty() => new(0, null, 0);
 
             /// <summary>
-            /// Create an empty block (all-zero) and populate it from a value buffer laid out
-            /// in z - y - x order (index = lz * 4096 + ly * 64 + lx).
+            /// Create a block from a value buffer laid out in z - y - x order
+            /// (index = lz * 4096 + ly * 64 + lx). Returns <c>null</c> for all-zero and
+            /// <see cref="Full"/> for all-one.
             /// </summary>
-            public static Block FromValues(ReadOnlySpan<bool> values, int setCount)
+            public static Block? FromValues(ReadOnlySpan<bool> values)
             {
-                var bits = new BitArray(BlockVolume);
-                for (var i = 0; i < BlockVolume; i++)
-                    if (values[i])
-                        bits.Set(i, true);
-                return new Block(2, bits, setCount);
+                var words = new ulong[BlockWordCount];
+                var setCount = 0;
+
+                for (var wordIndex = 0; wordIndex < BlockWordCount; wordIndex++)
+                {
+                    var baseBit = wordIndex << 6;
+                    ulong word = 0;
+                    for (var bit = 0; bit < 64; bit++)
+                        if (values[baseBit + bit])
+                            word |= 1UL << bit;
+
+                    words[wordIndex] = word;
+                    setCount += BitOperations.PopCount(word);
+                }
+
+                if (setCount == 0) return null;
+                if (setCount == BlockVolume) return Full;
+                return new Block(2, words, setCount);
+            }
+
+            /// <summary>
+            /// Create a block from canonical packed words (word index <c>(lz &lt;&lt; 6) | ly</c>).
+            /// The words are copied; returns <c>null</c> for all-zero and <see cref="Full"/> for all-one.
+            /// </summary>
+            public static Block? FromWords(ReadOnlySpan<ulong> values)
+            {
+                var setCount = 0;
+                foreach (var word in values)
+                    setCount += BitOperations.PopCount(word);
+
+                if (setCount == 0) return null;
+                if (setCount == BlockVolume) return Full;
+                return new Block(2, values.ToArray(), setCount);
+            }
+
+            /// <summary>Copy this block's canonical packed words into <paramref name="destination"/>.</summary>
+            public void CopyWordsTo(Span<ulong> destination)
+            {
+                if (_state == 0)
+                {
+                    destination.Clear();
+                    return;
+                }
+
+                if (_state == 1)
+                {
+                    destination.Fill(ulong.MaxValue);
+                    return;
+                }
+
+                _words.AsSpan().CopyTo(destination);
             }
 
             /// <summary>
@@ -695,21 +769,51 @@ namespace Layeron.Big3DArray
                 if (packed.Length != PackedBlockBytes)
                     throw new ArgumentException($"Packed block must hold {PackedBlockBytes} bytes.", nameof(packed));
 
-                var setCount = 0;
-                var words = MemoryMarshal.Cast<byte, ulong>(packed);
-                foreach (var word in words)
-                    setCount += BitOperations.PopCount(word);
+                var words = new ulong[BlockWordCount];
+                if (BitConverter.IsLittleEndian)
+                {
+                    MemoryMarshal.Cast<byte, ulong>(packed.AsSpan()).CopyTo(words);
+                }
+                else
+                {
+                    for (var i = 0; i < BlockWordCount; i++)
+                        words[i] = BinaryPrimitives.ReadUInt64LittleEndian(packed.AsSpan(i * 8, 8));
+                }
 
-                if (setCount == 0) return null;
-                if (setCount == BlockVolume) return Full;
-                return new Block(2, new BitArray(packed), setCount);
+                return FromWords(words);
             }
 
             /// <summary>
             /// Write the block's bits into <paramref name="destination"/> in the packed layout used
-            /// by <see cref="FromPackedBytes"/>.
+            /// by <see cref="FromPackedBytes"/>. The layout is fixed (LSB-first bit index
+            /// <c>(lz &lt;&lt; 12) | (ly &lt;&lt; 6) | lx</c>); it does not depend on the machine word size.
             /// </summary>
-            public void CopyPacked(byte[] destination) => _bits!.CopyTo(destination, 0);
+            public void CopyPacked(byte[] destination)
+            {
+                if (destination.Length != PackedBlockBytes)
+                    throw new ArgumentException($"Destination must hold {PackedBlockBytes} bytes.", nameof(destination));
+
+                if (_state == 0)
+                {
+                    Array.Clear(destination);
+                    return;
+                }
+
+                if (_state == 1)
+                {
+                    Array.Fill(destination, (byte)0xFF);
+                    return;
+                }
+
+                if (BitConverter.IsLittleEndian)
+                {
+                    MemoryMarshal.AsBytes(_words.AsSpan()).CopyTo(destination);
+                    return;
+                }
+
+                for (var i = 0; i < BlockWordCount; i++)
+                    BinaryPrimitives.WriteUInt64LittleEndian(destination.AsSpan(i * 8, 8), _words![i]);
+            }
 
             /// <summary>
             /// Copy-on-write: materialize a private mutable block from the shared
@@ -718,16 +822,22 @@ namespace Layeron.Big3DArray
             /// </summary>
             public static Block MaterializeFromFull(int lx, int ly, int lz)
             {
-                var bits = new BitArray(BlockVolume, true);
-                bits.Set((lz << 12) | (ly << 6) | lx, false);
-                return new Block(2, bits, BlockVolume - 1);
+                var words = new ulong[BlockWordCount];
+                Array.Fill(words, ulong.MaxValue);
+                words[(lz << 6) | ly] &= ~(1UL << lx);
+                return new Block(2, words, BlockVolume - 1);
             }
 
             /// <summary>
             /// Copy-on-write: a private mutable copy of the shared <see cref="Full"/> singleton
             /// with every bit set, for callers that subsequently clear selected bits.
             /// </summary>
-            public static Block MaterializeFromFull() => new(2, new BitArray(BlockVolume, true), BlockVolume);
+            public static Block MaterializeFromFull()
+            {
+                var words = new ulong[BlockWordCount];
+                Array.Fill(words, ulong.MaxValue);
+                return new Block(2, words, BlockVolume);
+            }
 
             public bool this[int lx, int ly, int lz]
             {
@@ -735,18 +845,19 @@ namespace Layeron.Big3DArray
                 {
                     if (_state == 0) return false;
                     if (_state == 1) return true;
-                    var idx = (lz << 12) | (ly << 6) | lx; // z*4096 + y*64 + x
-                    return _bits!.Get(idx);
+                    return (_words![(lz << 6) | ly] & (1UL << lx)) != 0;
                 }
 
                 set
                 {
+                    var wordIndex = (lz << 6) | ly;
+                    var mask = 1UL << lx;
+
                     if (_state == 0)
                     {
                         if (!value) return;
-                        _bits = new BitArray(BlockVolume);
-                        var idx0 = (lz << 12) | (ly << 6) | lx;
-                        _bits.Set(idx0, true);
+                        _words = new ulong[BlockWordCount];
+                        _words[wordIndex] = mask;
                         _setCount = 1;
                         _state = 2;
                         return;
@@ -755,33 +866,36 @@ namespace Layeron.Big3DArray
                     if (_state == 1)
                     {
                         if (value) return; // already set everywhere
-                        // The all-true state is a shared singleton: expanding it in place would
-                        // corrupt every other full block in the map. Callers must materialize a
-                        // private copy first (see MaterializeFromFull), so fail loudly here
-                        // instead of corrupting silently.
-                        throw new InvalidOperationException(
-                            "Cannot clear a bit on the shared full block; materialize a private copy first.");
+
+                        // Never mutate the shared full singleton: materialize a private copy first.
+                        _words = new ulong[BlockWordCount];
+                        Array.Fill(_words, ulong.MaxValue);
+                        _setCount = BlockVolume;
+                        _state = 2;
                     }
 
                     // normal
-                    var idx = (lz << 12) | (ly << 6) | lx;
-                    var old = _bits!.Get(idx);
+                    var old = (_words![wordIndex] & mask) != 0;
                     if (old == value) return;
-                    _bits.Set(idx, value);
+
+                    if (value)
+                        _words[wordIndex] |= mask;
+                    else
+                        _words[wordIndex] &= ~mask;
+
                     if (value)
                         _setCount++;
                     else
                         _setCount--;
+
                     if (_setCount == 0)
                     {
-                        _bits = null;
+                        _words = null;
                         _state = 0;
-                        return;
                     }
-
-                    if (_setCount == BlockVolume)
+                    else if (_setCount == BlockVolume)
                     {
-                        _bits = null;
+                        _words = null;
                         _state = 1;
                     }
                 }
@@ -802,12 +916,19 @@ namespace Layeron.Big3DArray
                     return;
                 }
 
-                var lzBase = lz << 12;
+                var lzBase = lz << 6;
                 for (var ly = 0; ly < rows; ly++)
                 {
-                    var rowBase = lzBase | (ly << 6);
-                    for (var lx = 0; lx < cols; lx++)
-                        dest[y0 + ly, x0 + lx] = _bits!.Get(rowBase | lx);
+                    var word = _words![lzBase | ly];
+                    while (word != 0)
+                    {
+                        var lx = BitOperations.TrailingZeroCount(word);
+                        if (lx >= cols)
+                            break;
+
+                        dest[y0 + ly, x0 + lx] = true;
+                        word &= word - 1;
+                    }
                 }
             }
 
@@ -826,12 +947,18 @@ namespace Layeron.Big3DArray
                     return;
                 }
 
-                var lyBase = ly << 6;
                 for (var lz = 0; lz < rows; lz++)
                 {
-                    var colBase = (lz << 12) | lyBase;
-                    for (var lx = 0; lx < cols; lx++)
-                        dest[z0 + lz, x0 + lx] = _bits!.Get(colBase | lx);
+                    var word = _words![(lz << 6) | ly];
+                    while (word != 0)
+                    {
+                        var lx = BitOperations.TrailingZeroCount(word);
+                        if (lx >= cols)
+                            break;
+
+                        dest[z0 + lz, x0 + lx] = true;
+                        word &= word - 1;
+                    }
                 }
             }
 
@@ -850,11 +977,15 @@ namespace Layeron.Big3DArray
                     return;
                 }
 
+                var mask = 1UL << lx;
                 for (var lz = 0; lz < rows; lz++)
                 {
-                    var zBase = lz << 12;
+                    var wordBase = lz << 6;
                     for (var ly = 0; ly < cols; ly++)
-                        dest[z0 + lz, y0 + ly] = _bits!.Get(zBase | (ly << 6) | lx);
+                    {
+                        if ((_words![wordBase | ly] & mask) != 0)
+                            dest[z0 + lz, y0 + ly] = true;
+                    }
                 }
             }
         }
