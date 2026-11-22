@@ -33,7 +33,7 @@ internal static class MaskMorphologyPacked
         CancellationToken ct,
         Action<double>? progress)
     {
-        if (operation == MaskMorphologyOperation.Copy || kernel.Radius == 0)
+        if (kernel.Radius == 0)
             return Copy(source, ct, progress);
 
         var input = Volume.Load(source, ct);

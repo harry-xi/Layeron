@@ -12,7 +12,7 @@
     <AssemblyMetadata Include="LayeronPluginId" Value="layeron.maskmorphology" />
     <AssemblyMetadata Include="LayeronPluginName" Value="Mask Morphology" />
     <AssemblyMetadata Include="LayeronPluginVersion" Value="1.0.0" />
-    <AssemblyMetadata Include="LayeronPluginDescription" Value="Erode, dilate, open, close and copy mask layers with cube, ball or cross structuring elements." />
+    <AssemblyMetadata Include="LayeronPluginDescription" Value="Morphology and click-seeded region growing for mask layers, with cube, ball or cross structuring elements." />
     <AssemblyMetadata Include="LayeronPluginApiVersion" Value="1.0" />
   </ItemGroup>
 

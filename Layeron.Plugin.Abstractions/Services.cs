@@ -104,6 +104,12 @@ public interface IMaskService
     /// <summary>Current layers in display order.</summary>
     IReadOnlyList<IMaskLayer> Layers { get; }
 
+    /// <summary>
+    /// The layer the panel currently marks active. Slice tools write into it, so a tool that needs
+    /// to start from existing mask pixels reads the same layer the user sees selected.
+    /// </summary>
+    IMaskLayer? ActiveLayer { get; }
+
     /// <summary>Raised when a layer is added or removed.</summary>
     event Action? Changed;
 

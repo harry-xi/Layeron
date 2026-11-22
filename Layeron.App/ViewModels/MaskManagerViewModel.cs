@@ -28,12 +28,14 @@ public class MaskManagerViewModel : Tool
         CanDockAsDocument = false;
 
         AddMaskCommand = ReactiveCommand.Create(AddMask);
+        CopyMaskCommand = ReactiveCommand.Create(CopyActiveMask);
         RemoveMaskCommand = ReactiveCommand.Create<MaskLayer>(RemoveMask);
         LoadMaskCommand = ReactiveCommand.CreateFromTask(LoadMaskAsync);
         SaveMaskCommand = ReactiveCommand.CreateFromTask<MaskLayer>(SaveMaskAsync);
 
         // [TEMP-DEMO] never let a command failure break the app
         AddMaskCommand.ThrownExceptions.Subscribe(HandleCommandError);
+        CopyMaskCommand.ThrownExceptions.Subscribe(HandleCommandError);
         RemoveMaskCommand.ThrownExceptions.Subscribe(HandleCommandError);
         LoadMaskCommand.ThrownExceptions.Subscribe(HandleCommandError);
         SaveMaskCommand.ThrownExceptions.Subscribe(HandleCommandError);
@@ -62,8 +64,18 @@ public class MaskManagerViewModel : Tool
     public MaskLayer? ActiveMask
     {
         get;
-        set => this.RaiseAndSetIfChanged(ref field, value);
+        set
+        {
+            if (ReferenceEquals(field, value))
+                return;
+
+            this.RaiseAndSetIfChanged(ref field, value);
+            this.RaisePropertyChanged(nameof(HasActiveMask));
+        }
     }
+
+    /// <summary>True when the toolbar's Copy action has a layer to duplicate.</summary>
+    public bool HasActiveMask => ActiveMask != null;
 
     public SharedDataSourceViewModel? SharedData
     {
@@ -79,6 +91,7 @@ public class MaskManagerViewModel : Tool
     }
 
     public ReactiveCommand<RxVoid, RxVoid> AddMaskCommand { get; }
+    public ReactiveCommand<RxVoid, RxVoid> CopyMaskCommand { get; }
     public ReactiveCommand<MaskLayer, RxVoid> RemoveMaskCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> LoadMaskCommand { get; }
     public ReactiveCommand<MaskLayer, RxVoid> SaveMaskCommand { get; }
@@ -133,6 +146,21 @@ public class MaskManagerViewModel : Tool
             Bitmap = new Big3DBitMap(ax.X, ax.Y, ax.Z)
         };
         AddLayer(layer);
+    }
+
+    /// <summary>
+    /// Duplicates the active layer as a new independent mask. Copying is a mask-layer operation, not
+    /// a morphology operation: the duplicate is ordinary session data and can be painted right away.
+    /// </summary>
+    public void CopyActiveMask()
+    {
+        var source = ActiveMask;
+        if (source == null)
+            return;
+
+        var copy = source.Duplicate();
+        AddLayer(copy);
+        Log.Info("Masks", "Copied {Source} to {Copy}", source.Name, copy.Name);
     }
 
     /// <summary>

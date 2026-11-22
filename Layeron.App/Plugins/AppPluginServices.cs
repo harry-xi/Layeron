@@ -189,6 +189,8 @@ internal sealed class AppMaskService : IMaskService, IDisposable
     public IReadOnlyList<IMaskLayer> Layers =>
         _manager is { } manager ? [.. manager.Masks.Cast<IMaskLayer>()] : [];
 
+    public IMaskLayer? ActiveLayer => _manager?.ActiveMask;
+
     public event Action? Changed;
 
     public event Action? ContentChanged;

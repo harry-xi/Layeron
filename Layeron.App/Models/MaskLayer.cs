@@ -55,6 +55,34 @@ public class MaskLayer : INotifyPropertyChanged, IMaskLayer
         _bitmap != null && _bitmap.MatchesDimensions(x, y, z);
 
     /// <summary>
+    /// Creates an independent layer with the same name suffix, colour, visibility and pixels. The
+    /// bitmap is copied block by block, so the duplicate can be painted without touching the source.
+    /// </summary>
+    public MaskLayer Duplicate(string? name = null) => new()
+    {
+        Name = name ?? $"{Name} 副本",
+        Color = Color,
+        IsVisible = IsVisible,
+        Bitmap = _bitmap is null ? null : CopyBitmap(_bitmap)
+    };
+
+    private static Big3DBitMap CopyBitmap(Big3DBitMap source)
+    {
+        var destination = new Big3DBitMap(source.SizeX, source.SizeY, source.SizeZ);
+        var words = new ulong[Big3DBitMap.BlockWordCount];
+
+        for (var bz = 0; bz < source.BlocksZ; bz++)
+        for (var by = 0; by < source.BlocksY; by++)
+        for (var bx = 0; bx < source.BlocksX; bx++)
+        {
+            source.CopyBlockPacked(bx, by, bz, words);
+            destination.SetBlockPacked(bx, by, bz, words);
+        }
+
+        return destination;
+    }
+
+    /// <summary>
     /// Plugin-facing colour. Implemented explicitly because the app's own <see cref="Color"/> is the
     /// Avalonia type that the XAML binds to; the plugin contract deliberately stays UI-framework free.
     /// </summary>

@@ -1,4 +1,5 @@
 using System.IO;
+using Avalonia.Media;
 using Layeron.App.Models;
 using Layeron.App.Plugins;
 using Layeron.App.Session;
@@ -96,6 +97,39 @@ public sealed class MaskServiceTests
             session.MaskManager.RaiseMasksContentChanged();
 
             Assert.AreEqual(1, contentChanged, "a pixel change made in the panel must wake plugin listeners");
+        }
+    }
+
+    [TestMethod]
+    public void CopyActiveMask_CreatesAnIndependentLayerWithTheSameAppearance()
+    {
+        var (_, session, services) = NewSession();
+        using (services)
+        {
+            var source = new MaskLayer
+            {
+                Name = "source",
+                Color = Color.FromArgb(120, 10, 20, 30),
+                IsVisible = false,
+                Bitmap = new Big3DBitMap(8, 9, 10)
+            };
+            source.Bitmap![1, 2, 3] = true;
+            session.MaskManager.AddLayer(source);
+
+            session.MaskManager.CopyActiveMask();
+
+            var copy = session.MaskManager.ActiveMask;
+            Assert.IsNotNull(copy);
+            Assert.AreNotSame(source, copy);
+            Assert.AreNotSame(source.Bitmap, copy.Bitmap);
+            Assert.AreEqual("source 副本", copy.Name);
+            Assert.AreEqual(source.Color, copy.Color);
+            Assert.IsFalse(copy.IsVisible);
+            Assert.IsTrue(copy.Bitmap![1, 2, 3]);
+            Assert.HasCount(2, session.MaskManager.Masks);
+
+            source.Bitmap![1, 2, 3] = false;
+            Assert.IsTrue(copy.Bitmap![1, 2, 3], "the copy must not share pixels with the source");
         }
     }
 

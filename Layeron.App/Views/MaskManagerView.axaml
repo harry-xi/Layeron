@@ -74,7 +74,7 @@
                     BorderThickness="0,0,0,1"
                     CornerRadius="7,7,0,0"
                     Padding="6,4">
-                <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="4">
+                <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="4">
                     <Button Classes="accent compact"
                             Content="Add"
                             ToolTip.Tip="Create a mask layer for the current volume"
@@ -84,7 +84,13 @@
                             Content="Load"
                             ToolTip.Tip="Load one or more .b3m masks"
                             Command="{Binding LoadMaskCommand}"/>
-                    <TextBlock Grid.Column="2"
+                    <Button Grid.Column="2"
+                            Classes="compact"
+                            Content="Copy"
+                            IsEnabled="{Binding HasActiveMask}"
+                            ToolTip.Tip="Duplicate the active mask as a new independent layer"
+                            Command="{Binding CopyMaskCommand}"/>
+                    <TextBlock Grid.Column="3"
                                Text="{Binding LayersCountText}"
                                FontSize="11"
                                Opacity="0.65"

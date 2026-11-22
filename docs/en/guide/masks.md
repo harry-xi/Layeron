@@ -16,17 +16,22 @@ A mask can be saved and loaded on its own, so an annotation can outlive and trav
 |---|---|
 | **Add** | Create a new empty mask layer |
 | **Load** | Load one or more mask layers from files |
+| **Copy** | Duplicate the active mask as a new independent layer |
 | **Show** | Whether the layer is visible |
 | **Name** | Layer name (editable) |
 | **Color** | Layer colour; the picker's Alpha is the overlay opacity |
 | **Remove** | Delete the layer |
 | **Save** | Save the layer to a file |
 
-The panel header shows the current layer count. **Load** accepts several files at once, so a set of masks can be restored in one step.
+The panel header shows the current layer count. **Load** accepts several files at once, so a set of masks can be restored in one step. **Copy** duplicates the active layer with independent pixels, so the copy can be painted without changing the source.
 
 ### Painting
 
 Hold `Ctrl` and drag with the left button on any slice view to paint into the **active mask layer**.
+
+### Morphology and region growing
+
+The `layeron.maskmorphology` sample plugin contributes a **Mask Morphology** panel for dilating, eroding, opening or closing the selected mask. It also contributes a **Region Grow** slice tool: select it in the toolbox, then click a mask voxel on any slice to choose the seed. The tool follows the mask's own binary connectivity and extracts the whole connected component that contains the seed (6- or 26-connected) without reading the volume's grey values. The result can be written to a new layer or back into the source mask.
 
 ## Generating a 3D model from a mask
 

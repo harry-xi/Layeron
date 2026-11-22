@@ -3,12 +3,12 @@ using Layeron.Plugin.Abstractions;
 namespace Layeron.Plugins.MaskMorphology;
 
 /// <summary>
-/// Contributes a tool panel that applies binary morphology to mask layers: dilate, erode, open,
-/// close, and copy. The algorithm itself (<see cref="MaskMorphologyEngine"/>) has no UI dependency,
-/// so it can also be used by scripts or other plugins.
+/// Contributes a tool panel that applies binary morphology to mask layers - dilate, erode, open and
+/// close - and a slice tool that extracts the connected mask component under a clicked seed. The
+/// algorithms themselves have no UI dependency, so they can also be used by scripts or other plugins.
 /// <para>
-/// Activation only registers a lazy content factory: no view, no view model and no work is created
-/// until the user opens the panel.
+/// Activation registers the panel's lazy content factory and one lightweight slice tool. The panel's
+/// view and view model are still created only when the user opens it.
 /// </para>
 /// </summary>
 [Plugin("layeron.maskmorphology")]
@@ -25,5 +25,9 @@ public sealed class MaskMorphologyPlugin : IPlugin
             PreferredDock = DockHint.Right,
             ContentFactory = () => new MaskMorphologyView(services)
         });
+
+        // Region growing is a slice interaction, so it belongs in the toolbox next to the brush and
+        // magic wand rather than behind an Apply button: the user picks the seed by clicking the slice.
+        context.Registry.AddSliceTool(new MaskRegionGrowTool(services));
     }
 }

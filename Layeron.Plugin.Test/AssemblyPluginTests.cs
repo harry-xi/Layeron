@@ -82,8 +82,9 @@ public sealed class AssemblyPluginTests
     }
 
     /// <summary>
-    /// The morphology plugin contributes one lazy tool panel. Activation must not create the view or
-    /// touch a mask, and unloading must leave no reachable reference to the plugin's load context.
+    /// The morphology plugin contributes one lazy tool panel and one slice tool. Activation must not
+    /// create the panel or touch a mask, and unloading must leave no reachable reference to the
+    /// plugin's load context.
     /// </summary>
     [TestMethod]
     public void MaskMorphologyPlugin_LoadsContributesToolAndCollectsContext()
@@ -113,6 +114,11 @@ public sealed class AssemblyPluginTests
             "the morphology panel must be attached to the host");
         Assert.AreEqual(1, adapter.Tools.Count);
         Assert.AreEqual(0, adapter.Opened.Count, "loading the plugin must not create the panel");
+
+        var sliceTools = manager.PointRegistry.GetPoint<SliceToolContribution>(ToolPoints.SliceTools);
+        Assert.IsNotNull(sliceTools, "the host-owned slice tool point must exist");
+        Assert.AreEqual(1, sliceTools.Count, "region growing must be contributed as a slice tool");
+        Assert.AreEqual("layeron.maskmorphology.regiongrow", sliceTools.Items[0].Descriptor.Id);
 
         var result = (plugin.Descriptor.Id, plugin.Descriptor.Name ?? "");
         manager.Unload("layeron.maskmorphology");

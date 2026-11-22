@@ -83,8 +83,7 @@ public sealed class MaskMorphologyViewModel : ReactiveObject, IDisposable
             new MaskOperationChoice(MaskMorphologyOperation.Dilate, "膨胀 (Dilate)"),
             new MaskOperationChoice(MaskMorphologyOperation.Erode, "腐蚀 (Erode)"),
             new MaskOperationChoice(MaskMorphologyOperation.Open, "开运算 (Open)"),
-            new MaskOperationChoice(MaskMorphologyOperation.Close, "闭运算 (Close)"),
-            new MaskOperationChoice(MaskMorphologyOperation.Copy, "复制 (Copy)")
+            new MaskOperationChoice(MaskMorphologyOperation.Close, "闭运算 (Close)")
         ];
 
         Kernels =
@@ -275,14 +274,12 @@ public sealed class MaskMorphologyViewModel : ReactiveObject, IDisposable
 
         StatusText = BuildRunningStatus(operation, kernel);
 
-        Task.Run(() => operation == MaskMorphologyOperation.Copy
-                ? snapshot
-                : MaskMorphologyEngine.Apply(
-                    snapshot,
-                    operation,
-                    kernel,
-                    ct,
-                    fraction => Dispatcher.UIThread.Post(() => ProgressValue = fraction * 100)),
+        Task.Run(() => MaskMorphologyEngine.Apply(
+                snapshot,
+                operation,
+                kernel,
+                ct,
+                fraction => Dispatcher.UIThread.Post(() => ProgressValue = fraction * 100)),
             ct)
             .ContinueWith(task =>
             {
@@ -307,7 +304,7 @@ public sealed class MaskMorphologyViewModel : ReactiveObject, IDisposable
 
                 try
                 {
-                    if (createCopy || operation == MaskMorphologyOperation.Copy)
+                    if (createCopy)
                     {
                         var layer = _services.Masks.Add(resultName, result, sourceColor);
                         _services.Masks.NotifyContentChanged();
@@ -317,7 +314,7 @@ public sealed class MaskMorphologyViewModel : ReactiveObject, IDisposable
                     {
                         // The write-back is a second pass over the computed map. It deliberately
                         // ignores cancellation: the expensive work is already done, and stopping in
-                        // the middle of the copy would leave the source layer half-transformed.
+                        // the middle of the write would leave the source layer half-transformed.
                         StatusText = "写入源图层…";
                         MaskMorphologyEngine.CopyInto(result, sourceBitmap);
                         _services.Masks.NotifyContentChanged();
@@ -337,29 +334,18 @@ public sealed class MaskMorphologyViewModel : ReactiveObject, IDisposable
             }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.FromCurrentSynchronizationContext());
     }
 
-    private static string BuildRunningStatus(MaskMorphologyOperation operation, MaskKernel kernel)
-    {
-        if (operation == MaskMorphologyOperation.Copy)
-            return "复制掩膜…";
+    private static string BuildRunningStatus(MaskMorphologyOperation operation, MaskKernel kernel) =>
+        $"正在{OperationVerb(operation)} · {kernel.Shape} r={kernel.Radius}…";
 
-        return $"正在{OperationVerb(operation)} · {kernel.Shape} r={kernel.Radius}…";
-    }
-
-    private static string BuildResultName(MaskMorphologyOperation operation, MaskKernel kernel, string sourceName)
-    {
-        if (operation == MaskMorphologyOperation.Copy)
-            return $"{sourceName} 副本";
-
-        return $"{OperationVerb(operation)} {kernel.Shape} r={kernel.Radius} ← {sourceName}";
-    }
+    private static string BuildResultName(MaskMorphologyOperation operation, MaskKernel kernel, string sourceName) =>
+        $"{OperationVerb(operation)} {kernel.Shape} r={kernel.Radius} ← {sourceName}";
 
     private static string OperationVerb(MaskMorphologyOperation operation) => operation switch
     {
         MaskMorphologyOperation.Erode => "腐蚀",
         MaskMorphologyOperation.Dilate => "膨胀",
         MaskMorphologyOperation.Open => "开运算",
-        MaskMorphologyOperation.Close => "闭运算",
-        _ => "复制"
+        _ => "闭运算"
     };
 
     private CancellationToken ResetWork()

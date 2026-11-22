@@ -31,7 +31,7 @@ Layeron.Scripting.Abstractions  脚本契约：ScriptGlobals + ScriptRunContext 
 Layeron.Plugin.Host             加载器内核：PluginManager / PluginLoadContext / 作用域 / 扩展点注册表
 Layeron.Plugins.Threshold       阈值分割工具；定义 VolumeAction 扩展点
 Layeron.Plugins.Model3D         工具+文档型插件：掩膜 → 3D 模型管理，Aura3D 渲染 + glTF 导入
-Layeron.Plugins.MaskMorphology  掩膜形态学面板：腐蚀/膨胀/开/闭/复制，立方体/球体/十字内核
+Layeron.Plugins.MaskMorphology  掩膜形态学面板：腐蚀/膨胀/开/闭；区域生长切片工具：点击选种子并提取连通块
 Layeron.Plugins.ScriptHost      插件加载器 + C# `.csx` 脚本编辑器（见 §10）
 Layeron.Plugins.PythonRunner    内嵌 CPython + REPL + 编辑器；发布 IPythonRunnerService
 Layeron.Plugins.OnnxRuntime     ONNX 推理工具；发布 IOnnxRunnerService

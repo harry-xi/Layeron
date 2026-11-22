@@ -2,23 +2,20 @@ using Layeron.Big3DArray;
 
 namespace Layeron.Plugins.MaskMorphology;
 
-/// <summary>Binary morphology operations offered by this plugin.</summary>
+/// <summary>Operations offered by the mask morphology panel.</summary>
 public enum MaskMorphologyOperation
 {
-    /// <summary>Copies the mask unchanged.</summary>
-    Copy = 0,
-
     /// <summary>Shrinks the foreground by the structuring element.</summary>
-    Erode = 1,
+    Erode = 0,
 
     /// <summary>Grows the foreground by the structuring element.</summary>
-    Dilate = 2,
+    Dilate = 1,
 
     /// <summary>Erosion followed by dilation: removes small foreground specks and thin bridges.</summary>
-    Open = 3,
+    Open = 2,
 
     /// <summary>Dilation followed by erosion: fills small holes and narrow gaps.</summary>
-    Close = 4
+    Close = 3
 }
 
 /// <summary>Shape of the structuring element (the morphology "kernel").</summary>
@@ -58,9 +55,8 @@ public readonly record struct MaskKernel(MaskKernelShape Shape, int Radius)
 /// </para>
 /// <para>
 /// Every operation returns a new map and never mutates the source. <see cref="Copy"/> and
-/// <see cref="CopyInto"/> are part of the kernel on purpose: they are what lets a caller keep the
-/// input while producing a result, and they are also the implementation used by the UI's
-/// "copy as a new layer" path.
+/// <see cref="CopyInto"/> are part of the kernel on purpose: they are what lets a caller keep a stable
+/// input while producing a result, which is how the panel snapshots the source before a background pass.
 /// </para>
 /// </summary>
 public static class MaskMorphologyEngine
@@ -80,8 +76,8 @@ public static class MaskMorphologyEngine
         if (kernel.Radius < 0)
             throw new ArgumentOutOfRangeException(nameof(kernel), "Kernel radius must not be negative.");
 
-        // Radius 0 is the identity element for every shape, and an explicit copy is the same thing.
-        if (operation == MaskMorphologyOperation.Copy || kernel.Radius == 0)
+        // Radius 0 is the identity element for every shape.
+        if (kernel.Radius == 0)
             return Copy(source, ct, progress);
 
         // A ball whose radius reaches the volume diagonal covers every voxel from every centre.

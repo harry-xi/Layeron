@@ -73,5 +73,8 @@
 
     <TextBlock TextWrapping="Wrap" FontSize="10" Opacity="0.6"
                Text="滑动条固定为 0–16；更大的半径请直接在输入框输入（滑动条会停在 16，拖动滑动条则把数值拉回 0–16）。边界按复制边缘处理，半径 0 等同于复制；球体内核在较大半径时会更慢。" />
+
+    <TextBlock TextWrapping="Wrap" FontSize="10" Opacity="0.6"
+               Text="区域生长是工具箱里的独立切片工具：选择「区域生长」后，在切片上单击掩膜体素即可选种子。" />
   </StackPanel>
 </UserControl>

@@ -242,7 +242,6 @@ public sealed class MaskMorphologyEngineTests
 
         return operation switch
         {
-            MaskMorphologyOperation.Copy => input,
             MaskMorphologyOperation.Erode => ReferencePass(input, kernel, dilate: false),
             MaskMorphologyOperation.Dilate => ReferencePass(input, kernel, dilate: true),
             MaskMorphologyOperation.Open => ReferencePass(ReferencePass(input, kernel, dilate: false), kernel, dilate: true),

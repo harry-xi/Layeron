@@ -171,6 +171,8 @@ internal sealed class TestMaskService : IMaskService
 
     public IReadOnlyList<IMaskLayer> Layers => _layers;
 
+    public IMaskLayer? ActiveLayer { get; set; }
+
     public event Action? Changed;
 
     public event Action? ContentChanged;
@@ -184,6 +186,7 @@ internal sealed class TestMaskService : IMaskService
     public void Clear()
     {
         _layers.Clear();
+        ActiveLayer = null;
         NotifyCount = 0;
     }
 
@@ -194,14 +197,19 @@ internal sealed class TestMaskService : IMaskService
 
         var layer = new TestMaskLayer(name, bitmap, color);
         _layers.Add(layer);
+        ActiveLayer = layer;
         Changed?.Invoke();
         return layer;
     }
 
     public void Remove(IMaskLayer layer)
     {
-        if (_layers.Remove(layer))
-            Changed?.Invoke();
+        if (!_layers.Remove(layer))
+            return;
+
+        if (ReferenceEquals(ActiveLayer, layer))
+            ActiveLayer = _layers.LastOrDefault();
+        Changed?.Invoke();
     }
 
     public void NotifyContentChanged()
