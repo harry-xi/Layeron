@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Numerics;
 using Aura3D.Core.Nodes;
+using Layeron.Plugin.Abstractions;
 using AuraModel = Aura3D.Core.Nodes.Model;
 using Mask3DGeometry = Layeron.Plugins.Model3D.Mask3DGeometry;
 
@@ -64,6 +66,13 @@ internal sealed class Mask3DModel : INotifyPropertyChanged
     public Mask3DGeometry.SurfaceMesh? Surface { get; }
 
     /// <summary>
+    /// The snapshot published through <see cref="IModel3DModelList"/>, filled lazily on the first
+    /// consumer read so a session that never uses the extension does not pay for a full copy of
+    /// every model.
+    /// </summary>
+    internal IReadOnlyList<Model3DMesh>? MeshesSnapshot { get; set; }
+
+    /// <summary>
     /// The colour currently applied to the node; null for an imported model that still uses the
     /// material from its file. Setting it is done through <see cref="Mask3DModelManager.SetColor"/>
     /// so the material and the scene are updated together.
@@ -114,9 +123,20 @@ internal sealed class Mask3DModel : INotifyPropertyChanged
 /// <see cref="Changed"/> is raised on that thread; the document still marshals because it may have
 /// been opened from a restored layout.
 /// </para>
+/// <para>
+/// The plugin publishes the same state through <see cref="IModel3DModelList"/>. The manager stays
+/// the owner: other plugins read snapshots and write back through the public list, while the panel
+/// keeps its direct, strongly typed view of the same collection.
+/// </para>
 /// </summary>
 internal sealed class Mask3DModelManager
 {
+    /// <summary>
+    /// Colour applied to models a plugin contributes without asking for one. A derived model has no
+    /// mask layer to inherit from, and the panel's rows need a visible swatch.
+    /// </summary>
+    private static readonly Rgb ContributedColor = Rgb.FromBytes(90, 170, 230);
+
     private readonly ObservableCollection<Mask3DModel> _models = [];
     private int _nextId;
 
@@ -186,6 +206,48 @@ internal sealed class Mask3DModelManager
     }
 
     /// <summary>
+    /// Adds a model supplied by another plugin through <see cref="IModel3DModelList.Add"/>. The
+    /// meshes are merged into one surface because the list's unit is a model, not a mesh: a
+    /// transform that returns one mesh per source mesh still lands as a single exportable entry.
+    /// </summary>
+    internal Mask3DModel? AddContributed(
+        string name,
+        string? detail,
+        IReadOnlyList<Model3DMesh> meshes,
+        MaskColor? color)
+    {
+        ArgumentNullException.ThrowIfNull(meshes);
+
+        if (meshes.Count == 0)
+            return null;
+
+        var hasTriangles = false;
+        foreach (var mesh in meshes)
+        {
+            if (mesh.TriangleCount > 0)
+            {
+                hasTriangles = true;
+                break;
+            }
+        }
+
+        if (!hasTriangles)
+            return null;
+
+        var surface = Mask3DScene.ToSurface(meshes, solidVoxels: 0);
+
+        if (surface.TriangleCount == 0)
+            return null;
+
+        var rgb = color is { } value ? Rgb.FromBytes(value.R, value.G, value.B) : ContributedColor;
+        var detailText = string.IsNullOrWhiteSpace(detail)
+            ? $"{surface.TriangleCount:N0} 三角面"
+            : detail;
+
+        return AddSurface(surface, rgb, name, detailText);
+    }
+
+    /// <summary>
     /// Recolours a model. Both mask surfaces and imports end up with a one-pixel BaseColor texture;
     /// for an import this replaces the base colour the file carried, which is exactly what asking
     /// for "one colour for this model" means. Returns false when nothing changed.
@@ -217,6 +279,20 @@ internal sealed class Mask3DModelManager
         return true;
     }
 
+    /// <summary>Removes the model with the given public id; used by <see cref="IModel3DModelList"/>.</summary>
+    internal bool RemoveById(string id)
+    {
+        ArgumentNullException.ThrowIfNull(id);
+
+        foreach (var model in _models)
+        {
+            if (string.Equals(model.Id, id, StringComparison.Ordinal))
+                return Remove(model);
+        }
+
+        return false;
+    }
+
     /// <summary>Removes every model.</summary>
     public void Clear()
     {
@@ -228,6 +304,41 @@ internal sealed class Mask3DModelManager
 
         _models.Clear();
         Changed?.Invoke();
+    }
+
+    /// <summary>Snapshot of the whole list, in display order, for <see cref="IModel3DModelList.Models"/>.</summary>
+    internal IReadOnlyList<Model3DContribution> Snapshots()
+    {
+        var result = new List<Model3DContribution>(_models.Count);
+
+        foreach (var model in _models)
+        {
+            if (Describe(model) is { } snapshot)
+                result.Add(snapshot);
+        }
+
+        return result;
+    }
+
+    /// <summary>Public snapshot of one model, or null when the node holds no readable mesh.</summary>
+    internal Model3DContribution? Describe(Mask3DModel model)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        var meshes = model.MeshesSnapshot ??= BuildMeshes(model);
+
+        if (meshes.Count == 0)
+            return null;
+
+        return new Model3DContribution
+        {
+            Id = model.Id,
+            Name = model.Name,
+            Detail = model.Detail,
+            Color = model.Color is { } color ? ToMaskColor(color) : null,
+            IsVisible = model.IsVisible,
+            Meshes = meshes,
+        };
     }
 
     private void Add(Mask3DModel model)
@@ -248,6 +359,38 @@ internal sealed class Mask3DModelManager
         if (e.PropertyName is nameof(Mask3DModel.IsVisible) or nameof(Mask3DModel.Color))
             Changed?.Invoke();
     }
+
+    /// <summary>
+    /// Copies a model's geometry into contract meshes on the first consumer read. The arrays are
+    /// shared by every later snapshot of that model, so a colour change does not re-copy the mesh.
+    /// </summary>
+    private IReadOnlyList<Model3DMesh> BuildMeshes(Mask3DModel model)
+    {
+        var meshes = new List<Model3DMesh>();
+
+        if (model.Surface is { } surface)
+        {
+            meshes.Add(Mask3DScene.Describe(surface, model.Name));
+            return meshes;
+        }
+
+        if (model.Content is AuraModel imported)
+        {
+            foreach (var mesh in imported.Meshes)
+            {
+                if (Mask3DScene.Describe(mesh) is { } described)
+                    meshes.Add(described);
+            }
+        }
+
+        return meshes;
+    }
+
+    private static MaskColor ToMaskColor(Rgb color)
+        => new(
+            (byte)Math.Clamp((int)MathF.Round(color.R * 255f), 0, 255),
+            (byte)Math.Clamp((int)MathF.Round(color.G * 255f), 0, 255),
+            (byte)Math.Clamp((int)MathF.Round(color.B * 255f), 0, 255));
 
     private string NextId() => $"mask3d-{++_nextId}";
 

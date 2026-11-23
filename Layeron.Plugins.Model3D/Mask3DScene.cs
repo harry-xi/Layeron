@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Numerics;
 using Aura3D.Core.Nodes;
 using Aura3D.Core.Resources;
+using Aura3D.Core.Scenes;
+using Layeron.Plugin.Abstractions;
 using AuraColor = System.Drawing.Color;
 using AuraGeometry = Aura3D.Core.Resources.Geometry;
 using AuraMaterial = Aura3D.Core.Resources.Material;
@@ -91,6 +93,29 @@ internal static class Mask3DScene
     /// </summary>
     public static AuraMesh CreateMeshNode(Mask3DGeometry.SurfaceMesh surface, Rgb color)
     {
+        // The engine lights in linear space and gamma-encodes on output, so the texture has to be
+        // declared as sRGB: otherwise the raw bytes are treated as linear and the model comes out
+        // washed out by one extra gamma step.
+        var texture = CreateColorTexture(color);
+
+        var material = new AuraMaterial { DoubleSided = true };
+        material.SetChannel(new Channel { Name = "BaseColor", Texture = texture });
+
+        return new AuraMesh
+        {
+            Name = "Mask surface",
+            Geometry = CreateGeometry(surface),
+            Material = material,
+        };
+    }
+
+    /// <summary>
+    /// Builds the vertex buffers for an extracted surface. Split out of <see cref="CreateMeshNode"/>
+    /// so every surface - mask-generated or contributed by another plugin - goes through the same
+    /// material-independent conversion.
+    /// </summary>
+    public static AuraGeometry CreateGeometry(Mask3DGeometry.SurfaceMesh surface)
+    {
         var positions = new List<float>(surface.Vertices.Count * 3);
         foreach (var vertex in surface.Vertices)
         {
@@ -124,20 +149,42 @@ internal static class Mask3DScene
         geometry.SetVertexAttribute(BuildInVertexAttribute.Bitangent, 3u, bitangents);
         geometry.SetIndices(surface.Indices);
 
-        // The engine lights in linear space and gamma-encodes on output, so the texture has to be
-        // declared as sRGB: otherwise the raw bytes are treated as linear and the model comes out
-        // washed out by one extra gamma step.
-        var texture = CreateColorTexture(color);
+        return geometry;
+    }
 
-        var material = new AuraMaterial { DoubleSided = true };
-        material.SetChannel(new Channel { Name = "BaseColor", Texture = texture });
+    /// <summary>
+    /// Adds a model node to a viewport's scene, unless another live scene already owns it.
+    /// <para>
+    /// Aura3D allows a node to belong to one scene at a time (<c>Node.CurrentScene</c>). The manager
+    /// keeps model nodes for the whole session, so a viewport must give them back when it goes away;
+    /// adding them to a second scene without that step throws
+    /// <c>SceneGraphException(NodeAlreadyBelongsToScene)</c>. Returns true when the node is now in
+    /// <paramref name="scene"/> (or already was); false means another viewport still owns it.
+    /// </para>
+    /// </summary>
+    public static bool TryAddModel(Scene scene, Node node)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+        ArgumentNullException.ThrowIfNull(node);
 
-        return new AuraMesh
-        {
-            Name = "Mask surface",
-            Geometry = geometry,
-            Material = material,
-        };
+        if (node.CurrentScene is { } owner)
+            return ReferenceEquals(owner, scene);
+
+        scene.AddNode(node);
+        return true;
+    }
+
+    /// <summary>
+    /// Removes a model node from a viewport's scene and clears its scene ownership, so the node can
+    /// be adopted by the next viewport. A node owned by a different scene is left alone.
+    /// </summary>
+    public static void RemoveModel(Scene scene, Node node)
+    {
+        ArgumentNullException.ThrowIfNull(scene);
+        ArgumentNullException.ThrowIfNull(node);
+
+        if (ReferenceEquals(node.CurrentScene, scene))
+            scene.RemoveNode(node);
     }
 
     /// <summary>
@@ -184,6 +231,258 @@ internal static class Mask3DScene
         texture.SetIsGammaSpace(true);
         return texture;
     }
+
+    /// <summary>
+    /// Snapshot of an extracted surface as the cross-plugin contract mesh. Normals travel with the
+    /// positions because the mesh is flat shaded; consumers may still replace them after moving
+    /// vertices.
+    /// </summary>
+    public static Model3DMesh Describe(Mask3DGeometry.SurfaceMesh surface, string name)
+    {
+        var positions = new float[surface.Vertices.Count * 3];
+        var normals = new float[surface.VertexProps.Count * 3];
+
+        for (var i = 0; i < surface.Vertices.Count; i++)
+        {
+            var vertex = surface.Vertices[i];
+            positions[i * 3] = vertex.X;
+            positions[i * 3 + 1] = vertex.Y;
+            positions[i * 3 + 2] = vertex.Z;
+        }
+
+        for (var i = 0; i < surface.VertexProps.Count; i++)
+        {
+            var normal = surface.VertexProps[i].Normal;
+            normals[i * 3] = normal.X;
+            normals[i * 3 + 1] = normal.Y;
+            normals[i * 3 + 2] = normal.Z;
+        }
+
+        return new Model3DMesh
+        {
+            Name = name,
+            Positions = positions,
+            Normals = normals,
+            Indices = [.. surface.Indices],
+        };
+    }
+
+    /// <summary>Snapshot of one mesh of a loaded model, or null when it carries no drawable geometry.</summary>
+    public static Model3DMesh? Describe(AuraMesh mesh)
+    {
+        if (mesh.Geometry is not { } geometry)
+            return null;
+
+        var positions = geometry.GetAttributeData(BuildInVertexAttribute.Position);
+        var indices = geometry.Indices;
+
+        if (positions is null || positions.Count < 3 || indices is null || indices.Count < 3)
+            return null;
+
+        var normals = geometry.GetAttributeData(BuildInVertexAttribute.Normal);
+
+        return new Model3DMesh
+        {
+            Name = string.IsNullOrWhiteSpace(mesh.Name) ? "网格" : mesh.Name,
+            Positions = [.. positions],
+            Normals = normals is { Count: > 0 } ? [.. normals] : null,
+            Indices = [.. indices],
+        };
+    }
+
+    /// <summary>
+    /// Turns contracted meshes into one extracted surface, so a model another plugin contributes can
+    /// flow through the same node, framing, picking and export path as a mask-generated one.
+    /// <para>
+    /// A mask surface is one mesh, but an import may be several. They are merged into one indexed
+    /// buffer here rather than becoming several scene nodes: the model list's unit is a model, and
+    /// an export of the result must be one file.
+    /// </para>
+    /// </summary>
+    public static Mask3DGeometry.SurfaceMesh ToSurface(IReadOnlyList<Model3DMesh> meshes, int solidVoxels)
+    {
+        ArgumentNullException.ThrowIfNull(meshes);
+
+        if (meshes.Count == 0)
+            throw new ArgumentException("至少需要一个网格。", nameof(meshes));
+
+        var merged = meshes.Count == 1 ? meshes[0] : Merge(meshes);
+
+        var vertexCount = merged.VertexCount;
+        if (vertexCount == 0 || merged.Positions.Length % 3 != 0)
+            throw new ArgumentException("网格顶点位置必须每顶点三个浮点数。", nameof(meshes));
+
+        if (merged.Indices.Length == 0 || merged.Indices.Length % 3 != 0)
+            throw new ArgumentException("网格索引必须每三角面三个。", nameof(meshes));
+
+        ValidateIndices(merged, vertexCount);
+
+        var normals = ResolveNormals(merged, vertexCount);
+
+        var vertices = new List<Vector4>(vertexCount);
+        for (var i = 0; i < vertexCount; i++)
+        {
+            vertices.Add(new Vector4(
+                merged.Positions[i * 3],
+                merged.Positions[i * 3 + 1],
+                merged.Positions[i * 3 + 2],
+                1f));
+        }
+
+        var props = new List<Mask3DGeometry.VertexNormal>(vertexCount);
+        for (var i = 0; i < vertexCount; i++)
+            props.Add(new Mask3DGeometry.VertexNormal(new Vector3(normals[i * 3], normals[i * 3 + 1], normals[i * 3 + 2])));
+
+        var (center, radius) = BoundsOfPositions(merged.Positions);
+        return new Mask3DGeometry.SurfaceMesh(vertices, props, [.. merged.Indices], center, radius, solidVoxels);
+    }
+
+    /// <summary>
+    /// Concatenates meshes into one buffer, offsetting each mesh's indices. Normals are kept only
+    /// when every input has a usable stream; otherwise the merged surface recomputes them.
+    /// </summary>
+    private static Model3DMesh Merge(IReadOnlyList<Model3DMesh> meshes)
+    {
+        var vertexCount = 0;
+        var indexCount = 0;
+        var keepNormals = true;
+
+        foreach (var mesh in meshes)
+        {
+            vertexCount += mesh.VertexCount;
+            indexCount += mesh.Indices.Length;
+
+            if (mesh.Normals is null || mesh.Normals.Length != mesh.Positions.Length)
+                keepNormals = false;
+        }
+
+        var positions = new float[vertexCount * 3];
+        var normals = keepNormals ? new float[vertexCount * 3] : null;
+        var indices = new uint[indexCount];
+
+        var positionOffset = 0;
+        var indexOffset = 0;
+        var vertexOffset = 0;
+
+        foreach (var mesh in meshes)
+        {
+            Array.Copy(mesh.Positions, 0, positions, positionOffset, mesh.Positions.Length);
+
+            if (normals is not null && mesh.Normals is not null)
+                Array.Copy(mesh.Normals, 0, normals, positionOffset, mesh.Normals.Length);
+
+            for (var i = 0; i < mesh.Indices.Length; i++)
+                indices[indexOffset + i] = mesh.Indices[i] + (uint)vertexOffset;
+
+            positionOffset += mesh.Positions.Length;
+            indexOffset += mesh.Indices.Length;
+            vertexOffset += mesh.VertexCount;
+        }
+
+        return new Model3DMesh
+        {
+            Name = "合并网格",
+            Positions = positions,
+            Normals = normals,
+            Indices = indices,
+        };
+    }
+
+    private static void ValidateIndices(Model3DMesh mesh, int vertexCount)
+    {
+        foreach (var index in mesh.Indices)
+        {
+            if (index >= (uint)vertexCount)
+                throw new ArgumentException($"The mesh index {index} is outside the {vertexCount} vertices.", nameof(mesh));
+        }
+    }
+
+    /// <summary>Returns a normal stream usable by the rasteriser: authored, normalised, or recomputed.</summary>
+    private static float[] ResolveNormals(Model3DMesh mesh, int vertexCount)
+    {
+        var normals = mesh.Normals;
+        if (normals is null || normals.Length != vertexCount * 3)
+            return ComputeSmoothNormals(mesh, vertexCount);
+
+        var result = new float[normals.Length];
+        for (var i = 0; i + 2 < normals.Length; i += 3)
+        {
+            var normal = new Vector3(normals[i], normals[i + 1], normals[i + 2]);
+            if (normal.LengthSquared() > 1e-12f)
+                normal = Vector3.Normalize(normal);
+            else
+                normal = Vector3.UnitY;
+
+            result[i] = normal.X;
+            result[i + 1] = normal.Y;
+            result[i + 2] = normal.Z;
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Area-weighted vertex normals from the triangle list. The cross product's length is twice the
+    /// triangle area, so a large triangle contributes proportionally more to the shared vertices -
+    /// the same weighting the surface extractor's neighbours would have produced.
+    /// </summary>
+    private static float[] ComputeSmoothNormals(Model3DMesh mesh, int vertexCount)
+    {
+        var accumulated = new Vector3[vertexCount];
+        var positions = mesh.Positions;
+        var indices = mesh.Indices;
+
+        for (var i = 0; i + 2 < indices.Length; i += 3)
+        {
+            var a = ReadPosition(positions, (int)indices[i]);
+            var b = ReadPosition(positions, (int)indices[i + 1]);
+            var c = ReadPosition(positions, (int)indices[i + 2]);
+            var face = Vector3.Cross(b - a, c - a);
+
+            accumulated[indices[i]] += face;
+            accumulated[indices[i + 1]] += face;
+            accumulated[indices[i + 2]] += face;
+        }
+
+        var result = new float[vertexCount * 3];
+        for (var i = 0; i < vertexCount; i++)
+        {
+            var normal = accumulated[i];
+            if (normal.LengthSquared() > 1e-12f)
+                normal = Vector3.Normalize(normal);
+            else
+                normal = Vector3.UnitY;
+
+            result[i * 3] = normal.X;
+            result[i * 3 + 1] = normal.Y;
+            result[i * 3 + 2] = normal.Z;
+        }
+
+        return result;
+    }
+
+    private static Vector3 ReadPosition(float[] positions, int vertex)
+        => new(positions[vertex * 3], positions[vertex * 3 + 1], positions[vertex * 3 + 2]);
+
+    private static (Vector3 Center, float Radius) BoundsOfPositions(float[] positions)
+    {
+        var min = new Vector3(float.PositiveInfinity);
+        var max = new Vector3(float.NegativeInfinity);
+
+        for (var i = 0; i + 2 < positions.Length; i += 3)
+        {
+            var point = new Vector3(positions[i], positions[i + 1], positions[i + 2]);
+            min = Vector3.Min(min, point);
+            max = Vector3.Max(max, point);
+        }
+
+        if (positions.Length < 3)
+            return (Vector3.Zero, MinRadius);
+
+        var size = max - min;
+        return ((min + max) * 0.5f, MathF.Max(size.Length() * 0.5f, MinRadius));
+    }
+
 
     /// <summary>
     /// Fills in a tangent basis for every mesh of a loaded model that has none.

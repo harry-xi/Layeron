@@ -16,6 +16,12 @@ namespace Layeron.Plugins.Model3D;
 /// factories, so a session that never opens them never pays for the 3D engine, and the plugin stays
 /// loadable in a headless host where the engine could not start at all.
 /// </para>
+/// <para>
+/// The same manager is published outward as <see cref="IModel3DModelList"/> on
+/// <see cref="Model3DPoints.Models"/>: other plugins read the current models and can add derived
+/// ones (a smoothed model, say) without referencing this assembly. The list carries contract
+/// types only; the panel remains the sole owner of the engine nodes.
+/// </para>
 /// </summary>
 [Plugin("layeron.model3d")]
 public sealed class Mask3DPlugin : IPlugin
@@ -23,7 +29,19 @@ public sealed class Mask3DPlugin : IPlugin
     public void Activate(IPluginContext context)
     {
         var services = context.Services;
+
+        // The model list is published outward as a read/write contract, so another plugin can read
+        // the models that exist and add a derived one without referencing this plugin. The payload
+        // type lives in the contract assembly; contributing this plugin's own namespace type would
+        // give the consumer a second, incompatible copy.
+        context.Registry.DefinePoint<IModel3DModelList>(Model3DPoints.Models, "3D 模型列表");
+
         var models = new Mask3DModelManager();
+
+        // The generic argument is the contract interface, not the adapter: Contribute<T> looks the
+        // point up by (id, T), and a point defined as IModel3DModelList cannot be fed with a
+        // private implementation type.
+        context.Registry.Contribute<IModel3DModelList>(Model3DPoints.Models, new Mask3DModelList(models));
 
         // The document is registered first so the panel's "打开 3D 视图" can reveal it. The handle is
         // all the manager needs: it never learns the host's dockable ids.

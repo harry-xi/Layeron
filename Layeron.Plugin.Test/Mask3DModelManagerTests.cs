@@ -1,6 +1,7 @@
 using System.Threading;
 using Aura3D.Core.Nodes;
 using Aura3D.Core.Resources;
+using Layeron.Plugin.Abstractions;
 using Layeron.Plugins.Model3D;
 using AuraGeometry = Aura3D.Core.Resources.Geometry;
 using AuraMesh = Aura3D.Core.Nodes.Mesh;
@@ -182,6 +183,85 @@ public sealed class Mask3DModelManagerTests
         Assert.IsNotNull(model.Meshes[0].Geometry!
             .GetAttributeData(Aura3D.Core.Resources.BuildInVertexAttribute.Tangent));
     }
+
+    /// <summary>
+    /// A model another plugin contributes (e.g. a smoothing result) is merged into one exportable
+    /// model and mirrored back through the public list, which is the write half of the contract.
+    /// </summary>
+    [TestMethod]
+    public void AddContributed_MergesMeshesAndPublishesOneSnapshot()
+    {
+        var models = new Mask3DModelManager();
+        var list = new Mask3DModelList(models);
+        var changes = 0;
+        list.Changed += () => changes++;
+
+        var added = list.Add(
+            "平滑结果",
+            "Taubin · 2 三角面",
+            [ContractTriangle(0f), ContractTriangle(10f)],
+            new MaskColor(10, 20, 30));
+
+        Assert.IsNotNull(added);
+        Assert.AreEqual(1, changes, "adding a contributed model must notify list consumers");
+        Assert.HasCount(1, list.Models);
+        Assert.AreEqual(added!.Id, list.Models[0].Id);
+        Assert.AreEqual("平滑结果", added.Name);
+        Assert.AreEqual("Taubin · 2 三角面", added.Detail);
+        Assert.AreEqual((byte)10, added.Color!.Value.R);
+        Assert.AreEqual((byte)20, added.Color.Value.G);
+        Assert.AreEqual((byte)30, added.Color.Value.B);
+        Assert.HasCount(1, added.Meshes, "several input meshes become one model surface");
+        Assert.AreEqual(2, added.Meshes[0].TriangleCount);
+
+        var entry = models.Models.Single();
+        Assert.IsTrue(entry.CanExport, "a contributed model is an extracted surface, so it can be exported");
+        Assert.AreEqual(2, entry.Surface!.TriangleCount);
+
+        Assert.IsTrue(list.Remove(added.Id));
+        Assert.HasCount(0, list.Models);
+        Assert.AreEqual(2, changes);
+    }
+
+    [TestMethod]
+    public void AddContributed_WithoutTrianglesAddsNothing()
+    {
+        var models = new Mask3DModelManager();
+        var list = new Mask3DModelList(models);
+
+        var added = list.Add(
+            "空网格",
+            null,
+            [new Model3DMesh { Name = "empty", Positions = [], Indices = [] }]);
+
+        Assert.IsNull(added);
+        Assert.HasCount(0, models.Models);
+    }
+
+    [TestMethod]
+    public void Snapshots_TrackColourAndVisibility()
+    {
+        var models = new Mask3DModelManager();
+        var list = new Mask3DModelList(models);
+        var model = models.AddSurface(SingleVoxel(), Rgb.FromBytes(200, 80, 60), "掩膜", "");
+
+        model.IsVisible = false;
+        models.SetColor(model, Rgb.FromBytes(1, 2, 3));
+
+        var snapshot = list.Models.Single();
+        Assert.IsFalse(snapshot.IsVisible);
+        Assert.AreEqual((byte)1, snapshot.Color!.Value.R);
+        Assert.AreEqual((byte)2, snapshot.Color.Value.G);
+        Assert.AreEqual((byte)3, snapshot.Color.Value.B);
+    }
+
+    private static Model3DMesh ContractTriangle(float offset) => new()
+    {
+        Name = "triangle",
+        Positions = [offset, 0f, 0f, offset + 1f, 0f, 0f, offset, 1f, 0f],
+        Normals = [0f, 0f, 1f, 0f, 0f, 1f, 0f, 0f, 1f],
+        Indices = [0u, 1u, 2u],
+    };
 
     /// <summary>Two meshes so a recolour can be checked against "every mesh", as an import may have many.</summary>
     private static AuraModel ImportedModel()

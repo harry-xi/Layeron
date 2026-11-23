@@ -201,6 +201,36 @@ public sealed class VolumeAction
 }
 ```
 
+### 3D model list (`layeron.model3d.models`)
+
+Defined and contributed by the 3D model plugin; the payload is `IModel3DModelList`. It is a **read/write** interface: a transform plugin reads `Models`, computes, and writes the result back as a new model through `Add`; `Changed` fires when a model is added/removed or its colour/visibility changes.
+
+```csharp
+public static class Model3DPoints
+{
+    public const string Models = "layeron.model3d.models";
+}
+
+public interface IModel3DModelList
+{
+    IReadOnlyList<Model3DContribution> Models { get; }
+    event Action? Changed;
+
+    Model3DContribution? Add(string name, string? detail, IReadOnlyList<Model3DMesh> meshes, MaskColor? color = null);
+    bool Remove(string id);
+}
+
+public sealed class Model3DMesh
+{
+    public required string Name { get; init; }
+    public required float[] Positions { get; init; }   // three floats per vertex
+    public float[]? Normals { get; init; }             // three floats per vertex; null = consumer recomputes
+    public required uint[] Indices { get; init; }      // three indices per triangle
+}
+```
+
+Algorithm parameters belong to the algorithm plugin: the `layeron.modelsmooth` panel carries its iteration count and lambda/mu and uses only this interface to read models and write new ones. Members are UI-thread affine; run heavy work on a background task and call `Add` back on the UI thread.
+
 ## Host services
 
 ### IPluginServices

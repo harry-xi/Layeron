@@ -200,6 +200,36 @@ public sealed class VolumeAction
 }
 ```
 
+### 3D 模型列表（`layeron.model3d.models`）
+
+由 3D 模型插件定义并贡献，载荷是 `IModel3DModelList`。它是**读写**接口：变换插件读取 `Models`，算完后把结果通过 `Add` 写回新模型；`Changed` 在模型增删或颜色/可见性变化后触发。
+
+```csharp
+public static class Model3DPoints
+{
+    public const string Models = "layeron.model3d.models";
+}
+
+public interface IModel3DModelList
+{
+    IReadOnlyList<Model3DContribution> Models { get; }
+    event Action? Changed;
+
+    Model3DContribution? Add(string name, string? detail, IReadOnlyList<Model3DMesh> meshes, MaskColor? color = null);
+    bool Remove(string id);
+}
+
+public sealed class Model3DMesh
+{
+    public required string Name { get; init; }
+    public required float[] Positions { get; init; }   // 每顶点 3 个 float
+    public float[]? Normals { get; init; }             // 每顶点 3 个 float；为空则消费方重算
+    public required uint[] Indices { get; init; }      // 每三角面 3 个索引
+}
+```
+
+算法参数属于算法插件自己：`layeron.modelsmooth` 的面板就带着迭代次数、λ、μ，只通过这个接口读模型、写新模型。成员为 UI 线程亲和；重计算请放到后台任务，完成后回到 UI 线程调用 `Add`。
+
 ## 宿主服务
 
 ### IPluginServices
