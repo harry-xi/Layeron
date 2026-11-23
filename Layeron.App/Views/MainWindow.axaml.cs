@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Platform.Storage;
 using Layeron.App.Logging;
 using Layeron.App.Plugins;
+using Layeron.App.Service;
 using Layeron.App.ViewModels;
 using Layeron.App.Workspaces;
 
@@ -31,6 +32,9 @@ public partial class MainWindow : Window
         OpenSettingsCommand = new RelayCommand(ShowSettings);
         SettingsMenuItem.Command = OpenSettingsCommand;
 
+        // Diagnostic action: full collection, then a working-set trim (see MemoryMaintenance).
+        CollectGarbageMenuItem.Command = new RelayCommand(CollectAndTrimMemory);
+
         Opened += OnMainWindowOpened;
         Closing += OnMainWindowClosing;
     }
@@ -43,6 +47,35 @@ public partial class MainWindow : Window
         var window = new SettingsWindow { DataContext = vm.Settings, ShowInTaskbar = false };
         window.Show(this);
     }
+
+    /// <summary>
+    /// Forces a full collection and returns the result to the log instead of the status bar: the
+    /// numbers are useful next to the history of what was closed just before, and the log window can
+    /// be left open while the 3D tab is closed and reopened.
+    /// </summary>
+    private void CollectAndTrimMemory()
+    {
+        var result = MemoryMaintenance.CollectAndTrim();
+
+        Log.Info("Memory",
+            "强制 GC 完成：托管 {ManagedBefore:F1} → {ManagedAfter:F1} MB（释放 {ManagedReleased:F1}），" +
+            "提交 {CommittedBefore:F1} → {CommittedAfter:F1} MB，" +
+            "工作集 {WorkingSetBefore:F1} → {WorkingSetAfter:F1} MB（归还 {WorkingSetReleased:F1}），" +
+            "私有 {PrivateBefore:F1} → {PrivateAfter:F1} MB{TrimNote}",
+            Megabytes(result.Before.ManagedBytes),
+            Megabytes(result.After.ManagedBytes),
+            Megabytes(result.ManagedReleased),
+            Megabytes(result.Before.CommittedBytes),
+            Megabytes(result.After.CommittedBytes),
+            Megabytes(result.Before.WorkingSetBytes),
+            Megabytes(result.After.WorkingSetBytes),
+            Megabytes(result.WorkingSetReleased),
+            Megabytes(result.Before.PrivateBytes),
+            Megabytes(result.After.PrivateBytes),
+            string.IsNullOrEmpty(result.Note) ? string.Empty : $"；{result.Note}");
+    }
+
+    private static double Megabytes(long bytes) => bytes / 1024.0 / 1024.0;
 
     private async void OnMainWindowOpened(object? sender, EventArgs e)
     {
