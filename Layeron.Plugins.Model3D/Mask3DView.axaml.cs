@@ -127,7 +127,14 @@ public sealed partial class Mask3DView : UserControl, IDisposable
             models.Changed -= OnModelsChanged;
 
         if (_viewport is { } viewport)
+        {
             viewport.SurfacePicked -= OnSurfacePicked;
+
+            // The manager's nodes outlive this tab. Handing them back before the control is detached
+            // is what lets the next opening adopt them instead of throwing "node already belongs to
+            // a scene", and stops the closed scene from rooting them.
+            viewport.ReleaseSceneNodes();
+        }
 
         Loaded -= OnLoaded;
     }

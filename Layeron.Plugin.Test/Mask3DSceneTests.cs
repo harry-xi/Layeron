@@ -1,7 +1,9 @@
 using System.Numerics;
 using System.Threading;
 using Aura3D.Core.Nodes;
+using Aura3D.Core.Renderers;
 using Aura3D.Core.Resources;
+using Aura3D.Core.Scenes;
 using Layeron.Plugins.Model3D;
 using AuraMesh = Aura3D.Core.Nodes.Mesh;
 using AuraModel = Aura3D.Core.Nodes.Model;
@@ -313,6 +315,30 @@ public sealed class Mask3DSceneTests
                 $"forward {light.Forward} does not follow {direction}");
         }
     }
+
+    [TestMethod]
+    public void ModelNode_IsHandedBackWhenItsViewportDetaches()
+    {
+        // Aura3D lets a node belong to one scene at a time. The model manager outlives the document
+        // tab, so a closed viewport must remove its nodes before the next viewport tries to adopt
+        // them - otherwise reopening the 3D tab throws "the node already belongs to a scene".
+        var node = Mask3DScene.CreateMeshNode(SingleVoxel(), Rgb.FromBytes(1, 1, 1));
+        var first = NewScene();
+        var second = NewScene();
+
+        Assert.IsTrue(Mask3DScene.TryAddModel(first, node));
+        Assert.IsFalse(Mask3DScene.TryAddModel(second, node), "a live scene must not lose its node");
+
+        Mask3DScene.RemoveModel(second, node);
+        Assert.AreSame(first, node.CurrentScene, "removing through the wrong scene is a no-op");
+
+        Mask3DScene.RemoveModel(first, node);
+        Assert.IsNull(node.CurrentScene);
+        Assert.IsTrue(Mask3DScene.TryAddModel(second, node), "the next viewport can adopt the node");
+        Assert.AreSame(second, node.CurrentScene);
+    }
+
+    private static Scene NewScene() => new(scene => new BlinnPhongPipeline(scene));
 
     private static Mask3DGeometry.SurfaceMesh SingleVoxel()
     {

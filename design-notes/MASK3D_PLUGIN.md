@@ -416,3 +416,51 @@ Aura3D 用 GPU 出图并自带 Blinn-Phong 管线与 glTF 加载器；且它走 
   测试服务里都接到同一份十字准线状态，切片视图随属性变更刷新。
 - 真实使用：`dotnet build Layeron.App` 后启动 App，从插件菜单打开"3D 模型"面板，生成/导入模型后
   打开"掩膜 3D 模型"标签页；用带薄壁/孔洞的掩膜分别用"游走立方体 / 体素面"生成，拖拽旋转并滚轮缩放观察。
+
+---
+
+## 9. 2026-11-23：关闭后重开 3D 视图的崩溃与场景引用
+
+### 9.1 现象
+
+3D 标签页创建一次后，关掉再打开就失败：视口空白，控制台可见
+
+```
+SceneGraphException: The node already belongs to a scene.
+```
+
+（用户侧描述的“表面已经被引用”。）若打开后模型列表再发生变化，异常会从 `ShowModels` 的
+UI 路径抛出，成为未处理异常。
+
+### 9.2 根因
+
+管理器（`Mask3DModelManager`）按会话持有模型节点，标签页只是“借用”。Aura3D 的 `Node` 同一时间
+只能属于一个 `Scene`（`Node.CurrentScene`），而旧实现关闭标签页时只解了事件订阅，**没有把节点从
+旧场景里取出来**：
+
+- `Node.CurrentScene` 反过来引用整个旧 `Scene`，于是已关闭标签页的场景（及其中的节点、几何、
+  材质、背景纹理、渲染管线）被管理器里的模型一直钉住——表现为关闭后内存不降；
+- 新标签页创建新 `Scene` 后再次 `AddNode` 同一个节点，`ValidateSubtreeCanBeAdded` 直接抛出
+  `NodeAlreadyBelongsToScene`，所以“只能打开一次”。
+
+### 9.3 修复
+
+- `Mask3DScene.TryAddModel` / `RemoveModel`：把“节点归属一个场景”的规则收敛到两个可测试的
+  入口；`RemoveModel` 只在节点确实属于该场景时移除，避免误删另一个存活视口的场景。
+- `Mask3DViewport` 重写 `OnDetachedFromVisualTree`：先 `ReleaseSceneNodes()` 把模型节点还给管理器，
+  再走基类的 GL 资源释放；重写 `OnAttachedToVisualTree` 在重新挂载时把节点加回场景。标签页被
+  Dock 临时重挂（拖动、浮动、布局恢复）也走同一路径。
+- `Mask3DView.Dispose` 显式调用 `ReleaseSceneNodes()`，作为“标签页关闭”时的事件之外的第二道保证。
+- `ApplyModels` 通过 `TryAddModel` 判断：节点若仍属于另一个存活场景就跳过，而不是抛异常。
+  顺序“关闭旧标签页 → 打开新标签页”因此可以正常交接。
+
+**内存结论**：修复后关闭标签页时 `CurrentScene` 已清空，旧场景不再被模型节点钉住；关闭之后再
+从面板删除模型也不会被旧场景继续引用，GC 可正常回收。为区分“真正的泄漏”和“GC 尚未运行”，
+主菜单 **Tools → 回收内存 (GC)** 提供诊断动作：强制完整回收（含 LOH 压缩；运行时默认
+`RetainVM=false`，释放的段不再留着复用），再用 Windows `EmptyWorkingSet` 把工作集归还系统，
+结果写入日志（托管堆 / 提交 / 工作集 / 私有内存的前后值）。若工作集不降，才是真保留；若大幅
+下降，则只是回收时机问题。
+
+**验证**：新增 `Mask3DSceneTests.ModelNode_IsHandedBackWhenItsViewportDetaches`（节点不能同时被
+两个存活场景持有；旧场景释放后可被新场景接管）；`Mask3DSceneTests` + `Mask3DModelManagerTests`
+共 22 个用例通过；`dotnet build Layeron.slnx` 零警告零错误。

@@ -169,6 +169,51 @@ public sealed class Mask3DViewport : Aura3DView
     }
 
     /// <summary>
+    /// Reattaches the manager's models when the control returns to a visual tree. A detach takes them
+    /// out of the scene so another viewport can own them; this puts them back before the first frame
+    /// of the re-created context is drawn.
+    /// </summary>
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+
+        if (Scene is not null)
+            ApplyModels();
+    }
+
+    /// <summary>
+    /// Gives the manager's model nodes back when this viewport leaves the visual tree.
+    /// <para>
+    /// Aura3D keeps a node attached to its scene until it is removed, and <c>Node.CurrentScene</c>
+    /// then roots that whole scene. Since the manager outlives the document tab, leaving the nodes in
+    /// the closed tab's scene kept that scene - and every model ever placed in it - alive, and made
+    /// the next viewport fail with "the node already belongs to a scene" when it tried to add them.
+    /// Detaching here is what makes closing and reopening the 3D tab safe.
+    /// </para>
+    /// </summary>
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        ReleaseSceneNodes();
+
+        base.OnDetachedFromVisualTree(e);
+    }
+
+    /// <summary>
+    /// Removes every model node this viewport added from its scene and clears the ownership marker.
+    /// Safe to call more than once; also used by the document when it is disposed.
+    /// </summary>
+    internal void ReleaseSceneNodes()
+    {
+        if (Scene is { } scene)
+        {
+            foreach (var node in _nodes.Values)
+                Mask3DScene.RemoveModel(scene, node);
+        }
+
+        _nodes.Clear();
+    }
+
+    /// <summary>
     /// Builds the fixed part of the scene once the engine has created it: background, key light and
     /// whatever the manager already holds (the tab can be created after models exist).
     /// </summary>
@@ -215,14 +260,17 @@ public sealed class Mask3DViewport : Aura3DView
         {
             present.Add(model.Id);
 
-            if (_nodes.ContainsKey(model.Id))
+            if (!_nodes.ContainsKey(model.Id))
             {
-                model.Content.Enable = model.IsVisible;
-                continue;
+                // A closed viewport hands its nodes back, so this normally succeeds. The guard keeps
+                // a second live viewport from stealing a node (which throws in Scene.AddNode) and
+                // turning a layout with two 3D tabs into an unhandled exception.
+                if (!Mask3DScene.TryAddModel(scene, model.Content))
+                    continue;
+
+                _nodes[model.Id] = model.Content;
             }
 
-            scene.AddNode(model.Content);
-            _nodes[model.Id] = model.Content;
             model.Content.Enable = model.IsVisible;
         }
 
