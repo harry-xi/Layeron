@@ -38,6 +38,11 @@ internal static class TestPaths
         Path.Combine(RepositoryRoot, "Layeron.Plugins.Model3D", "bin", Configuration, "net10.0",
             "Layeron.Plugins.Model3D.dll");
 
+    /// <summary>The smoothing transform plugin: loaded after the 3D plugin so its model-list point exists.</summary>
+    public static string ModelSmoothPluginAssembly { get; } =
+        Path.Combine(RepositoryRoot, "Layeron.Plugins.ModelSmooth", "bin", Configuration, "net10.0",
+            "Layeron.Plugins.ModelSmooth.dll");
+
     /// <summary>
     /// The ONNX runner. The test assembly references this plugin so it can drive the runner's internals, and loads
     /// its built assembly by explicit path so the plugin loader is exercised exactly as a user's plugin would be.

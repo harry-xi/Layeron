@@ -104,6 +104,47 @@ public sealed class AssemblyPluginTests
         manager.Dispose();
     }
 
+    /// <summary>
+    /// The smoothing plugin has no model list of its own: it reads the point the 3D plugin publishes
+    /// and contributes a panel. Loaded on its own it must degrade to a log line, and once the
+    /// provider is present the same activation must attach the panel - and still not create it.
+    /// </summary>
+    [TestMethod]
+    public void ModelSmoothPlugin_ReadsTheModelListPointFromThe3DPlugin()
+    {
+        var adapter = new TestHostAdapter(TestVolumes.Small());
+        var manager = new PluginManager(adapter);
+
+        Assert.AreEqual("layeron.modelsmooth", manager.LoadAssembly(TestPaths.ModelSmoothPluginAssembly));
+        Assert.AreEqual(0, adapter.Tools.Count, "without the 3D plugin there is no list, so no panel");
+        manager.Unload("layeron.modelsmooth");
+
+        manager.LoadAssembly(TestPaths.Model3DPluginAssembly);
+
+        var point = manager.PointRegistry.GetPoint<IModel3DModelList>(Model3DPoints.Models);
+        Assert.IsNotNull(point, "the 3D plugin must publish its model list");
+        Assert.AreEqual(1, point.Count, "the plugin contributes exactly one list instance");
+
+        manager.LoadAssembly(TestPaths.ModelSmoothPluginAssembly);
+
+        Assert.IsTrue(adapter.Tools.ContainsKey("layeron.modelsmooth::modelsmooth"),
+            "the smoothing panel must be attached while both plugins are loaded");
+        Assert.AreEqual(0, adapter.Opened.Count, "loading the smoothing plugin must not create the panel");
+
+        manager.Unload("layeron.modelsmooth");
+        manager.Unload("layeron.model3d");
+
+        Assert.AreEqual(0, adapter.Tools.Count, "tools must be detached on unload");
+        Assert.AreEqual(0, adapter.Documents.Count, "documents must be detached on unload");
+        Assert.IsNull(manager.PointRegistry.GetPoint<IModel3DModelList>(Model3DPoints.Models),
+            "the point must disappear with the plugin that defined it");
+        Assert.AreEqual(0, manager.Plugins.Count);
+
+        var leaked = manager.VerifyUnloaded();
+        Assert.AreEqual(0, leaked.Count, $"leaked load contexts: {string.Join(", ", leaked)}");
+        manager.Dispose();
+    }
+
     private static (string Id, string Name) LoadInspectAndUnloadMorphology(
         PluginManager manager, TestHostAdapter adapter)
     {

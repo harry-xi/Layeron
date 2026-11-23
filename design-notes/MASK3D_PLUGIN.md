@@ -464,3 +464,70 @@ UI 路径抛出，成为未处理异常。
 **验证**：新增 `Mask3DSceneTests.ModelNode_IsHandedBackWhenItsViewportDetaches`（节点不能同时被
 两个存活场景持有；旧场景释放后可被新场景接管）；`Mask3DSceneTests` + `Mask3DModelManagerTests`
 共 22 个用例通过；`dotnet build Layeron.slnx` 零警告零错误。
+
+---
+
+## 10. 2026-11-23：模型列表对外读写 + 独立的平滑变换插件
+
+### 10.1 目标
+
+模型变换（平滑、简化、重网格……）各有自己的算法和参数，不应塞进 3D 插件。3D 插件只对外
+提供一份**可读可写的模型列表**；变换插件自己读既有模型、算完把结果作为新模型写回。这样：
+
+- 新算法不需要改 3D 插件，也不需要和它互相引用；
+- 每个算法插件自己决定参数与 UI（平滑是迭代次数 + λ/μ，简化将来可以是目标面数）；
+- 写入的模型走 3D 插件同一条“表面 → 节点 → 取景/导出”通路，不需要一套旁路。
+
+### 10.2 契约（`Layeron.Plugin.Abstractions/Model3D.cs`）
+
+```csharp
+public static class Model3DPoints
+{
+    public const string Models = "layeron.model3d.models";   // IModel3DModelList
+}
+
+public interface IModel3DModelList
+{
+    IReadOnlyList<Model3DContribution> Models { get; }
+    event Action? Changed;
+    Model3DContribution? Add(string name, string? detail, IReadOnlyList<Model3DMesh> meshes, MaskColor? color = null);
+    bool Remove(string id);
+}
+```
+
+`Model3DMesh` 是扁平数组（每顶点 3 个位置浮点 + 可选 3 个法线浮点 + 每三角面 3 个索引）；
+`Model3DContribution` 带 Id / 名称 / 详情 / 颜色 / 可见性与网格快照。载荷类型放在契约程序集里，
+因为扩展点贡献类型必须跨加载上下文同一；变换插件无需引用 `Layeron.Plugins.Model3D`。
+
+### 10.3 3D 插件侧
+
+- 激活时 `DefinePoint<IModel3DModelList>`，并 `Contribute<IModel3DModelList>(...)` 一个
+  `Mask3DModelList` 适配器（注意泛型实参必须是接口，不能是内部实现类型）。
+- 适配器只做转发：`Models` 返回管理器快照，`Changed` 转发管理器的 `Changed`，`Add` 调
+  `AddContributed`，`Remove` 按公开 Id 删除。
+- `AddContributed` 把多个网格合并成一个 `SurfaceMesh`：模型列表的单位是“模型”，合并后仍是
+  一个可导出、可拾取、可设色的条目；默认给一个可见颜色（贡献模型没有掩膜层可继承）。
+- 网格快照在模型加入时拷贝一次并缓存在 `Mask3DModel.MeshesSnapshot`；颜色/可见性变化只重建
+  元数据包装，不重复拷贝顶点数组。
+- 面板仍是唯一持有 Aura3D 节点的地方；契约接口只暴露普通数组与元数据。
+
+### 10.4 `Layeron.Plugins.ModelSmooth`
+
+- 只依赖 `Layeron.Plugin.Abstractions`（+ 宿主 Avalonia，编译期）。
+- 激活时 `GetPoint<IModel3DModelList>`；provider 不在就记一条日志并返回（可选依赖）。
+- 贡献“模型平滑”工具面板：顶部是算法选择与参数（迭代次数、λ；Taubin 另有 μ），列表每行一个
+  “平滑”按钮。
+- 提供两种算法：
+  - **Taubin**：λ/μ 交替，保低频、保形，适合去高频噪声；对 MC 的宽阶梯几乎不衰减。
+  - **Laplacian**：普通 umbrella 平滑，能压掉宽阶梯；代价是整体收缩（尤其薄壁/小曲率结构），
+    默认选它并给 30 次迭代，方便和 Taubin 结果对照。
+- 点击后：后台线程对每个网格先**焊接**再做所选算法（提取器每面独立顶点，不焊接则 umbrella 算子
+  看不到邻居），完成后回 UI 线程调用 `Add`，结果以“原名称（平滑）”进入模型列表。
+
+### 10.5 验证
+
+- 单元测试：焊接后立方体 24→8 顶点、面数不变；Taubin 比同参数纯 Laplacian 保留更多体积；
+  零迭代只焊接不移动；输入不被修改；越界索引报错。
+- 管理器/适配器测试：多网格贡献合并为一个可导出模型、快照跟随颜色/可见性、按 Id 删除。
+- 插件加载测试：先加载平滑插件（无 provider）不报错也不加面板；再加载 3D 插件后平滑面板出现；
+  全部卸载后扩展点消失且加载上下文可回收。

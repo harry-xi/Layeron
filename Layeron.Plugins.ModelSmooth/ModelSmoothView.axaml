@@ -1,0 +1,145 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ab="clr-namespace:Layeron.Plugin.Abstractions;assembly=Layeron.Plugin.Abstractions"
+             mc:Ignorable="d" d:DesignWidth="320" d:DesignHeight="640"
+             x:Class="Layeron.Plugins.ModelSmooth.ModelSmoothView">
+
+  <UserControl.Styles>
+    <!-- Same compact form shape as the 3D panel: the side dock is narrow. -->
+    <Style Selector="NumericUpDown.compact">
+      <Setter Property="MinHeight" Value="24" />
+      <Setter Property="FontSize" Value="11.5" />
+    </Style>
+
+    <Style Selector="Button.compact">
+      <Setter Property="MinHeight" Value="24" />
+      <Setter Property="Padding" Value="8,1" />
+      <Setter Property="FontSize" Value="11.5" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border Background="{DynamicResource LayeronCardBrush}"
+          BorderBrush="{DynamicResource LayeronCardBorderBrush}"
+          BorderThickness="1"
+          CornerRadius="8"
+          Margin="4">
+    <DockPanel>
+
+      <!-- Algorithm parameters. Each transform plugin owns its own knobs; this panel exists so a
+           parameter does not have to be squeezed into a generic transform contract. -->
+      <Border DockPanel.Dock="Top"
+              BorderBrush="{DynamicResource LayeronCardBorderBrush}"
+              BorderThickness="0,0,0,1"
+              Padding="6,5">
+        <StackPanel Spacing="4">
+          <TextBlock Text="模型平滑" FontSize="11" Opacity="0.7" />
+
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+            <TextBlock Text="算法" FontSize="11.5" VerticalAlignment="Center" />
+            <ComboBox x:Name="AlgorithmBox" Grid.Column="1" Classes="compact"
+                      HorizontalAlignment="Stretch"
+                      ToolTip.Tip="Taubin 保形、适合去高频噪声；Laplacian 对宽阶梯更有效，但会收缩模型"
+                      SelectionChanged="OnAlgorithmChanged" />
+          </Grid>
+
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+            <TextBlock Text="迭代次数" FontSize="11.5" VerticalAlignment="Center" />
+            <NumericUpDown x:Name="IterationBox" Grid.Column="1" Classes="compact"
+                           Minimum="1" Maximum="200" Increment="1"
+                           FormatString="0" Value="30"
+                           HorizontalAlignment="Stretch"
+                           ToolTip.Tip="扫描次数；Laplacian 通常 20~60 次就能明显抹平阶梯" />
+          </Grid>
+
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+            <TextBlock Text="步长 λ" FontSize="11.5" VerticalAlignment="Center" />
+            <NumericUpDown x:Name="LambdaBox" Grid.Column="1" Classes="compact"
+                           Minimum="0.01" Maximum="0.99" Increment="0.05"
+                           FormatString="0.00" Value="0.5"
+                           HorizontalAlignment="Stretch"
+                           ToolTip.Tip="每次迭代向邻居平均位置移动的比例，必须大于 0" />
+          </Grid>
+
+          <Grid x:Name="MuRow" ColumnDefinitions="Auto,*" ColumnSpacing="6">
+            <TextBlock Text="扩张步长 μ" FontSize="11.5" VerticalAlignment="Center" />
+            <NumericUpDown x:Name="MuBox" Grid.Column="1" Classes="compact"
+                           Minimum="-0.99" Maximum="-0.01" Increment="0.05"
+                           FormatString="0.00" Value="-0.53"
+                           HorizontalAlignment="Stretch"
+                           ToolTip.Tip="仅 Taubin 使用；必须小于 -λ 才会稳定" />
+          </Grid>
+
+          <ProgressBar x:Name="Progress" Height="4" IsIndeterminate="True" IsVisible="False" />
+        </StackPanel>
+      </Border>
+
+      <!-- The model list is read from the 3D plugin; the button writes a new model back into it. -->
+      <Border DockPanel.Dock="Top"
+              BorderBrush="{DynamicResource LayeronCardBorderBrush}"
+              BorderThickness="0,0,0,1"
+              Padding="6,4">
+        <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="4">
+          <TextBlock Text="现有模型" FontSize="11" Opacity="0.7" VerticalAlignment="Center" />
+          <TextBlock x:Name="ModelCountText" Grid.Column="1" FontSize="11" Opacity="0.5"
+                     VerticalAlignment="Center" />
+          <TextBlock Grid.Column="2" Text="平滑后作为新模型添加" FontSize="10.5" Opacity="0.45"
+                     HorizontalAlignment="Right" VerticalAlignment="Center" />
+        </Grid>
+      </Border>
+
+      <Border DockPanel.Dock="Bottom"
+              Background="{DynamicResource LayeronSurfaceRaisedBrush}"
+              BorderBrush="{DynamicResource LayeronCardBorderBrush}"
+              BorderThickness="0,1,0,0"
+              Padding="6,4">
+        <TextBlock x:Name="StatusText" TextWrapping="Wrap" FontSize="11" Opacity="0.8" />
+      </Border>
+
+      <Panel>
+        <ListBox x:Name="ModelList"
+                 Background="Transparent"
+                 BorderThickness="0"
+                 Padding="6"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+          <ListBox.ItemContainerTheme>
+            <ControlTheme TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+              <Setter Property="Background" Value="{DynamicResource LayeronSurfaceRaisedBrush}" />
+              <Setter Property="CornerRadius" Value="6" />
+              <Setter Property="BorderThickness" Value="1" />
+              <Setter Property="BorderBrush" Value="Transparent" />
+              <Setter Property="Padding" Value="5" />
+              <Setter Property="Margin" Value="0,0,0,4" />
+              <Setter Property="MinHeight" Value="0" />
+              <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            </ControlTheme>
+          </ListBox.ItemContainerTheme>
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="ab:Model3DContribution">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                <StackPanel Grid.Column="0" Spacing="1" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding Detail}" FontSize="11" Opacity="0.65"
+                             TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Detail}" />
+                </StackPanel>
+
+                <Button Grid.Column="1" Classes="compact" Content="平滑"
+                        ToolTip.Tip="用当前参数平滑这个模型，并把结果作为新模型加入列表"
+                        Click="OnSmoothRowClick" />
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+
+        <TextBlock x:Name="EmptyHint" Text="还没有 3D 模型。先在 3D 模型面板中生成或导入一个。"
+                   IsVisible="False"
+                   FontSize="11" Opacity="0.55" TextWrapping="Wrap"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                   TextAlignment="Center" Margin="16" />
+      </Panel>
+
+    </DockPanel>
+  </Border>
+</UserControl>

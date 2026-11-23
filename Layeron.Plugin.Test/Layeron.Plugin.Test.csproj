@@ -40,6 +40,11 @@
     -->
     <ProjectReference Include="..\Layeron.Plugins.Model3D\Layeron.Plugins.Model3D.csproj" />
     <!--
+      The smoothing transform is referenced so its welding/Taubin kernel can be tested directly, and
+      loaded by path so its optional dependency on the 3D model point is exercised too.
+    -->
+    <ProjectReference Include="..\Layeron.Plugins.ModelSmooth\Layeron.Plugins.ModelSmooth.csproj" />
+    <!--
       The threshold plugin is referenced so its algorithm can be tested directly, unit-test style,
       in addition to being loaded and unloaded as an isolated plugin by AssemblyPluginTests.
     -->

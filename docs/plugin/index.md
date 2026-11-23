@@ -81,13 +81,14 @@ manager.VerifyUnloaded();   // 弱引用自检：报告没能被回收的插件
 
 托管泄漏之外，视图也必须配合：`ContentFactory` 返回的对象如果实现 `IDisposable`，宿主在关闭面板 / 标签页**或卸载插件**时会释放它。这是视图解绑宿主事件、释放 GPU 资源的时机——不这么做，插件的加载上下文无法被回收。
 
-## 七个内置插件
+## 八个内置插件
 
 | 插件 | Id | 展示的能力 |
 |---|---|---|
 | 阈值分割 | `layeron.threshold` | 工具面板 + 菜单 + **自定义扩展点**（其他插件可往它的面板加按钮） |
 | 邻域滤波器 | `layeron.filters` | 纯算法插件：通过 `AddFilter` 贡献均值/高斯/中值/锐化/梯度，由宿主运行器预览与应用 |
-| 掩膜 3D 模型 | `layeron.model3d` | **工具面板 + 文档**共享模型列表；Aura3D 渲染（多模型、glTF/GLB 导入、STL/GLB 导出） |
+| 掩膜 3D 模型 | `layeron.model3d` | **工具面板 + 文档**共享模型列表；通过扩展点**对外读写模型**；Aura3D 渲染（多模型、glTF/GLB 导入、STL/GLB 导出） |
+| 模型平滑 | `layeron.modelsmooth` | **变换插件**：读取 3D 模型列表，提供 Taubin 与强 Laplacian 平滑（参数自管），结果作为新模型写回 |
 | ONNX 模型运行器 | `layeron.onnxruntime` | **模型运行器**：推理、自带私有原生运行时、发布可被其他插件调用的服务 |
 | C# 脚本宿主 | `layeron.scripthost` | **插件加载器**（`IPluginSource`）+ 自己的编辑器 UI |
 | Python 运行器 | `layeron.pythonrunner` | 内嵌 CPython + REPL + 编辑器；发布 `IPythonRunnerService` |

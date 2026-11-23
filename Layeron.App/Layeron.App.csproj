@@ -68,6 +68,7 @@
         <ProjectReference Include="..\Layeron.Plugins.Filters\Layeron.Plugins.Filters.csproj" ReferenceOutputAssembly="false" />
         <ProjectReference Include="..\Layeron.Plugins.MaskMorphology\Layeron.Plugins.MaskMorphology.csproj" ReferenceOutputAssembly="false" />
         <ProjectReference Include="..\Layeron.Plugins.Model3D\Layeron.Plugins.Model3D.csproj" ReferenceOutputAssembly="false" />
+        <ProjectReference Include="..\Layeron.Plugins.ModelSmooth\Layeron.Plugins.ModelSmooth.csproj" ReferenceOutputAssembly="false" />
         <ProjectReference Include="..\Layeron.Plugins.PythonRunner\Layeron.Plugins.PythonRunner.csproj" ReferenceOutputAssembly="false" />
         <ProjectReference Include="..\Layeron.Plugins.Agent\Layeron.Plugins.Agent.csproj" ReferenceOutputAssembly="false" />
         <ProjectReference Include="..\Layeron.Plugins.OnnxRuntime\Layeron.Plugins.OnnxRuntime.csproj" ReferenceOutputAssembly="false" />
@@ -106,6 +107,9 @@
             </SamplePluginFile>
             <SamplePluginFile Include="..\Layeron.Plugins.Model3D\bin\$(Configuration)\net10.0\$(RuntimeIdentifier)\**\*.*">
                 <PluginFolder>layeron.model3d</PluginFolder>
+            </SamplePluginFile>
+            <SamplePluginFile Include="..\Layeron.Plugins.ModelSmooth\bin\$(Configuration)\net10.0\$(RuntimeIdentifier)\**\*.*">
+                <PluginFolder>layeron.modelsmooth</PluginFolder>
             </SamplePluginFile>
             <SamplePluginFile Include="..\Layeron.Plugins.PythonRunner\bin\$(Configuration)\net10.0\$(RuntimeIdentifier)\**\*.*">
                 <PluginFolder>layeron.pythonrunner</PluginFolder>

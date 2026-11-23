@@ -85,7 +85,8 @@ Managed leaks aside, views must cooperate: if the object returned by `ContentFac
 |---|---|---|
 | Threshold Segmentation | `layeron.threshold` | Tool panel + menu + a **custom extension point** other plugins feed |
 | Neighbourhood Filters | `layeron.filters` | Pure algorithm plugin: contributes mean/Gaussian/median/sharpen/gradient through `AddFilter`; the host runner previews and applies them |
-| Mask 3D Model | `layeron.model3d` | **Tool panel + document** sharing a model list; Aura3D rendering (multiple models, glTF/GLB import, STL/GLB export) |
+| Mask 3D Model | `layeron.model3d` | **Tool panel + document** sharing a model list; the list is also **readable and writable** through an extension point; Aura3D rendering (multiple models, glTF/GLB import, STL/GLB export) |
+| Model Smooth | `layeron.modelsmooth` | A **transform plugin**: reads the 3D model list, offers Taubin and strong Laplacian smoothing (its own parameters), and writes the result back as a new model |
 | ONNX Model Runner | `layeron.onnxruntime` | A **model runner**: inference, its own private native runtime, and a published service |
 | C# Script Host | `layeron.scripthost` | A **plugin loader** (`IPluginSource`) + its own editor UI |
 | Python Runner | `layeron.pythonrunner` | Embedded CPython + REPL + editor; publishes `IPythonRunnerService` |

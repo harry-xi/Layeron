@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Layeron.Plugins.ModelSmooth</AssemblyName>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="LayeronPluginId" Value="layeron.modelsmooth" />
+    <AssemblyMetadata Include="LayeronPluginName" Value="Model Smooth" />
+    <AssemblyMetadata Include="LayeronPluginVersion" Value="1.0.0" />
+    <AssemblyMetadata Include="LayeronPluginDescription" Value="Contributes a smoothing panel for the 3D model plugin with Taubin and strong Laplacian smoothing, welding duplicated vertices and recomputing smooth normals." />
+    <AssemblyMetadata Include="LayeronPluginApiVersion" Value="1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Contracts are compile-time only: the host serves the single runtime copy, otherwise this plugin
+      and the 3D plugin would each see a different Model3DTransform type and the point would not match.
+    -->
+    <ProjectReference Include="..\Layeron.Big3DArray\Layeron.Big3DArray.csproj" Private="false" />
+    <ProjectReference Include="..\Layeron.Plugin.Abstractions\Layeron.Plugin.Abstractions.csproj" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      UI plugin: views are declared in XAML against the host's Avalonia, so runtime assets are
+      excluded and the host serves the single copy.
+    -->
+    <PackageReference Include="Avalonia" Version="12.1.3" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The smoothing kernel is internal - it is implementation, not contract - so tests get access. -->
+    <InternalsVisibleTo Include="Layeron.Plugin.Test" />
+  </ItemGroup>
+
+</Project>
