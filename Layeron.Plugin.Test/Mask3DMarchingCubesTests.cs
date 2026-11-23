@@ -147,6 +147,21 @@ public sealed class Mask3DMarchingCubesTests
     }
 
     [TestMethod]
+    public void VoxelFaces_AreDeterministic()
+    {
+        // The voxel-face extractor is split into Z bands like the isosurface one. Bands are merged in
+        // Z order, so the vertex numbering must not depend on which worker finished first.
+        var grid = Solid(9, 7, 11);
+
+        var a = Mask3DGeometry.BuildSurface(grid, Mask3DGeometry.ExtractionMethod.VoxelFaces, CancellationToken.None);
+        var b = Mask3DGeometry.BuildSurface(grid, Mask3DGeometry.ExtractionMethod.VoxelFaces, CancellationToken.None);
+
+        Assert.AreEqual(a.TriangleCount, b.TriangleCount);
+        CollectionAssert.AreEqual(a.Indices, b.Indices);
+        CollectionAssert.AreEqual(a.Vertices, b.Vertices);
+    }
+
+    [TestMethod]
     public void BothExtractionMethods_WindTheirTrianglesOutward()
     {
         // A triangle's winding decides which way its geometric normal points, and that normal is what

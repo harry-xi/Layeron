@@ -87,6 +87,62 @@ public sealed class Big3DBitMapPackedTest
     }
 
     [TestMethod]
+    public void GetBlockOccupation_ReportsEmptyFullAndMixed()
+    {
+        var map = new Big3DBitMap(128, 64, 64);
+
+        Assert.AreEqual(Big3DBitMap.BlockOccupation.Empty, map.GetBlockOccupation(0, 0, 0));
+
+        map[0, 0, 0] = true;
+        Assert.AreEqual(Big3DBitMap.BlockOccupation.Mixed, map.GetBlockOccupation(0, 0, 0));
+
+        var full = Enumerable.Repeat(true, Big3DBitMap.BlockVolumeElements).ToArray();
+        map.SetBlock(1, 0, 0, full);
+        Assert.AreEqual(Big3DBitMap.BlockOccupation.Full, map.GetBlockOccupation(1, 0, 0));
+    }
+
+    [TestMethod]
+    public void GetBlockStatistics_FindsBoundsAndCounts()
+    {
+        // 130 x 70 x 99 is a 3 x 2 x 2 block grid, so the bounds can be checked independently per axis.
+        var map = new Big3DBitMap(130, 70, 99);
+
+        map[10, 10, 10] = true;  // block (0, 0, 0), mixed
+        map[70, 10, 10] = true;  // block (1, 0, 0), mixed
+        map[129, 69, 98] = true; // block (2, 1, 1), mixed
+
+        var full = Enumerable.Repeat(true, Big3DBitMap.BlockVolumeElements).ToArray();
+        map.SetBlock(1, 1, 1, full); // block (1, 1, 1), full
+
+        var stats = map.GetBlockStatistics();
+
+        Assert.IsTrue(stats.HasOccupied);
+        Assert.AreEqual(0, stats.MinX);
+        Assert.AreEqual(2, stats.MaxX);
+        Assert.AreEqual(0, stats.MinY);
+        Assert.AreEqual(1, stats.MaxY);
+        Assert.AreEqual(0, stats.MinZ);
+        Assert.AreEqual(1, stats.MaxZ);
+        Assert.AreEqual(map.BlockCount, stats.TotalBlocks);
+        Assert.AreEqual(4, stats.OccupiedBlocks);
+        Assert.AreEqual(1, stats.FullBlocks);
+    }
+
+    [TestMethod]
+    public void GetBlockStatistics_ReportsNoBoundsForAnEmptyMap()
+    {
+        var map = new Big3DBitMap(130, 70, 99);
+        var stats = map.GetBlockStatistics();
+
+        Assert.IsFalse(stats.HasOccupied);
+        Assert.AreEqual(0, stats.OccupiedBlocks);
+        Assert.AreEqual(0, stats.FullBlocks);
+        Assert.AreEqual(map.BlockCount, stats.TotalBlocks);
+        Assert.AreEqual(0, stats.MinX);
+        Assert.AreEqual(0, stats.MaxX);
+    }
+
+    [TestMethod]
     public void SaveStream_WritesTheLegacyCanonicalByteOrder()
     {
         var map = new Big3DBitMap(64, 64, 64);

@@ -71,8 +71,8 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
     private readonly ComboBox? _factorBox;
     private readonly ComboBox? _methodBox;
     private readonly Button? _generateButton;
+    private readonly Button? _cancelButton;
     private readonly Button? _importButton;
-    private readonly Button? _clearButton;
     private readonly Button? _showViewButton;
     private readonly ListBox? _modelList;
     private readonly TextBlock? _emptyModels;
@@ -84,7 +84,8 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
     private readonly HashSet<ColorView> _syncingColors = [];
 
     private bool _disposed;
-    private bool _busy;
+    private bool _building;
+    private bool _importing;
     private CancellationTokenSource? _generation;
 
     /// <summary>Design-time / runtime-XAML constructor; builds the visual tree only.</summary>
@@ -104,8 +105,8 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
         _factorBox = this.FindControl<ComboBox>("FactorBox");
         _methodBox = this.FindControl<ComboBox>("MethodBox");
         _generateButton = this.FindControl<Button>("GenerateButton");
+        _cancelButton = this.FindControl<Button>("CancelButton");
         _importButton = this.FindControl<Button>("ImportButton");
-        _clearButton = this.FindControl<Button>("ClearButton");
         _showViewButton = this.FindControl<Button>("ShowViewButton");
         _modelList = this.FindControl<ListBox>("ModelList");
         _emptyModels = this.FindControl<TextBlock>("EmptyModels");
@@ -131,11 +132,11 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
         if (_generateButton is { } generate)
             generate.Click += OnGenerateClick;
 
+        if (_cancelButton is { } cancel)
+            cancel.Click += OnCancelClick;
+
         if (_importButton is { } import)
             import.Click += OnImportClick;
-
-        if (_clearButton is { } clear)
-            clear.Click += OnClearClick;
 
         if (_showViewButton is { } show)
             show.Click += OnShowViewClick;
@@ -167,7 +168,7 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
     /// </summary>
     private async void OnImportClick(object? sender, RoutedEventArgs e)
     {
-        if (_services is not { } services || _models is not { } models || _disposed || _busy)
+        if (_services is not { } services || _models is not { } models || _disposed || _importing)
             return;
 
         if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage)
@@ -198,7 +199,7 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
         var failed = 0;
         Mask3DModel? lastEntry = null;
 
-        SetBusy(true);
+        SetImporting(true);
 
         try
         {
@@ -253,7 +254,7 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
         finally
         {
             if (!_disposed)
-                SetBusy(false);
+                SetImporting(false);
         }
     }
 
@@ -268,7 +269,7 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
     /// </summary>
     private async void OnRowExportClick(object? sender, RoutedEventArgs e)
     {
-        if (_disposed || _busy)
+        if (_disposed)
             return;
 
         if (sender is not Button { DataContext: Mask3DModel { Surface: { } surface } model })
@@ -279,7 +280,7 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
 
     private async Task ExportModelAsync(Mask3DModel model, Mask3DGeometry.SurfaceMesh surface)
     {
-        if (_services is not { } services || _disposed || _busy)
+        if (_services is not { } services || _disposed)
             return;
 
         if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage)
@@ -320,7 +321,6 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
         var glb = string.Equals(Path.GetExtension(path), ".glb", StringComparison.OrdinalIgnoreCase);
         var color = model.Color ?? Rgb.FromBytes(200, 100, 60);
 
-        SetBusy(true);
         SetStatus($"正在导出 {Path.GetFileName(path)}…");
 
         try
@@ -349,16 +349,11 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
             services.Log.Error("Mask 3D: exporting the model failed.", ex);
             SetStatus($"导出失败：{ex.Message}");
         }
-        finally
-        {
-            if (!_disposed)
-                SetBusy(false);
-        }
     }
 
     private void OnRowRemoveClick(object? sender, RoutedEventArgs e)
     {
-        if (_disposed || _busy || _models is not { } models)
+        if (_disposed || _models is not { } models)
             return;
 
         if (sender is not Button { DataContext: Mask3DModel model })
@@ -368,20 +363,20 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
             SetStatus($"已删除 {model.Name}");
     }
 
-    private void OnClearClick(object? sender, RoutedEventArgs e)
+    private void OnCancelClick(object? sender, RoutedEventArgs e)
     {
-        if (_disposed || _busy || _models is not { } models)
+        if (_disposed || _generation is not { } generation)
             return;
 
-        models.Clear();
-        SetStatus("已清空模型");
+        generation.Cancel();
+        SetStatus("正在取消…");
     }
 
     private void OnShowViewClick(object? sender, RoutedEventArgs e) => _models?.RevealView?.Invoke();
 
     private async Task GenerateAsync()
     {
-        if (_services is not { } services || _models is not { } models || _disposed || _busy)
+        if (_services is not { } services || _models is not { } models || _disposed)
             return;
 
         var layers = services.Masks.Layers;
@@ -401,30 +396,56 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
         var methodLabel = Methods[methodIndex].Label;
 
         // A new request supersedes any build still running: a user who keeps changing the factor
-        // should see the last one they asked for, not a queue of stale models.
+        // should see the last one they asked for, not a queue of stale models. The superseded request
+        // owns no shared state, so it can be cancelled without waiting for it to stop.
+        var generation = new CancellationTokenSource();
         var previous = _generation;
-        _generation = new CancellationTokenSource();
+        _generation = generation;
         previous?.Cancel();
-        previous?.Dispose();
 
-        var token = _generation.Token;
+        var token = generation.Token;
 
-        SetBusy(true);
+        SetBuilding(true);
         SetStatus($"正在生成 {factor}× {methodLabel} 模型…");
 
         try
         {
-            // Pure array work, so it goes to a background task and the window stays responsive.
-            var mesh = await Task.Run(
+            // Pure array work, so it goes to a background task and the window stays responsive. The
+            // vertex streams are built there too: binding them to engine objects is the only part that
+            // has to happen back on the UI thread.
+            var result = await Task.Run(
                 () =>
                 {
-                    var grid = Mask3DGeometry.Downsample(bitmap, factor, token);
-                    return Mask3DGeometry.BuildSurface(grid, method, factor, token);
+                    var downsampled = Mask3DGeometry.DownsampleCropped(bitmap, factor, token);
+                    var stats = downsampled.Stats;
+
+                    // Debug-only diagnostics: whether the crop actually paid off for this mask, and how
+                    // much of the storage was empty or fully set. The panel is not the place to show it.
+                    services.Log.Debug(
+                        "Mask 3D: {Method} {Factor}x solid={HasSolid} grid={GridX}x{GridY}x{GridZ} of {VolumeX}x{VolumeY}x{VolumeZ} cells; blocks {Occupied}/{Total} (full {Full}).",
+                        methodLabel,
+                        factor,
+                        downsampled.HasSolid,
+                        downsampled.Grid.GetLength(0),
+                        downsampled.Grid.GetLength(1),
+                        downsampled.Grid.GetLength(2),
+                        downsampled.Frame.VolumeX,
+                        downsampled.Frame.VolumeY,
+                        downsampled.Frame.VolumeZ,
+                        stats.OccupiedBlocks,
+                        stats.TotalBlocks,
+                        stats.FullBlocks);
+
+                    var mesh = Mask3DGeometry.BuildSurface(downsampled, method, factor, token);
+                    var buffers = Mask3DScene.BuildGeometryBuffers(mesh, token);
+                    return (Mesh: mesh, Buffers: buffers);
                 },
                 token);
 
             if (_disposed || token.IsCancellationRequested)
                 return;
+
+            var mesh = result.Mesh;
 
             if (mesh.TriangleCount == 0)
             {
@@ -437,7 +458,8 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
                 mesh,
                 color,
                 name,
-                $"{mesh.SolidVoxels:N0} 体素 · {mesh.TriangleCount:N0} 三角面 · {factor}× {methodLabel}");
+                $"{mesh.SolidVoxels:N0} 体素 · {mesh.TriangleCount:N0} 三角面 · {factor}× {methodLabel}",
+                result.Buffers);
 
             if (_modelList is { } list)
                 list.SelectedItem = model;
@@ -446,18 +468,29 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
         }
         catch (OperationCanceledException)
         {
-            // Superseded by a newer request; the newer one will set its own status.
+            // Superseded or explicitly cancelled. Only the request that still owns the slot reports it;
+            // a superseded one leaves the status line to the newer request.
+            if (ReferenceEquals(_generation, generation))
+                SetStatus("已取消");
         }
         catch (Exception ex)
         {
             services.Log.Error("Mask 3D: building the model failed.", ex);
-            SetStatus($"生成失败：{ex.Message}");
+
+            if (ReferenceEquals(_generation, generation))
+                SetStatus($"生成失败：{ex.Message}");
         }
         finally
         {
-            // Only the newest request owns the busy flag, so a cancelled one must not clear it.
-            if (!token.IsCancellationRequested)
-                SetBusy(false);
+            // Only the newest request owns the building state. A cancelled one may finish after a
+            // newer request has already taken over, and must not clear that request's progress.
+            if (ReferenceEquals(_generation, generation))
+            {
+                _generation = null;
+                SetBuilding(false);
+            }
+
+            generation.Dispose();
         }
     }
 
@@ -513,7 +546,7 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
 
     private void OnRowColorChanged(object? sender, ColorChangedEventArgs e)
     {
-        if (_disposed || _busy || sender is not ColorView view || _syncingColors.Contains(view))
+        if (_disposed || sender is not ColorView view || _syncingColors.Contains(view))
             return;
 
         if (view.DataContext is not Mask3DModel model || _models is not { } models)
@@ -543,30 +576,43 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
         }
     }
 
-    private void SetBusy(bool busy)
+    private void SetBuilding(bool building)
     {
-        _busy = busy;
-
-        if (_progress is { } progress)
-            progress.IsVisible = busy;
-
+        _building = building;
         RefreshActions();
     }
 
-    /// <summary>Keeps the toolbar buttons consistent with the model list and the busy state.</summary>
+    private void SetImporting(bool importing)
+    {
+        _importing = importing;
+        RefreshActions();
+    }
+
+    /// <summary>
+    /// Keeps the toolbar buttons and the progress bar consistent with both operations. Model
+    /// management is deliberately not gated: removing, recolouring, hiding or exporting a model does
+    /// not touch the data a build or an import is working on.
+    /// </summary>
     private void RefreshActions()
     {
         var count = _models?.Models.Count ?? 0;
         var hasLayers = _services?.Masks.Layers.Count > 0;
 
+        // A second build supersedes the first, so the button stays available while one is running.
         if (_generateButton is { } generate)
-            generate.IsEnabled = !_busy && hasLayers;
+            generate.IsEnabled = hasLayers;
+
+        if (_cancelButton is { } cancel)
+        {
+            cancel.IsVisible = _building;
+            cancel.IsEnabled = _building;
+        }
 
         if (_importButton is { } import)
-            import.IsEnabled = !_busy;
+            import.IsEnabled = !_importing;
 
-        if (_clearButton is { } clear)
-            clear.IsEnabled = !_busy && count > 0;
+        if (_progress is { } progress)
+            progress.IsVisible = _building || _importing;
 
         if (_emptyModels is { } hint)
             hint.IsVisible = count == 0;
@@ -622,18 +668,20 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
         if (_generateButton is { } generate)
             generate.Click -= OnGenerateClick;
 
+        if (_cancelButton is { } cancel)
+            cancel.Click -= OnCancelClick;
+
         if (_importButton is { } import)
             import.Click -= OnImportClick;
-
-        if (_clearButton is { } clear)
-            clear.Click -= OnClearClick;
 
         if (_showViewButton is { } show)
             show.Click -= OnShowViewClick;
 
         _syncingColors.Clear();
+
+        // Cancel but do not dispose: the build task owns the source and disposes it in its own
+        // finally. Disposing here would race a cancellation callback still registered by the worker.
         _generation?.Cancel();
-        _generation?.Dispose();
         _generation = null;
     }
 }

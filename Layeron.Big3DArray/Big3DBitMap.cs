@@ -16,6 +16,19 @@ namespace Layeron.Big3DArray
     /// </summary>
     public class Big3DBitMap
     {
+        /// <summary>Whether one storage block is empty, fully set, or partly set.</summary>
+        public enum BlockOccupation
+        {
+            /// <summary>No bits are set; the block is stored as a null reference.</summary>
+            Empty,
+
+            /// <summary>Every bit is set; the block is the shared immutable full block.</summary>
+            Full,
+
+            /// <summary>Some bits are set and some are not.</summary>
+            Mixed,
+        }
+
         // Block and indexing constants
         private const int BlockSize = BlockEdge;
         private const int BlockVolume = BlockEdge * BlockEdge * BlockEdge; // 262144
@@ -90,6 +103,86 @@ namespace Layeron.Big3DArray
 
         /// <summary>Total number of storage blocks.</summary>
         public int BlockCount => _blocksX * _blocksY * _blocksZ;
+
+        /// <summary>
+        /// How much of one storage block is set. Blocks are collapsed to the shared empty and full
+        /// forms on every write, so the answer is exact and cheap: a lookup plus a reference test.
+        /// </summary>
+        public BlockOccupation GetBlockOccupation(int blockX, int blockY, int blockZ)
+        {
+            if ((uint)blockX >= (uint)_blocksX
+                || (uint)blockY >= (uint)_blocksY
+                || (uint)blockZ >= (uint)_blocksZ)
+            {
+                throw new ArgumentOutOfRangeException(nameof(blockX));
+            }
+
+            var block = _array[blockX, blockY, blockZ];
+
+            if (block is null)
+                return BlockOccupation.Empty;
+
+            return ReferenceEquals(block, Block.Full) ? BlockOccupation.Full : BlockOccupation.Mixed;
+        }
+
+        /// <summary>
+        /// Summarises the occupied blocks in one scan: the inclusive block-space bounds, how many
+        /// blocks are occupied, and how many of those are fully set.
+        /// <para>
+        /// Consumers that only need to visit the populated part of a large, mostly empty volume use
+        /// the bounds to crop their working grid. The bounds are block aligned, so they may include
+        /// some empty blocks at the edges; that is deliberate, because it makes the crop independent
+        /// of which individual voxel in an edge block is set.
+        /// </para>
+        /// </summary>
+        public BlockStatistics GetBlockStatistics()
+        {
+            var minX = int.MaxValue;
+            var minY = int.MaxValue;
+            var minZ = int.MaxValue;
+            var maxX = -1;
+            var maxY = -1;
+            var maxZ = -1;
+            var occupied = 0;
+            var full = 0;
+
+            for (var x = 0; x < _blocksX; x++)
+            for (var y = 0; y < _blocksY; y++)
+            for (var z = 0; z < _blocksZ; z++)
+            {
+                var block = _array[x, y, z];
+
+                if (block is null)
+                    continue;
+
+                occupied++;
+
+                if (ReferenceEquals(block, Block.Full))
+                    full++;
+
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+                if (z < minZ) minZ = z;
+                if (z > maxZ) maxZ = z;
+            }
+
+            if (occupied == 0)
+                return new BlockStatistics(false, 0, 0, 0, 0, 0, 0, BlockCount, 0, 0);
+
+            return new BlockStatistics(
+                true,
+                minX,
+                maxX,
+                minY,
+                maxY,
+                minZ,
+                maxZ,
+                BlockCount,
+                occupied,
+                full);
+        }
 
         /// <summary>
         /// Replace one whole storage block from a value buffer, with the same block layout
@@ -990,4 +1083,20 @@ namespace Layeron.Big3DArray
             }
         }
     }
+
+    /// <summary>
+    /// A one-scan summary of a <see cref="Big3DBitMap"/>'s occupied blocks. The bounds are inclusive
+    /// block indices and are only meaningful when <see cref="HasOccupied"/> is true.
+    /// </summary>
+    public readonly record struct BlockStatistics(
+        bool HasOccupied,
+        int MinX,
+        int MaxX,
+        int MinY,
+        int MaxY,
+        int MinZ,
+        int MaxZ,
+        int TotalBlocks,
+        int OccupiedBlocks,
+        int FullBlocks);
 }

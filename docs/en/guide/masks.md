@@ -40,8 +40,9 @@ The `layeron.model3d` sample plugin contributes two surfaces:
 - A **"3D Model" tool panel** (plugin menu → tools) owns creation and management: pick a mask layer, a downsample factor
   and a rebuild method, then click "Generate". "Import…" loads one or more glTF/GLB files at once. Every generated or
   imported model appears in the panel's list, and each row carries its own colour picker, visibility toggle, export and
-  remove actions. Mask models start with the layer colour; recolouring an import replaces its material colour. The
-  toolbar also clears the whole scene.
+  remove actions. Mask models start with the layer colour; recolouring an import replaces its material colour. A running
+  build can be cancelled, and its progress no longer locks the list: models stay removable, recolourable, hideable and
+  exportable while generation runs.
 - A **"mask 3D model" document tab** only displays: it draws every visible model in the list, opens automatically for the
   first model, and can stay open for comparison. Drag to orbit (drag right turns the model right), `Shift`+drag to pan,
   wheel to zoom (wheel up zooms in). Clicking a mask surface moves the crosshair. The camera frames the union of the

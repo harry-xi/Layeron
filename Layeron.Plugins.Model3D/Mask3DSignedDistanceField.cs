@@ -13,6 +13,15 @@ namespace Layeron.Plugins.Model3D;
 /// the structure is, so the zero level always falls on the true boundary.
 /// </para>
 /// <para>
+/// The field is the difference of two exact Euclidean distance transforms - one to the nearest solid
+/// sample and one to the nearest empty sample. Both are computed separably: a one-dimensional
+/// squared-distance transform is applied along X, then Y, then Z. Every line of a pass is independent
+/// of every other line, so the passes run on the thread pool without synchronisation, and because the
+/// result does not depend on scheduling order, the field is reproducible. The earlier chamfer
+/// approximation could only run two transforms at a time and its sweeps were sequential; this is both
+/// exact and parallel.
+/// </para>
+/// <para>
 /// The field is padded with one layer of empty space on every side. Padding gives the two distance
 /// transforms a finite answer at the border instead of running off the end of the grid, which is what
 /// lets a mask that touches the volume edge still close.
@@ -20,14 +29,19 @@ namespace Layeron.Plugins.Model3D;
 /// </summary>
 internal sealed class Mask3DSignedDistanceField
 {
-    /// <summary>Value at a solid voxel: the distance to the nearest empty voxel, negated.</summary>
-    private const float Inside = -1f;
+    /// <summary>
+    /// Stand-in for "no seed reached this sample yet" inside the one-dimensional transform. It is
+    /// finite on purpose: the envelope construction divides differences of two costs, and infinity
+    /// would turn that into NaN. It is far above every real squared distance in a padded volume (a
+    /// 1024^3 grid needs less than 3.2e6), so it can never win against a real seed.
+    /// </summary>
+    private const float Unreached = 1e9f;
 
-    /// <summary>Value at an empty voxel: the distance to the nearest solid voxel.</summary>
-    private const float Outside = 1f;
-
-    /// <summary>Stands in for "unreached yet" during the sweeps; far beyond any real distance.</summary>
-    private const float Unreached = 1e6f;
+    /// <summary>
+    /// Below this many samples the axis passes run serially: at the sizes the unit tests use, the
+    /// thread-pool wake-up would cost more than the transform itself.
+    /// </summary>
+    private const long ParallelThreshold = 1L << 17;
 
     private readonly float[] _samples;
 
@@ -44,12 +58,19 @@ internal sealed class Mask3DSignedDistanceField
 
     public int CellCountZ => SizeZ - 1;
 
-    private Mask3DSignedDistanceField(float[] samples, int sizeX, int sizeY, int sizeZ)
+    /// <summary>
+    /// Number of lattice points on the inside of the surface, for the status line. Counted while the
+    /// two transforms are combined, so no second pass over the volume is needed.
+    /// </summary>
+    public int SolidSampleCount { get; }
+
+    private Mask3DSignedDistanceField(float[] samples, int sizeX, int sizeY, int sizeZ, int solidSampleCount)
     {
         _samples = samples;
         SizeX = sizeX;
         SizeY = sizeY;
         SizeZ = sizeZ;
+        SolidSampleCount = solidSampleCount;
     }
 
     /// <summary>Reads the field at an integer lattice point. Callers must keep every index in range.</summary>
@@ -58,13 +79,18 @@ internal sealed class Mask3DSignedDistanceField
     /// <summary>
     /// Builds the field from a voxel grid.
     /// <para>
-    /// Two chamfer distance transforms are run - one from the solid voxels and one from the empty
-    /// ones - and the field is their difference. Each transform is two linear sweeps rather than a
-    /// search over every pair, so the cost is proportional to the volume and not its square.
+    /// Each sample starts as a seed in one of the two transforms: solid samples at zero distance
+    /// from solid, empty samples (including the padding) at zero distance from empty. Three
+    /// separable axis passes then turn those seeds into squared Euclidean distances, one axis at a
+    /// time. The signed field is the distance to the nearest solid minus the distance to the nearest
+    /// empty, so a solid voxel lands on 0 - 1 = -1 and an empty one on 1 - 0 = +1, and the zero level
+    /// falls exactly on the boundary between them.
     /// </para>
     /// </summary>
     public static Mask3DSignedDistanceField FromVoxels(bool[,,] grid, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(grid);
+
         var nx = grid.GetLength(0);
         var ny = grid.GetLength(1);
         var nz = grid.GetLength(2);
@@ -74,212 +100,241 @@ internal sealed class Mask3DSignedDistanceField
         var sizeX = nx + 2;
         var sizeY = ny + 2;
         var sizeZ = nz + 2;
+        var sampleCount = sizeX * sizeY * sizeZ;
 
-        var solid = new bool[sizeX * sizeY * sizeZ];
-
-        for (var z = 0; z < nz; z++)
-        for (var y = 0; y < ny; y++)
-        for (var x = 0; x < nx; x++)
-        {
-            if (grid[x, y, z])
-                solid[((z + 1) * sizeY + (y + 1)) * sizeX + (x + 1)] = true;
-        }
-
-        // The two transforms are independent, so they run concurrently: it halves the wall clock of
-        // the most expensive step in the build for the cost of one extra buffer.
-        var toSolid = new float[solid.Length];
-        var toEmpty = new float[solid.Length];
+        var toSolid = new float[sampleCount];
+        var toEmpty = new float[sampleCount];
+        var options = new ParallelOptions { CancellationToken = ct };
 
         ct.ThrowIfCancellationRequested();
 
-        Parallel.Invoke(
-            () => DistanceTransform(solid, true, toSolid, sizeX, sizeY, sizeZ, ct),
-            () => DistanceTransform(solid, false, toEmpty, sizeX, sizeY, sizeZ, ct));
+        // Seed both transforms in one pass. The padding is empty, so every border sample is already
+        // zero distance from the empty set; the interior is read straight from the grid.
+        Parallel.For(0, sizeZ, options, z =>
+        {
+            var zz = z - 1;
+            var insideZ = (uint)zz < (uint)nz;
+            var row = z * sizeX * sizeY;
+
+            for (var y = 0; y < sizeY; y++)
+            {
+                var yy = y - 1;
+                var insideY = (uint)yy < (uint)ny;
+
+                for (var x = 0; x < sizeX; x++)
+                {
+                    var xx = x - 1;
+                    var solid = insideZ && insideY && (uint)xx < (uint)nx && grid[xx, yy, zz];
+                    var i = row + y * sizeX + x;
+
+                    toSolid[i] = solid ? 0f : Unreached;
+                    toEmpty[i] = solid ? Unreached : 0f;
+                }
+            }
+        });
+
+        var maxDimension = Math.Max(sizeX, Math.Max(sizeY, sizeZ));
+
+        TransformAxis(toSolid, sizeX, sizeY, sizeZ, axis: 0, maxDimension, ct);
+        TransformAxis(toSolid, sizeX, sizeY, sizeZ, axis: 1, maxDimension, ct);
+        TransformAxis(toSolid, sizeX, sizeY, sizeZ, axis: 2, maxDimension, ct);
+
+        TransformAxis(toEmpty, sizeX, sizeY, sizeZ, axis: 0, maxDimension, ct);
+        TransformAxis(toEmpty, sizeX, sizeY, sizeZ, axis: 1, maxDimension, ct);
+        TransformAxis(toEmpty, sizeX, sizeY, sizeZ, axis: 2, maxDimension, ct);
+
+        // Combine into the signed field and count the negative samples in the same pass. Every sample
+        // is touched once here, so the status line's solid count costs no extra traversal.
+        var solidSampleCount = 0;
+
+        Parallel.For(0, sizeZ, options, z =>
+        {
+            var start = z * sizeX * sizeY;
+            var end = start + sizeX * sizeY;
+            var local = 0;
+
+            for (var i = start; i < end; i++)
+            {
+                var value = MathF.Sqrt(toSolid[i]) - MathF.Sqrt(toEmpty[i]);
+                toSolid[i] = value;
+
+                if (value < 0f)
+                    local++;
+            }
+
+            Interlocked.Add(ref solidSampleCount, local);
+        });
 
         ct.ThrowIfCancellationRequested();
 
-        // The signed field is the distance to the nearest solid voxel minus the distance to the nearest
-        // empty one. Both terms are zero for their own class, so a solid voxel lands on 0 - 1 = -1 and
-        // an empty one on 1 - 0 = +1, and the zero level falls exactly on the boundary between them.
-        // That is what makes the surface pass through the middle of the exposed voxel faces rather
-        // than hugging the voxel centres.
-        for (var i = 0; i < toSolid.Length; i++)
-            toSolid[i] -= toEmpty[i];
-
-        return new Mask3DSignedDistanceField(toSolid, sizeX, sizeY, sizeZ);
-    }
-
-    /// <summary>Number of lattice points on the inside of the surface, for the status line.</summary>
-    public int CountInside()
-    {
-        var count = 0;
-
-        foreach (var v in _samples)
-        {
-            if (v < 0f)
-                count++;
-        }
-
-        return count;
+        return new Mask3DSignedDistanceField(toSolid, sizeX, sizeY, sizeZ, solidSampleCount);
     }
 
     /// <summary>
-    /// Chamfer distance transform: for every sample, the distance to the nearest seed.
+    /// Applies the one-dimensional squared-distance transform along one axis of the volume.
     /// <para>
-    /// The volume is swept forward then backward, and each visit relaxes a sample against its
-    /// already-settled neighbours. Two sweeps in opposite orders are enough because the neighbourhood
-    /// connects to both the previous and the next sample along every axis: the forward sweep carries
-    /// distances in, and the backward sweep carries them the rest of the way.
-    /// </para>
-    /// <para>
-    /// Offsets are weighted by their true length rather than treated as unit steps, so the result
-    /// tracks Euclidean distance closely. The exact metric barely affects the outcome - only the sign
-    /// and the shape of the zero crossing define the surface, not the magnitude beyond it.
+    /// The three axis passes are what make the three-dimensional transform separable:
+    /// <c>min_q (x-qx)^2 + (y-qy)^2 + (z-qz)^2</c> can be minimised one axis at a time because the
+    /// axes add. Each pass reads the previous pass's squared distances and adds this axis's
+    /// contribution, so after Z the array holds the full squared distance to the nearest seed.
     /// </para>
     /// </summary>
-    private static void DistanceTransform(bool[] solid, bool seedOnSolid, float[] result, int sizeX, int sizeY, int sizeZ, CancellationToken ct)
+    private static void TransformAxis(
+        float[] field,
+        int sizeX,
+        int sizeY,
+        int sizeZ,
+        int axis,
+        int maxDimension,
+        CancellationToken ct)
     {
-        // The seed set is whichever of the two classes this pass measures towards; everything else
-        // starts unreached and is relaxed by the sweeps.
-        for (var i = 0; i < result.Length; i++)
-            result[i] = solid[i] == seedOnSolid ? 0f : Unreached;
-
-        var plane = sizeX * sizeY;
-
-        // Forward sweep: increasing x, then y, then z.
-        for (var z = 0; z < sizeZ; z++)
-        for (var y = 0; y < sizeY; y++)
-        for (var x = 0; x < sizeX; x++)
+        var (lineCount, length, stride) = axis switch
         {
-            if (((x | y | z) & 63) == 0)
+            0 => (sizeY * sizeZ, sizeX, 1),
+            1 => (sizeZ * sizeX, sizeY, sizeX),
+            _ => (sizeY * sizeX, sizeZ, sizeX * sizeY),
+        };
+
+        if ((long)sizeX * sizeY * sizeZ < ParallelThreshold)
+        {
+            var buffers = new LineBuffers(maxDimension);
+
+            for (var line = 0; line < lineCount; line++)
+            {
                 ct.ThrowIfCancellationRequested();
-
-            var i = (z * sizeY + y) * sizeX + x;
-            var best = result[i];
-
-            // Only neighbours that are already settled in this direction can help, which is what makes
-            // a single forward pass carry a distance all the way from a distant seed.
-            if (x > 0)
-                best = Relax(best, result[i - 1], 1f);
-
-            if (y > 0)
-            {
-                best = Relax(best, result[i - sizeX], 1f);
-
-                if (x > 0)
-                    best = Relax(best, result[i - sizeX - 1], Sqrt2);
-
-                if (x < sizeX - 1)
-                    best = Relax(best, result[i - sizeX + 1], Sqrt2);
+                TransformLine(field, LineStart(line, axis, sizeX, sizeY), stride, length, buffers);
             }
 
-            if (z > 0)
-            {
-                best = Relax(best, result[i - plane], 1f);
-
-                if (x > 0)
-                    best = Relax(best, result[i - plane - 1], Sqrt2);
-
-                if (x < sizeX - 1)
-                    best = Relax(best, result[i - plane + 1], Sqrt2);
-
-                if (y > 0)
-                {
-                    best = Relax(best, result[i - plane - sizeX], Sqrt2);
-
-                    if (x > 0)
-                        best = Relax(best, result[i - plane - sizeX - 1], Sqrt3);
-
-                    if (x < sizeX - 1)
-                        best = Relax(best, result[i - plane - sizeX + 1], Sqrt3);
-                }
-
-                if (y < sizeY - 1)
-                {
-                    best = Relax(best, result[i - plane + sizeX], Sqrt2);
-
-                    if (x > 0)
-                        best = Relax(best, result[i - plane + sizeX - 1], Sqrt3);
-
-                    if (x < sizeX - 1)
-                        best = Relax(best, result[i - plane + sizeX + 1], Sqrt3);
-                }
-            }
-
-            result[i] = best;
+            return;
         }
 
-        // Backward sweep: the same neighbourhood, mirrored, so seeds behind the sample in any axis
-        // still reach it.
-        for (var z = sizeZ - 1; z >= 0; z--)
-        for (var y = sizeY - 1; y >= 0; y--)
-        for (var x = sizeX - 1; x >= 0; x--)
+        Parallel.For(
+            0,
+            lineCount,
+            new ParallelOptions { CancellationToken = ct },
+            () => new LineBuffers(maxDimension),
+            (line, _, buffers) =>
+            {
+                TransformLine(field, LineStart(line, axis, sizeX, sizeY), stride, length, buffers);
+                return buffers;
+            },
+            _ => { });
+    }
+
+    /// <summary>
+    /// Index of the first sample of a line. Lines are indexed so that the pass walks memory in the
+    /// order it was laid out: X lines are contiguous rows, Y lines step by <c>sizeX</c>, and Z lines
+    /// step by one X/Y plane.
+    /// </summary>
+    private static int LineStart(int line, int axis, int sizeX, int sizeY) => axis switch
+    {
+        0 => line * sizeX,
+        1 => (line / sizeX) * sizeY * sizeX + line % sizeX,
+        _ => line,
+    };
+
+    /// <summary>
+    /// One-dimensional lower-envelope squared-distance transform, in place on a strided line.
+    /// <para>
+    /// Each sample <c>q</c> contributes a parabola <c>f(q) + (p - q)^2</c>; the answer at <c>p</c>
+    /// is the lowest parabola there. The parabolas are added in index order, keeping only those
+    /// that form the lower envelope and the positions where the next one takes over. The second
+    /// loop walks that envelope, so the whole line is O(length).
+    /// </para>
+    /// <para>
+    /// The line is copied into a scratch buffer before the output is written back. The envelope's
+    /// evaluation needs <c>f(q)</c> for earlier <c>q</c>, and writing into the field in place would
+    /// destroy those values; the copy keeps the algorithm single-pass without a second output array.
+    /// </para>
+    /// <para>
+    /// A constant line is left untouched. That is the common case in empty space - a solid-distance
+    /// line with no seed stays at the sentinel, and an empty-distance line in a fully empty region is
+    /// all zero - and the transform of a constant <c>c</c> is <c>c</c> at every position, so there is
+    /// nothing to compute.
+    /// </para>
+    /// </summary>
+    private static void TransformLine(
+        float[] field,
+        int start,
+        int stride,
+        int length,
+        LineBuffers buffers)
+    {
+        var line = buffers.Line;
+        var first = field[start];
+        line[0] = first;
+
+        var constant = true;
+
+        for (var i = 1; i < length; i++)
         {
-            var i = (z * sizeY + y) * sizeX + x;
-            var best = result[i];
+            var value = field[start + i * stride];
+            line[i] = value;
 
-            if (x < sizeX - 1)
-                best = Relax(best, result[i + 1], 1f);
+            if (value != first)
+                constant = false;
+        }
 
-            if (y < sizeY - 1)
+        if (constant)
+            return;
+
+        var envelope = buffers.Envelope;
+        var boundary = buffers.Boundary;
+
+        var k = 0;
+        envelope[0] = 0;
+        boundary[0] = double.NegativeInfinity;
+        boundary[1] = double.PositiveInfinity;
+
+        for (var q = 1; q < length; q++)
+        {
+            double s;
+
+            while (true)
             {
-                best = Relax(best, result[i + sizeX], 1f);
+                var v = envelope[k];
 
-                if (x < sizeX - 1)
-                    best = Relax(best, result[i + sizeX + 1], Sqrt2);
+                // Intersection of parabola q with the current last parabola v:
+                //   f(q) + (p - q)^2 = f(v) + (p - v)^2
+                s = ((line[q] + (double)q * q) - (line[v] + (double)v * v))
+                    / (2.0 * q - 2.0 * v);
 
-                if (x > 0)
-                    best = Relax(best, result[i + sizeX - 1], Sqrt2);
+                if (k == 0 || s > boundary[k])
+                    break;
+
+                k--;
             }
 
-            if (z < sizeZ - 1)
-            {
-                best = Relax(best, result[i + plane], 1f);
+            k++;
+            envelope[k] = q;
+            boundary[k] = s;
+            boundary[k + 1] = double.PositiveInfinity;
+        }
 
-                if (x < sizeX - 1)
-                    best = Relax(best, result[i + plane + 1], Sqrt2);
+        k = 0;
 
-                if (x > 0)
-                    best = Relax(best, result[i + plane - 1], Sqrt2);
+        for (var p = 0; p < length; p++)
+        {
+            while (boundary[k + 1] < p)
+                k++;
 
-                if (y < sizeY - 1)
-                {
-                    best = Relax(best, result[i + plane + sizeX], Sqrt2);
+            var v = envelope[k];
+            var d = p - v;
 
-                    if (x < sizeX - 1)
-                        best = Relax(best, result[i + plane + sizeX + 1], Sqrt3);
-
-                    if (x > 0)
-                        best = Relax(best, result[i + plane + sizeX - 1], Sqrt3);
-                }
-
-                if (y > 0)
-                {
-                    best = Relax(best, result[i + plane - sizeX], Sqrt2);
-
-                    if (x < sizeX - 1)
-                        best = Relax(best, result[i + plane - sizeX + 1], Sqrt3);
-
-                    if (x > 0)
-                        best = Relax(best, result[i + plane - sizeX - 1], Sqrt3);
-                }
-            }
-
-            result[i] = best;
+            field[start + p * stride] = (float)(line[v] + (double)d * d);
         }
     }
 
-    /// <summary>Lengths of the chamfer neighbourhood's distinct offsets.</summary>
-    private const float Sqrt2 = 1.41421356f;
-
-    private const float Sqrt3 = 1.73205081f;
-
-    /// <summary>Keeps the smaller of the current distance and one reached through a neighbour.</summary>
-    private static float Relax(float current, float neighbour, float weight)
+    /// <summary>
+    /// Per-thread scratch for one line: the copied input, the envelope's parabola indices, and the
+    /// boundaries between them. Allocating them once per worker keeps the hot loop allocation-free.
+    /// </summary>
+    private sealed class LineBuffers(int length)
     {
-        if (neighbour >= Unreached)
-            return current;
+        public readonly float[] Line = new float[length];
 
-        return MathF.Min(current, neighbour + weight);
+        public readonly int[] Envelope = new int[length];
+
+        public readonly double[] Boundary = new double[length + 1];
     }
 }

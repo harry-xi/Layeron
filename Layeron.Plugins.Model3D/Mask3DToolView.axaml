@@ -71,9 +71,11 @@
               BorderThickness="0,0,0,1"
               Padding="6,5">
         <StackPanel Spacing="4">
-          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+          <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
             <TextBlock Text="从掩膜创建" FontSize="11" Opacity="0.7" VerticalAlignment="Center" />
             <Button x:Name="GenerateButton" Grid.Column="1" Classes="accent compact" Content="生成模型" />
+            <Button x:Name="CancelButton" Grid.Column="2" Classes="compact" Content="取消"
+                    IsVisible="False" ToolTip.Tip="取消正在进行的模型生成" />
           </Grid>
 
           <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
@@ -100,7 +102,7 @@
               BorderBrush="{DynamicResource LayeronCardBorderBrush}"
               BorderThickness="0,0,0,1"
               Padding="6,4">
-        <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto" ColumnSpacing="4">
+        <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="4">
           <TextBlock Text="模型" FontSize="11" Opacity="0.7" VerticalAlignment="Center" />
           <TextBlock x:Name="ModelCountText" Grid.Column="1" FontSize="11" Opacity="0.5"
                      VerticalAlignment="Center" />
@@ -108,8 +110,6 @@
                   ToolTip.Tip="打开只显示 3D 场景的文档标签页" />
           <Button x:Name="ImportButton" Grid.Column="4" Classes="compact" Content="导入…"
                   ToolTip.Tip="可以一次选择多个 glTF / GLB 文件" />
-          <Button x:Name="ClearButton" Grid.Column="5" Classes="compact danger" Content="清空"
-                  IsEnabled="False" ToolTip.Tip="从场景中移除所有模型" />
         </Grid>
       </Border>
 

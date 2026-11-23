@@ -1061,6 +1061,10 @@ public class Big3DBitMap
     public int BlocksZ { get; }
     public int BlockCount { get; }
     public long OccupiedBlockCount { get; }
+    public Big3DBitMap.BlockOccupation GetBlockOccupation(int blockX, int blockY, int blockZ);
+    public BlockStatistics GetBlockStatistics();
+
+    public enum BlockOccupation { Empty, Full, Mixed }
 
     public const int BlockEdge = 64;
     public const int BlockVolumeElements = BlockEdge * BlockEdge * BlockEdge;
@@ -1082,9 +1086,20 @@ public class Big3DBitMap
     public void SaveStream(Stream stream);
     public static Big3DBitMap LoadStream(Stream stream);
 }
+
+public readonly record struct BlockStatistics(
+    bool HasOccupied,
+    int MinX, int MaxX,
+    int MinY, int MaxY,
+    int MinZ, int MaxZ,
+    int TotalBlocks,
+    int OccupiedBlocks,
+    int FullBlocks);
 ```
 
 三个 setter 都要求传入数组与平面的形状**完全一致**（`[Y, X]` / `[Z, X]` / `[Z, Y]`），否则抛 `ArgumentException`；层号越界抛 `IndexOutOfRangeException`。平面与数组形状的对应关系与前面的 `SlicePlane` 约定相同。
+
+`GetBlockStatistics` 一次扫描返回占用块的包围盒（含端点、块坐标）、总块数、占用块数和满块数；空图时 `HasOccupied` 为 false。`GetBlockOccupation` 区分空/满/混合块，适合只遍历占用区域或对满块走直填快路径。
 
 ### 其他
 

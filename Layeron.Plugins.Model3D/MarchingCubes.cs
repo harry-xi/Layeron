@@ -51,12 +51,28 @@ internal static class MarchingCubes
 
     /// <summary>
     /// Extracts the <see cref="IsoLevel"/> isosurface of <paramref name="field"/> in original volume
-    /// coordinates: field lattice point 0 is the padding sample half a downsampled voxel before the
-    /// volume, so a field coordinate <c>v</c> maps to <c>(v - 0.5) * voxelSize</c>. That puts the
-    /// result in the same frame as the voxel extractor, at any downsample factor.
+    /// coordinates. Field lattice point 0 is the padding sample half a downsampled voxel before working
+    /// cell 0, so a field coordinate <c>v</c> maps to <c>(v + frame.Origin - 0.5) * voxelSize</c>. That
+    /// puts the result in the same frame as the voxel extractor, at any downsample factor and crop.
     /// </summary>
     public static Mask3DGeometry.SurfaceMesh Extract(
         Mask3DSignedDistanceField field,
+        int voxelSize,
+        CancellationToken ct)
+        => Extract(
+            field,
+            GridFrame.Full(field.CellCountX, field.CellCountY, field.CellCountZ),
+            voxelSize,
+            ct);
+
+    /// <summary>
+    /// Extracts the isosurface of a working field placed in the full volume by <paramref name="frame"/>.
+    /// The field's padding adds one sample before working cell 0, so a local field coordinate
+    /// <c>v</c> maps to the global coarse coordinate <c>v + frame.Origin - 0.5</c>.
+    /// </summary>
+    public static Mask3DGeometry.SurfaceMesh Extract(
+        Mask3DSignedDistanceField field,
+        GridFrame frame,
         int voxelSize,
         CancellationToken ct)
     {
@@ -65,10 +81,18 @@ internal static class MarchingCubes
         var cellsZ = field.CellCountZ;
 
         if (cellsX <= 0 || cellsY <= 0 || cellsZ <= 0)
-            return new Mask3DGeometry.SurfaceMesh([], [], [], Vector3.Zero, 0f, 0);
+        {
+            return new Mask3DGeometry.SurfaceMesh(
+                [],
+                [],
+                [],
+                frame.Center(voxelSize),
+                frame.Radius(voxelSize),
+                0);
+        }
 
         var bands = CreateBands(cellsZ);
-        var solidVoxels = field.CountInside();
+        var solidVoxels = field.SolidSampleCount;
 
         // One task per band. A band's Z range is disjoint from every other band's, so the parallel
         // writes never overlap and each band can append to its own lists without synchronisation.
@@ -96,25 +120,26 @@ internal static class MarchingCubes
         ct.ThrowIfCancellationRequested();
 
         // The padded field adds one empty sample per side; the original volume is the inner box.
-        // Map the lattice into original voxel units before anything else looks at the geometry.
-        var nx = field.SizeX - 2;
-        var ny = field.SizeY - 2;
-        var nz = field.SizeZ - 2;
-
+        // Map the lattice into original voxel units before anything else looks at the geometry. The
+        // frame origin is added before the half-voxel shift, so a cropped field lands in exactly the
+        // same world coordinates as the full one.
         for (var i = 0; i < vertices.Count; i++)
         {
             var v = vertices[i];
             vertices[i] = new Vector4(
-                (v.X - 0.5f) * voxelSize,
-                (v.Y - 0.5f) * voxelSize,
-                (v.Z - 0.5f) * voxelSize,
+                (v.X + frame.OriginX - 0.5f) * voxelSize,
+                (v.Y + frame.OriginY - 0.5f) * voxelSize,
+                (v.Z + frame.OriginZ - 0.5f) * voxelSize,
                 1f);
         }
 
-        var center = new Vector3(nx, ny, nz) * (voxelSize * 0.5f);
-        var radius = 0.5f * new Vector3(nx, ny, nz).Length() * voxelSize;
-
-        return new Mask3DGeometry.SurfaceMesh(vertices, normals, indices, center, radius, solidVoxels);
+        return new Mask3DGeometry.SurfaceMesh(
+            vertices,
+            normals,
+            indices,
+            frame.Center(voxelSize),
+            frame.Radius(voxelSize),
+            solidVoxels);
     }
 
     /// <summary>

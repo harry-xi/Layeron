@@ -158,14 +158,15 @@ internal sealed class Mask3DModelManager
         Mask3DGeometry.SurfaceMesh surface,
         Rgb color,
         string name,
-        string detail)
+        string detail,
+        Mask3DScene.GeometryBuffers? buffers = null)
     {
         ArgumentNullException.ThrowIfNull(surface);
 
         if (surface.TriangleCount == 0)
             throw new ArgumentException("The surface has no triangles.", nameof(surface));
 
-        var node = Mask3DScene.CreateMeshNode(surface, color);
+        var node = Mask3DScene.CreateMeshNode(surface, color, buffers);
         var model = new Mask3DModel(
             NextId(),
             UniqueName(name),

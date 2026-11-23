@@ -91,7 +91,10 @@ internal static class Mask3DScene
     /// sheet and a single-sided surface would vanish the moment the camera moved behind it.
     /// </para>
     /// </summary>
-    public static AuraMesh CreateMeshNode(Mask3DGeometry.SurfaceMesh surface, Rgb color)
+    public static AuraMesh CreateMeshNode(
+        Mask3DGeometry.SurfaceMesh surface,
+        Rgb color,
+        GeometryBuffers? buffers = null)
     {
         // The engine lights in linear space and gamma-encodes on output, so the texture has to be
         // declared as sRGB: otherwise the raw bytes are treated as linear and the model comes out
@@ -104,7 +107,7 @@ internal static class Mask3DScene
         return new AuraMesh
         {
             Name = "Mask surface",
-            Geometry = CreateGeometry(surface),
+            Geometry = buffers is null ? CreateGeometry(surface) : CreateGeometry(surface, buffers),
             Material = material,
         };
     }
@@ -115,42 +118,96 @@ internal static class Mask3DScene
     /// material-independent conversion.
     /// </summary>
     public static AuraGeometry CreateGeometry(Mask3DGeometry.SurfaceMesh surface)
+        => CreateGeometry(surface, BuildGeometryBuffers(surface, CancellationToken.None));
+
+    /// <summary>
+    /// The numeric half of <see cref="CreateGeometry"/>: the four attribute streams, built from the
+    /// surface without touching any engine object.
+    /// <para>
+    /// Generation runs on a worker thread and this is where nearly all of its per-vertex time goes -
+    /// four streams of three floats for every vertex, plus a tangent basis. Keeping it separate from
+    /// the engine types lets the panel hand the finished buffers to the UI thread, so a million-vertex
+    /// surface no longer freezes the window while it is converted after the extraction has finished.
+    /// </para>
+    /// </summary>
+    public static GeometryBuffers BuildGeometryBuffers(
+        Mask3DGeometry.SurfaceMesh surface,
+        CancellationToken ct)
     {
         var positions = new List<float>(surface.Vertices.Count * 3);
-        foreach (var vertex in surface.Vertices)
+
+        for (var i = 0; i < surface.Vertices.Count; i++)
         {
+            if ((i & 1023) == 0)
+                ct.ThrowIfCancellationRequested();
+
+            var vertex = surface.Vertices[i];
             positions.Add(vertex.X);
             positions.Add(vertex.Y);
             positions.Add(vertex.Z);
         }
 
         var normals = new List<float>(surface.VertexProps.Count * 3);
-        foreach (var vertex in surface.VertexProps)
-        {
-            normals.Add(vertex.Normal.X);
-            normals.Add(vertex.Normal.Y);
-            normals.Add(vertex.Normal.Z);
-        }
-
-        // The lighting shader always runs its normal map through the interpolated TBN matrix. With no
-        // tangent attribute, normalize(0) makes T and B NaN - and NaN times the flat map's zero x/y is
-        // still NaN, so every fragment loses its diffuse term and the model renders as a flat ambient
-        // silhouette. A deterministic basis perpendicular to each face normal keeps the shader finite;
-        // a flat normal map (0,0,1) then resolves back to exactly the geometric normal.
         var tangents = new List<float>(surface.VertexProps.Count * 3);
         var bitangents = new List<float>(surface.VertexProps.Count * 3);
-        foreach (var vertex in surface.VertexProps)
-            AppendTangentBasis(vertex.Normal, tangents, bitangents);
+
+        for (var i = 0; i < surface.VertexProps.Count; i++)
+        {
+            if ((i & 1023) == 0)
+                ct.ThrowIfCancellationRequested();
+
+            var normal = surface.VertexProps[i].Normal;
+
+            normals.Add(normal.X);
+            normals.Add(normal.Y);
+            normals.Add(normal.Z);
+
+            // The lighting shader always runs its normal map through the interpolated TBN matrix. With no
+            // tangent attribute, normalize(0) makes T and B NaN - and NaN times the flat map's zero x/y is
+            // still NaN, so every fragment loses its diffuse term and the model renders as a flat ambient
+            // silhouette. A deterministic basis perpendicular to each face normal keeps the shader finite;
+            // a flat normal map (0,0,1) then resolves back to exactly the geometric normal.
+            AppendTangentBasis(normal, tangents, bitangents);
+        }
+
+        ct.ThrowIfCancellationRequested();
+
+        return new GeometryBuffers(positions, normals, tangents, bitangents);
+    }
+
+    /// <summary>
+    /// Binds prebuilt attribute streams to an engine geometry. Pure reference assignment, so it is
+    /// cheap enough to stay on the UI thread after a worker has done <see cref="BuildGeometryBuffers"/>.
+    /// </summary>
+    public static AuraGeometry CreateGeometry(Mask3DGeometry.SurfaceMesh surface, GeometryBuffers buffers)
+    {
+        ArgumentNullException.ThrowIfNull(surface);
+        ArgumentNullException.ThrowIfNull(buffers);
+
+        if (buffers.Positions.Count != surface.Vertices.Count * 3
+            || buffers.Normals.Count != surface.VertexProps.Count * 3
+            || buffers.Tangents.Count != surface.VertexProps.Count * 3
+            || buffers.Bitangents.Count != surface.VertexProps.Count * 3)
+        {
+            throw new ArgumentException("The geometry buffers do not match the surface.", nameof(buffers));
+        }
 
         var geometry = new AuraGeometry { PrimitiveType = PrimitiveType.Triangles };
-        geometry.SetVertexAttribute(BuildInVertexAttribute.Position, 3u, positions);
-        geometry.SetVertexAttribute(BuildInVertexAttribute.Normal, 3u, normals);
-        geometry.SetVertexAttribute(BuildInVertexAttribute.Tangent, 3u, tangents);
-        geometry.SetVertexAttribute(BuildInVertexAttribute.Bitangent, 3u, bitangents);
+        geometry.SetVertexAttribute(BuildInVertexAttribute.Position, 3u, buffers.Positions);
+        geometry.SetVertexAttribute(BuildInVertexAttribute.Normal, 3u, buffers.Normals);
+        geometry.SetVertexAttribute(BuildInVertexAttribute.Tangent, 3u, buffers.Tangents);
+        geometry.SetVertexAttribute(BuildInVertexAttribute.Bitangent, 3u, buffers.Bitangents);
         geometry.SetIndices(surface.Indices);
 
         return geometry;
     }
+
+    /// <summary>The four per-vertex attribute streams a surface needs, already flattened.</summary>
+    internal sealed record GeometryBuffers(
+        List<float> Positions,
+        List<float> Normals,
+        List<float> Tangents,
+        List<float> Bitangents);
 
     /// <summary>
     /// Adds a model node to a viewport's scene, unless another live scene already owns it.
