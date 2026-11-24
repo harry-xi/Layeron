@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Windows.Input;
 using Avalonia.Threading;
 using Layeron.Big3DArray;
@@ -260,7 +261,7 @@ public sealed class ThresholdToolViewModel : ReactiveObject, IDisposable
         // The histogram is host-provided (IVolumeService.ComputeHistogram): the plugin draws the chart
         // but does not own the statistics, so a plugin and the app's own tools can never disagree.
         Task.Run(() => _services.Volumes.ComputeHistogram(ct,
-                fraction => Dispatcher.UIThread.Post(() => ProgressValue = fraction * 100)), ct)
+                ThrottledProgress(percent => Dispatcher.UIThread.Post(() => ProgressValue = percent))), ct)
             .ContinueWith(task =>
             {
                 if (task.IsCanceled)
@@ -355,7 +356,7 @@ public sealed class ThresholdToolViewModel : ReactiveObject, IDisposable
         ProgressValue = 0;
 
         Task.Run(() => ThresholdEngine.CreateMask(volume, low, high, ct,
-                fraction => Dispatcher.UIThread.Post(() => ProgressValue = fraction * 100)), ct)
+                ThrottledProgress(percent => Dispatcher.UIThread.Post(() => ProgressValue = percent))), ct)
             .ContinueWith(task =>
             {
                 _busy = false;
@@ -380,6 +381,42 @@ public sealed class ThresholdToolViewModel : ReactiveObject, IDisposable
                 StatusText = $"已添加掩膜 “{layer.Name}”";
                 RefreshPreview();
             }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.FromCurrentSynchronizationContext());
+    }
+
+    /// <summary>
+    /// Wraps a progress fraction callback so the UI is posted to at most once per
+    /// <paramref name="minIntervalMs"/> (and always at 100%). The engine reports once per block;
+    /// forwarding every report would flood the dispatcher on a large volume, where the whole mask
+    /// can finish in far less time than the UI needs to drain thousands of queued posts.
+    /// </summary>
+    private static Action<double> ThrottledProgress(Action<int> post, int minIntervalMs = 50)
+    {
+        var gate = new object();
+        var lastPercent = -1;
+        var intervalTicks = Stopwatch.Frequency * Math.Max(1, minIntervalMs) / 1000;
+        // Start one interval in the past so the first report is never throttled (and avoid the
+        // overflow of `now - long.MinValue`).
+        var lastTicks = Stopwatch.GetTimestamp() - intervalTicks;
+
+        return fraction =>
+        {
+            var percent = (int)Math.Round(Math.Clamp(fraction, 0, 1) * 100);
+
+            lock (gate)
+            {
+                if (percent <= lastPercent)
+                    return;
+
+                var now = Stopwatch.GetTimestamp();
+                var complete = percent >= 100;
+                if (!complete && now - lastTicks < intervalTicks)
+                    return;
+
+                lastPercent = percent;
+                lastTicks = now;
+                post(percent);
+            }
+        };
     }
 
     private CancellationToken ResetWork()
