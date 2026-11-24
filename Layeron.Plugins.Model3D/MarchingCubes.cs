@@ -7,6 +7,12 @@ namespace Layeron.Plugins.Model3D;
 /// <summary>
 /// Marching Cubes: walks a sampled field cell by cell and emits the triangles of one isosurface.
 /// <para>
+/// There are two inputs. The reference path takes a full <see cref="Mask3DSignedDistanceField"/>.
+/// The production path takes a binary voxel grid and derives exact signed distances only at mixed-cell
+/// corners, from their local 3x3x3 neighbourhood; that is enough to produce the same surface without
+/// allocating a global field.
+/// </para>
+/// <para>
 /// For each cell the eight corner values form a configuration index, the table row for that index
 /// names the cube edges the surface crosses, and the crossing point on an edge is the point at which
 /// the field interpolated along that edge reaches the level. Every group of three edges in the row
@@ -32,6 +38,34 @@ internal static class MarchingCubes
     /// </summary>
     public const float IsoLevel = 0f;
 
+    /// <summary>
+    /// Grid offsets of the eight cell corners, in the field extractor's corner order. The same values
+    /// as <see cref="MarchingCubesTable.CornerOffsets"/>, flattened so the hot voxel loop does not
+    /// allocate or unpack vectors.
+    /// </summary>
+    private static readonly int[,] CornerOffsets =
+    {
+        { 0, 1, 1 },
+        { 0, 1, 0 },
+        { 0, 0, 0 },
+        { 0, 0, 1 },
+        { 1, 1, 1 },
+        { 1, 1, 0 },
+        { 1, 0, 0 },
+        { 1, 0, 1 },
+    };
+
+    /// <summary>
+    /// For each cell corner, the sample positions at squared distance 1, 2 and 3 inside the cell's
+    /// 4x4x4 sample neighbourhood. The neighbourhood is the union of the eight corners' 3x3x3
+    /// neighbourhoods, so a mixed cell's exact distance is found by three bit tests per corner
+    /// instead of eight full 3x3x3 scans.
+    /// </summary>
+    private static readonly ulong[][] ShellMasks = BuildShellMasks();
+
+    private static readonly float Sqrt2 = MathF.Sqrt(2f);
+    private static readonly float Sqrt3 = MathF.Sqrt(3f);
+
     /// <summary>One band of the surface plus the scratch its cells reuse.</summary>
     private sealed class Band
     {
@@ -47,6 +81,9 @@ internal static class MarchingCubes
 
         /// <summary>Corner values of the cell being processed, reused to avoid a per-cell allocation.</summary>
         public readonly float[] Corners = new float[8];
+
+        /// <summary>Occupancy of the same eight corners, used by the voxel-local extractor.</summary>
+        public readonly bool[] Solid = new bool[8];
     }
 
     /// <summary>
@@ -99,6 +136,54 @@ internal static class MarchingCubes
         Parallel.For(0, bands.Length, new ParallelOptions { CancellationToken = ct },
             i => ExtractBand(field, bands[i], ct));
 
+        return MergeBands(bands, frame, voxelSize, solidVoxels, ct);
+    }
+
+    /// <summary>
+    /// Extracts the isosurface straight from a binary voxel grid, without building a global distance
+    /// field.
+    /// <para>
+    /// A mixed cell has at least one solid and one empty corner. For every corner of such a cell, an
+    /// opposite-class sample already exists among the cell's eight corners, so the nearest opposite
+    /// sample cannot be farther than the cell diagonal (Chebyshev distance one, squared distance at
+    /// most three). Scanning the 3x3x3 neighbourhood of each corner therefore gives exactly the same
+    /// signed distance as the global exact EDT at every corner that marching cubes can read. The rest
+    /// of the field - the overwhelming majority of a large volume - is never needed.
+    /// </para>
+    /// <para>
+    /// Cells are still visited in the same global Z/Y/X order as the field extractor, and work is
+    /// split into the same disjoint Z bands. Block activity only skips cells that cannot be mixed, so
+    /// this path is both deterministic and output-compatible with the field path.
+    /// </para>
+    /// </summary>
+    public static Mask3DGeometry.SurfaceMesh Extract(
+        bool[,,] grid,
+        GridFrame frame,
+        int voxelSize,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(grid);
+
+        var cellsX = grid.GetLength(0) + 1;
+        var cellsY = grid.GetLength(1) + 1;
+        var cellsZ = grid.GetLength(2) + 1;
+        var blocks = Mask3DBlockGrid.ForIsosurface(grid, ct);
+        var bands = CreateBands(cellsZ);
+
+        Parallel.For(0, bands.Length, new ParallelOptions { CancellationToken = ct },
+            i => ExtractBand(grid, blocks, bands[i], ct));
+
+        return MergeBands(bands, frame, voxelSize, blocks.SolidSamples, ct);
+    }
+
+    /// <summary>Merges the per-band buffers in Z order and maps lattice vertices to world units.</summary>
+    private static Mask3DGeometry.SurfaceMesh MergeBands(
+        Band[] bands,
+        GridFrame frame,
+        int voxelSize,
+        int solidVoxels,
+        CancellationToken ct)
+    {
         // Bands are merged in Z order, which makes the vertex numbering a pure function of the
         // field: extracting the same mask twice yields byte-identical geometry.
         var vertices = new List<Vector4>();
@@ -186,6 +271,163 @@ internal static class MarchingCubes
         }
     }
 
+    /// <summary>Extracts every potentially mixed cell of one band from the binary grid.</summary>
+    private static void ExtractBand(
+        bool[,,] grid,
+        Mask3DBlockGrid blocks,
+        Band band,
+        CancellationToken ct)
+    {
+        var cellsX = grid.GetLength(0) + 1;
+        var cellsY = grid.GetLength(1) + 1;
+
+        for (var z = band.StartZ; z < band.EndZ; z++)
+        {
+            for (var y = 0; y < cellsY; y++)
+            {
+                for (var x = 0; x < cellsX; x++)
+                {
+                    // Amortised cancellation check: testing per cell would cost more than the work
+                    // the check guards against.
+                    if (((x | y | z) & 31) == 0)
+                        ct.ThrowIfCancellationRequested();
+
+                    if (!blocks.IsActive(x, y, z))
+                        continue;
+
+                    EmitCell(grid, band, x, y, z);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Emits the triangles of one cell from its eight corner occupancy samples, if the surface passes
+    /// through it at all.
+    /// <para>
+    /// Corner i sits at grid offset <see cref="CornerOffsets"/> from the cell's lower grid sample.
+    /// The extractor's cell 0 is the padding cell before the first real sample, so its lower grid
+    /// coordinate is -1; samples outside the grid read as empty.
+    /// </para>
+    /// </summary>
+    private static void EmitCell(bool[,,] grid, Band band, int x, int y, int z)
+    {
+        var nx = grid.GetLength(0);
+        var ny = grid.GetLength(1);
+        var nz = grid.GetLength(2);
+        var gx = x - 1;
+        var gy = y - 1;
+        var gz = z - 1;
+        var solid = band.Solid;
+        var configIndex = 0;
+
+        for (var i = 0; i < 8; i++)
+        {
+            var sx = gx + CornerOffsets[i, 0];
+            var sy = gy + CornerOffsets[i, 1];
+            var sz = gz + CornerOffsets[i, 2];
+            var isSolid = (uint)sx < (uint)nx && (uint)sy < (uint)ny && (uint)sz < (uint)nz
+                          && grid[sx, sy, sz];
+
+            solid[i] = isSolid;
+
+            if (isSolid)
+                configIndex |= 1 << i;
+        }
+
+        if (configIndex == 0 || configIndex == 0xFF)
+            return;
+
+        // The union of the eight corners' 3x3x3 neighbourhoods is the cell's 4x4x4 sample box. Load
+        // its occupancy once as 64 bits, then each corner needs three shell tests instead of a
+        // 27-sample scan. This is still exact: a mixed cell has an opposite corner in its own eight,
+        // so the nearest opposite is never farther than squared distance three.
+        var solidMask = BuildSolidMask(grid, nx, ny, nz, x, y, z);
+        var c = band.Corners;
+
+        for (var i = 0; i < 8; i++)
+        {
+            var opposite = solid[i] ? ~solidMask : solidMask;
+            var shells = ShellMasks[i];
+            var distance = (opposite & shells[0]) != 0 ? 1
+                : (opposite & shells[1]) != 0 ? 2
+                : 3;
+
+            var magnitude = distance == 1 ? 1f : distance == 2 ? Sqrt2 : Sqrt3;
+            c[i] = solid[i] ? -magnitude : magnitude;
+        }
+
+        EmitCell(band, x, y, z, c, configIndex);
+    }
+
+    /// <summary>
+    /// Packs the occupancy of the cell's 4x4x4 sample box into 64 bits. The box starts two samples
+    /// before the cell's lower grid sample, so it covers the full 3x3x3 neighbourhood of every corner.
+    /// </summary>
+    private static ulong BuildSolidMask(
+        bool[,,] grid,
+        int nx,
+        int ny,
+        int nz,
+        int x,
+        int y,
+        int z)
+    {
+        var mask = 0UL;
+
+        for (var lz = 0; lz < 4; lz++)
+        {
+            var sz = z - 2 + lz;
+
+            for (var ly = 0; ly < 4; ly++)
+            {
+                var sy = y - 2 + ly;
+
+                for (var lx = 0; lx < 4; lx++)
+                {
+                    var sx = x - 2 + lx;
+
+                    if ((uint)sx < (uint)nx && (uint)sy < (uint)ny && (uint)sz < (uint)nz
+                        && grid[sx, sy, sz])
+                    {
+                        mask |= 1UL << ((lx << 4) | (ly << 2) | lz);
+                    }
+                }
+            }
+        }
+
+        return mask;
+    }
+
+    private static ulong[][] BuildShellMasks()
+    {
+        var masks = new ulong[8][];
+
+        for (var i = 0; i < 8; i++)
+        {
+            var shells = new ulong[3];
+            var cx = CornerOffsets[i, 0] + 1;
+            var cy = CornerOffsets[i, 1] + 1;
+            var cz = CornerOffsets[i, 2] + 1;
+
+            for (var dz = -1; dz <= 1; dz++)
+            for (var dy = -1; dy <= 1; dy++)
+            for (var dx = -1; dx <= 1; dx++)
+            {
+                var distance = dx * dx + dy * dy + dz * dz;
+                if (distance == 0)
+                    continue;
+
+                var bit = ((cx + dx) << 4) | ((cy + dy) << 2) | (cz + dz);
+                shells[distance - 1] |= 1UL << bit;
+            }
+
+            masks[i] = shells;
+        }
+
+        return masks;
+    }
+
     /// <summary>
     /// Emits the triangles of one cell, if the surface passes through it at all.
     /// <para>
@@ -203,8 +445,8 @@ internal static class MarchingCubes
     {
         var c = band.Corners;
 
-        // Corner i sits at offset (i &amp; 1, (i >> 1) &amp; 1, (i >> 2) &amp; 1) of the cell, matching
-        // MarchingCubesTable.CornerOffsets, so bit i of the configuration index selects corner i.
+        // Corner i sits at offset (i &amp; 1, (i >> 1) &amp; 1, (i >> 2) &amp; 1) of the field cell,
+        // matching MarchingCubesTable.CornerOffsets, so bit i selects corner i.
         c[0] = field[x, y + 1, z + 1];
         c[1] = field[x, y + 1, z];
         c[2] = field[x, y, z];
@@ -226,6 +468,12 @@ internal static class MarchingCubes
         if (configIndex == 0 || configIndex == 0xFF)
             return;
 
+        EmitCell(band, x, y, z, c, configIndex);
+    }
+
+    /// <summary>Emits the table's triangles for a cell whose corners and configuration are known.</summary>
+    private static void EmitCell(Band band, int x, int y, int z, float[] c, int configIndex)
+    {
         var row = MarchingCubesTable.Row(configIndex);
 
         for (var i = 0; i + 2 < row.Length; i += 3)

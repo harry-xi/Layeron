@@ -4,13 +4,19 @@ namespace Layeron.Plugins.Model3D;
 /// A signed distance field over a voxel grid: negative inside the solid, positive outside, and zero
 /// on the boundary between them.
 /// <para>
-/// The isosurface this produces is the reason the reconstruction is worth calling isosurface
-/// extraction. A binary grid has no surface to interpolate along - only a step - so marching cubes
-/// needs a continuous field in between. The obvious choice, blurring the occupancy and cutting it at
-/// half, quietly destroys exactly the structures that matter most: a single voxel blurred three times
-/// peaks at 1/27 and vanishes, and a one-voxel-thick sheet peaks at 1/3. A distance field has no such
-/// bias, because every solid voxel is a seed at -1 and every empty one at +1 regardless of how thin
-/// the structure is, so the zero level always falls on the true boundary.
+/// This is the reference exact implementation, retained for tests and callers that need a full field.
+/// The Marching Cubes path no longer builds it: a mixed cell's corners only need their 3x3x3
+/// neighbourhood, so the extractor computes those exact values locally and avoids the volume-sized
+/// allocation and six axis passes entirely.
+/// </para>
+/// <para>
+/// The isosurface this field produces is still the reason the reconstruction is worth calling
+/// isosurface extraction. A binary grid has no surface to interpolate along - only a step - so
+/// marching cubes needs a continuous field in between. The obvious choice, blurring the occupancy and
+/// cutting it at half, quietly destroys exactly the structures that matter most: a single voxel
+/// blurred three times peaks at 1/27 and vanishes, and a one-voxel-thick sheet peaks at 1/3. A
+/// distance field has no such bias, because every solid voxel is a seed at -1 and every empty one at
+/// +1 regardless of how thin the structure is, so the zero level always falls on the true boundary.
 /// </para>
 /// <para>
 /// The field is the difference of two exact Euclidean distance transforms - one to the nearest solid

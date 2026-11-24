@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using Aura3D.Core.Nodes;
 using Aura3D.Core.Resources;
 using Aura3D.Core.Scenes;
@@ -134,45 +135,96 @@ internal static class Mask3DScene
         Mask3DGeometry.SurfaceMesh surface,
         CancellationToken ct)
     {
-        var positions = new List<float>(surface.Vertices.Count * 3);
+        ArgumentNullException.ThrowIfNull(surface);
+        ct.ThrowIfCancellationRequested();
 
-        for (var i = 0; i < surface.Vertices.Count; i++)
+        var vertexCount = surface.Vertices.Count;
+        var propCount = surface.VertexProps.Count;
+
+        if (propCount != vertexCount)
+            throw new ArgumentException("Every vertex needs a normal.", nameof(surface));
+
+        var positions = CreateFloatBuffer(vertexCount * 3);
+        var normals = CreateFloatBuffer(propCount * 3);
+        var tangents = CreateFloatBuffer(propCount * 3);
+        var bitangents = CreateFloatBuffer(propCount * 3);
+
+        // The four streams are disjoint, so a vertex can write all of them without locking. List<T>
+        // has no range-fill API that can run in parallel; CollectionsMarshal lets the pre-sized
+        // backing store be written by index, which avoids both List.Add overhead and a second copy.
+        const int chunkSize = 64 * 1024;
+        var chunkCount = (vertexCount + chunkSize - 1) / chunkSize;
+
+        if (chunkCount <= 1)
         {
-            if ((i & 1023) == 0)
-                ct.ThrowIfCancellationRequested();
-
-            var vertex = surface.Vertices[i];
-            positions.Add(vertex.X);
-            positions.Add(vertex.Y);
-            positions.Add(vertex.Z);
+            FillChunk(surface, positions, normals, tangents, bitangents, 0, vertexCount);
+        }
+        else
+        {
+            Parallel.For(
+                0,
+                chunkCount,
+                new ParallelOptions { CancellationToken = ct },
+                chunk =>
+                {
+                    var start = chunk * chunkSize;
+                    var end = Math.Min(vertexCount, start + chunkSize);
+                    FillChunk(surface, positions, normals, tangents, bitangents, start, end);
+                });
         }
 
-        var normals = new List<float>(surface.VertexProps.Count * 3);
-        var tangents = new List<float>(surface.VertexProps.Count * 3);
-        var bitangents = new List<float>(surface.VertexProps.Count * 3);
+        ct.ThrowIfCancellationRequested();
+        return new GeometryBuffers(positions, normals, tangents, bitangents);
+    }
 
-        for (var i = 0; i < surface.VertexProps.Count; i++)
+    /// <summary>Creates a list whose backing store is allocated once and whose count is exact.</summary>
+    private static List<float> CreateFloatBuffer(int count)
+    {
+        var buffer = new List<float>(count);
+        CollectionsMarshal.SetCount(buffer, count);
+        return buffer;
+    }
+
+    private static void FillChunk(
+        Mask3DGeometry.SurfaceMesh surface,
+        List<float> positions,
+        List<float> normals,
+        List<float> tangents,
+        List<float> bitangents,
+        int start,
+        int end)
+    {
+        var p = CollectionsMarshal.AsSpan(positions);
+        var n = CollectionsMarshal.AsSpan(normals);
+        var t = CollectionsMarshal.AsSpan(tangents);
+        var b = CollectionsMarshal.AsSpan(bitangents);
+
+        for (var i = start; i < end; i++)
         {
-            if ((i & 1023) == 0)
-                ct.ThrowIfCancellationRequested();
+            var vertex = surface.Vertices[i];
+            var offset = i * 3;
+            p[offset] = vertex.X;
+            p[offset + 1] = vertex.Y;
+            p[offset + 2] = vertex.Z;
 
             var normal = surface.VertexProps[i].Normal;
-
-            normals.Add(normal.X);
-            normals.Add(normal.Y);
-            normals.Add(normal.Z);
+            n[offset] = normal.X;
+            n[offset + 1] = normal.Y;
+            n[offset + 2] = normal.Z;
 
             // The lighting shader always runs its normal map through the interpolated TBN matrix. With no
             // tangent attribute, normalize(0) makes T and B NaN - and NaN times the flat map's zero x/y is
             // still NaN, so every fragment loses its diffuse term and the model renders as a flat ambient
             // silhouette. A deterministic basis perpendicular to each face normal keeps the shader finite;
             // a flat normal map (0,0,1) then resolves back to exactly the geometric normal.
-            AppendTangentBasis(normal, tangents, bitangents);
+            var (tangent, bitangent) = TangentBasis(normal);
+            t[offset] = tangent.X;
+            t[offset + 1] = tangent.Y;
+            t[offset + 2] = tangent.Z;
+            b[offset] = bitangent.X;
+            b[offset + 1] = bitangent.Y;
+            b[offset + 2] = bitangent.Z;
         }
-
-        ct.ThrowIfCancellationRequested();
-
-        return new GeometryBuffers(positions, normals, tangents, bitangents);
     }
 
     /// <summary>
@@ -583,10 +635,7 @@ internal static class Mask3DScene
     /// </summary>
     private static void AppendTangentBasis(Vector3 normal, List<float> tangents, List<float> bitangents)
     {
-        // Cross with a reference that is not parallel to the normal; Y is the usual case, X near the poles.
-        var reference = MathF.Abs(normal.Y) > 0.9f ? Vector3.UnitX : Vector3.UnitY;
-        var tangent = Vector3.Normalize(Vector3.Cross(normal, reference));
-        var bitangent = Vector3.Cross(normal, tangent);
+        var (tangent, bitangent) = TangentBasis(normal);
 
         tangents.Add(tangent.X);
         tangents.Add(tangent.Y);
@@ -595,6 +644,16 @@ internal static class Mask3DScene
         bitangents.Add(bitangent.X);
         bitangents.Add(bitangent.Y);
         bitangents.Add(bitangent.Z);
+    }
+
+    /// <summary>Orthonormal tangent basis around a face normal, deterministic for a given normal.</summary>
+    private static (Vector3 Tangent, Vector3 Bitangent) TangentBasis(Vector3 normal)
+    {
+        // Cross with a reference that is not parallel to the normal; Y is the usual case, X near the poles.
+        var reference = MathF.Abs(normal.Y) > 0.9f ? Vector3.UnitX : Vector3.UnitY;
+        var tangent = Vector3.Normalize(Vector3.Cross(normal, reference));
+        var bitangent = Vector3.Cross(normal, tangent);
+        return (tangent, bitangent);
     }
 
     /// <summary>

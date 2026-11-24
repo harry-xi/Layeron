@@ -134,6 +134,42 @@ public sealed class Mask3DMarchingCubesTests
     }
 
     [TestMethod]
+    public void LocalExtraction_MatchesTheGlobalFieldExactly()
+    {
+        // The local extractor must reproduce the global exact EDT at every corner it reads. Comparing
+        // the full vertex and index streams - not just the triangle count - catches a missed active
+        // block, a border cell, or a sign error that still produces a plausible-looking shell.
+        var grids = new (string Name, bool[,,] Grid)[]
+        {
+            ("single voxel", SingleVoxelGrid()),
+            ("thin sheet", ThinSheet(9, 8, 7)),
+            ("ball", Ball(13)),
+            ("sparse dots", SparseDots(31, 29, 27)),
+            ("edge touching", EdgeTouching(17, 19, 15)),
+            ("random", Pattern(33, 35, 31)),
+            ("block boundaries", Pattern(68, 65, 67)),
+            ("block", Solid(8, 6, 10)),
+        };
+
+        foreach (var (name, grid) in grids)
+        {
+            var local = Mask3DGeometry.BuildIsosurface(grid, CancellationToken.None);
+            var field = Mask3DSignedDistanceField.FromVoxels(grid, CancellationToken.None);
+            var expected = MarchingCubes.Extract(
+                field,
+                GridFrame.Full(grid.GetLength(0), grid.GetLength(1), grid.GetLength(2)),
+                1,
+                CancellationToken.None);
+
+            Assert.AreEqual(expected.TriangleCount, local.TriangleCount, $"{name}: triangles");
+            Assert.AreEqual(expected.SolidVoxels, local.SolidVoxels, $"{name}: solid voxels");
+            CollectionAssert.AreEqual(expected.Indices, local.Indices, $"{name}: indices");
+            CollectionAssert.AreEqual(expected.Vertices, local.Vertices, $"{name}: vertices");
+            CollectionAssert.AreEqual(expected.VertexProps, local.VertexProps, $"{name}: normals");
+        }
+    }
+
+    [TestMethod]
     public void BothExtractionMethods_ProduceGeometry()
     {
         // The toolbar switches between them, so both must stay reachable through the dispatcher.
@@ -225,6 +261,56 @@ public sealed class Mask3DMarchingCubesTests
             if (d.Length() <= r)
                 grid[x, y, z] = true;
         }
+        return grid;
+    }
+
+    private static bool[,,] SingleVoxelGrid()
+    {
+        var grid = new bool[1, 1, 1];
+        grid[0, 0, 0] = true;
+        return grid;
+    }
+
+    private static bool[,,] ThinSheet(int nx, int ny, int nz)
+    {
+        var grid = new bool[nx, ny, nz];
+        for (var z = 0; z < nz; z++)
+        for (var y = 0; y < ny; y++)
+        for (var x = 0; x < nx; x++)
+            grid[x, y, z] = z == nz / 2 && (x + y) % 5 != 0;
+        return grid;
+    }
+
+    private static bool[,,] SparseDots(int nx, int ny, int nz)
+    {
+        var grid = new bool[nx, ny, nz];
+        for (var z = 1; z < nz; z += 7)
+        for (var y = 2; y < ny; y += 6)
+        for (var x = 3; x < nx; x += 8)
+            grid[x, y, z] = true;
+        return grid;
+    }
+
+    private static bool[,,] EdgeTouching(int nx, int ny, int nz)
+    {
+        var grid = new bool[nx, ny, nz];
+        for (var z = 0; z < nz; z++)
+        for (var y = 0; y < ny; y++)
+        for (var x = 0; x < nx; x++)
+        {
+            grid[x, y, z] = x == 0 || y == 0 || z == 0
+                            || x == nx - 1 || y == ny - 1 || z == nz - 1;
+        }
+        return grid;
+    }
+
+    private static bool[,,] Pattern(int nx, int ny, int nz)
+    {
+        var grid = new bool[nx, ny, nz];
+        for (var z = 0; z < nz; z++)
+        for (var y = 0; y < ny; y++)
+        for (var x = 0; x < nx; x++)
+            grid[x, y, z] = ((x * 73856093) ^ (y * 19349663) ^ (z * 83492791)) % 23 < 7;
         return grid;
     }
 }

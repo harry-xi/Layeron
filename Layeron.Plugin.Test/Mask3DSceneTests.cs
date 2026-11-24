@@ -338,6 +338,64 @@ public sealed class Mask3DSceneTests
         Assert.AreSame(second, node.CurrentScene);
     }
 
+    [TestMethod]
+    public void BuildGeometryBuffers_FillsEveryParallelChunk()
+    {
+        // The buffers are written by index in 64K-vertex chunks to avoid List.Add and a second copy.
+        // A surface large enough to span several chunks checks that the chunk boundaries do not leave
+        // zeros in the streams and that every vertex still gets a finite tangent basis.
+        const int vertexCount = 200_000;
+        var vertices = new List<Vector4>(vertexCount);
+        var normals = new List<Mask3DGeometry.VertexNormal>(vertexCount);
+
+        for (var i = 0; i < vertexCount; i++)
+        {
+            vertices.Add(new Vector4(i, -i, i * 0.5f, 1f));
+            normals.Add(new Mask3DGeometry.VertexNormal(
+                Vector3.Normalize(new Vector3(1f, (i % 7) - 3f, 2f))));
+        }
+
+        var surface = new Mask3DGeometry.SurfaceMesh(
+            vertices,
+            normals,
+            [],
+            Vector3.Zero,
+            1f,
+            vertexCount);
+
+        var buffers = Mask3DScene.BuildGeometryBuffers(surface, CancellationToken.None);
+
+        Assert.AreEqual(vertexCount * 3, buffers.Positions.Count);
+        Assert.AreEqual(vertexCount * 3, buffers.Normals.Count);
+        Assert.AreEqual(vertexCount * 3, buffers.Tangents.Count);
+        Assert.AreEqual(vertexCount * 3, buffers.Bitangents.Count);
+
+        foreach (var i in new[] { 0, 65_535, 65_536, 131_071, vertexCount - 1 })
+        {
+            Assert.AreEqual(vertices[i].X, buffers.Positions[i * 3]);
+            Assert.AreEqual(vertices[i].Y, buffers.Positions[i * 3 + 1]);
+            Assert.AreEqual(vertices[i].Z, buffers.Positions[i * 3 + 2]);
+
+            var normal = new Vector3(
+                buffers.Normals[i * 3],
+                buffers.Normals[i * 3 + 1],
+                buffers.Normals[i * 3 + 2]);
+            var tangent = new Vector3(
+                buffers.Tangents[i * 3],
+                buffers.Tangents[i * 3 + 1],
+                buffers.Tangents[i * 3 + 2]);
+            var bitangent = new Vector3(
+                buffers.Bitangents[i * 3],
+                buffers.Bitangents[i * 3 + 1],
+                buffers.Bitangents[i * 3 + 2]);
+
+            Assert.AreEqual(1f, tangent.Length(), 1e-4f);
+            Assert.AreEqual(1f, bitangent.Length(), 1e-4f);
+            Assert.AreEqual(0f, Vector3.Dot(tangent, normal), 1e-4f);
+            Assert.AreEqual(0f, Vector3.Dot(bitangent, normal), 1e-4f);
+        }
+    }
+
     private static Scene NewScene() => new(scene => new BlinnPhongPipeline(scene));
 
     private static Mask3DGeometry.SurfaceMesh SingleVoxel()

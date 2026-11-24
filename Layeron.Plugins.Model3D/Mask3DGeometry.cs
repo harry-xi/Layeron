@@ -20,9 +20,10 @@ namespace Layeron.Plugins.Model3D;
 /// </item>
 /// <item>
 /// <description>
-/// <see cref="ExtractionMethod.MarchingCubes"/> blurs the grid into a continuous field and cuts it
-/// at the half-occupancy level, which rounds off the staircase and produces a surface that follows
-/// the shape instead of the sampling grid.
+/// <see cref="ExtractionMethod.MarchingCubes"/> derives an exact signed distance at the corners of
+/// each mixed cell from its local 3x3x3 sample neighbourhood, then cuts that field at zero. It rounds
+/// off the staircase without approximating the distance with a blurred occupancy or building a
+/// volume-sized field.
 /// </description>
 /// </item>
 /// </list>
@@ -662,10 +663,12 @@ internal static class Mask3DGeometry
     /// <summary>
     /// Extracts the smooth isosurface of the grid through Marching Cubes.
     /// <para>
-    /// The grid is first turned into a signed distance field, because a binary grid has no isosurface
-    /// to interpolate along - it only has a step. Cutting the distance field at zero is what puts the
-    /// surface on the true boundary between filled and empty, and unlike a blurred occupancy it keeps
-    /// a single voxel or a one-voxel-thick sheet from dissolving.
+    /// A binary grid has no isosurface to interpolate along - only a step - so the extractor derives
+    /// the exact signed distance at the corners of mixed cells. It does that locally from the corner's
+    /// 3x3x3 neighbourhood instead of building a global distance field: every corner of a mixed cell
+    /// has an opposite-class sample in the same cell, so the local result is identical to the global
+    /// exact EDT at every value marching cubes reads. This keeps the true boundary (and keeps a single
+    /// voxel or a one-voxel-thick sheet from dissolving) without the field's memory and six axis passes.
     /// </para>
     /// </summary>
     public static SurfaceMesh BuildIsosurface(bool[,,] grid, int voxelSize, CancellationToken ct)
@@ -681,10 +684,7 @@ internal static class Mask3DGeometry
         GridFrame frame,
         int voxelSize,
         CancellationToken ct)
-    {
-        var field = Mask3DSignedDistanceField.FromVoxels(grid, ct);
-        return MarchingCubes.Extract(field, frame, voxelSize, ct);
-    }
+        => MarchingCubes.Extract(grid, frame, voxelSize, ct);
 
     /// <summary>Single-voxel-unit convenience overload.</summary>
     public static SurfaceMesh BuildIsosurface(bool[,,] grid, CancellationToken ct)

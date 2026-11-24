@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -436,8 +437,23 @@ public sealed partial class Mask3DToolView : UserControl, IDisposable
                         stats.TotalBlocks,
                         stats.FullBlocks);
 
+                    var extraction = Stopwatch.StartNew();
                     var mesh = Mask3DGeometry.BuildSurface(downsampled, method, factor, token);
+                    extraction.Stop();
+
+                    var geometry = Stopwatch.StartNew();
                     var buffers = Mask3DScene.BuildGeometryBuffers(mesh, token);
+                    geometry.Stop();
+
+                    services.Log.Debug(
+                        "Mask 3D: {Method} {Factor}x extracted {Triangles:N0} triangles from {SolidVoxels:N0} voxels; extraction={Extraction} ms, geometry={Geometry} ms.",
+                        methodLabel,
+                        factor,
+                        mesh.TriangleCount,
+                        mesh.SolidVoxels,
+                        extraction.ElapsedMilliseconds,
+                        geometry.ElapsedMilliseconds);
+
                     return (Mesh: mesh, Buffers: buffers);
                 },
                 token);
