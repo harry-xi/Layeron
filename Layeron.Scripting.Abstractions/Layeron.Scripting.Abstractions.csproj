@@ -31,7 +31,7 @@
       in its own context. Referencing it here is also what puts it in the host's carried set, which is how
       the load context knows to defer it: see PluginLoadContext.HostCarriedAssemblies.
     -->
-    <PackageReference Include="NumSharp" Version="0.30.0" />
+    <PackageReference Include="NumSharp" Version="0.81.0" />
   </ItemGroup>
 
 </Project>

@@ -37,8 +37,8 @@
       Agent Framework 与 OpenAI SDK：插件的私有用依赖，运行时随插件目录部署，
       由插件的加载上下文解析（CopyLocalLockFileAssemblies 见上）。
     -->
-    <PackageReference Include="Microsoft.Agents.AI" Version="1.25.0" />
-    <PackageReference Include="Microsoft.Agents.AI.OpenAI" Version="1.25.0" />
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.28.0" />
+    <PackageReference Include="Microsoft.Agents.AI.OpenAI" Version="1.28.0" />
     <!--
       安全密钥存储：Git Credential Manager 的凭据库实现，来自 external/CredentialManager 子模块
       （与参考实现一致，固定在同一个提交）。只引用 Core 一个项目——GCM 的静态工厂、命令行与
@@ -50,7 +50,7 @@
       ImageSharp 只用于把视觉模型不接受的位图格式（BMP、TIFF 等）转换成 PNG。
       宿主也引用同一版本；插件保留运行资产，使测试宿主和独立加载都不依赖宿主是否携带它。
     -->
-    <PackageReference Include="SixLabors.ImageSharp" Version="4.1.2" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="4.1.4" />
   </ItemGroup>
 
   <ItemGroup>
@@ -72,9 +72,9 @@
     <ProjectReference Include="..\Layeron.Plugins.PythonRunner.Api\Layeron.Plugins.PythonRunner.Api.csproj" Private="false" />
 
     <!-- UI 插件对宿主的 Avalonia 声明视图；排除运行时资产，插件不会附上第二份副本。 -->
-    <PackageReference Include="Avalonia" Version="12.1.3" GeneratePathProperty="true" ExcludeAssets="runtime" />
+    <PackageReference Include="Avalonia" Version="12.2.0" GeneratePathProperty="true" ExcludeAssets="runtime" />
     <!-- 与宿主 App 相同的 MVVM 栈（ReactiveUI），在运行时共享。版本需与 Layeron.App 一致。 -->
-    <PackageReference Include="ReactiveUI.Avalonia" Version="12.1.2" ExcludeAssets="runtime" />
+    <PackageReference Include="ReactiveUI.Avalonia" Version="12.1.9" ExcludeAssets="runtime" />
   </ItemGroup>
 
   <ItemGroup>

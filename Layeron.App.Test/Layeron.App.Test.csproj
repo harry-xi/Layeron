@@ -19,8 +19,8 @@
       UI lifecycle tests (a plugin control moving between dock views) need a real layout pass.
       Headless keeps that in-process and off the desktop.
     -->
-    <PackageReference Include="Avalonia.Headless" Version="12.1.3" />
-    <PackageReference Include="Avalonia.Themes.Simple" Version="12.1.3" />
+    <PackageReference Include="Avalonia.Headless" Version="12.2.0" />
+    <PackageReference Include="Avalonia.Themes.Simple" Version="12.2.0" />
   </ItemGroup>
 
 </Project>

@@ -47,7 +47,7 @@
           output so it can resolve them; they are compile assets only, so the plugin never ships a second
           copy of the host's stack.
         -->
-        <PackageReference Include="Avalonia" Version="12.1.3" GeneratePathProperty="true" ExcludeAssets="runtime" />
+        <PackageReference Include="Avalonia" Version="12.2.0" GeneratePathProperty="true" ExcludeAssets="runtime" />
         <PackageReference Include="Avalonia.AvaloniaEdit" Version="12.0.0" ExcludeAssets="runtime" />
     </ItemGroup>
     <ItemGroup>

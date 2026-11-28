@@ -44,16 +44,16 @@
       plugin's own load context, not by the host. That is exactly why the host only defers the
       framework assemblies it owns.
     -->
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.0.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.12.0" />
     <!-- UI is the host's: compile assets only, so the plugin never ships its own Avalonia. -->
-    <PackageReference Include="Avalonia" Version="12.1.3" GeneratePathProperty="true" ExcludeAssets="runtime" />
+    <PackageReference Include="Avalonia" Version="12.2.0" GeneratePathProperty="true" ExcludeAssets="runtime" />
     <PackageReference Include="Avalonia.AvaloniaEdit" Version="12.0.0" ExcludeAssets="runtime" />
     <!--
       NumSharp reaches this project transitively through the scripting contract, but it is the host stack's
       copy that must win (the script binds to the default context's). Excluded so the plugin folder does not
       ship a second one.
     -->
-    <PackageReference Include="NumSharp" Version="0.30.0" ExcludeAssets="runtime" />
+    <PackageReference Include="NumSharp" Version="0.81.0" ExcludeAssets="runtime" />
   </ItemGroup>
 
 </Project>

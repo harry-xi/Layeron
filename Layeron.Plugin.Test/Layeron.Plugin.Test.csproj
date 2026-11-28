@@ -91,7 +91,7 @@
       (the host supplies them). A test host has no host stack to borrow from, so the runtime is referenced here at the
       same version Layeron.App resolves - otherwise the panel's own type cannot be loaded at all.
     -->
-    <PackageReference Include="ReactiveUI" Version="24.2.0" />
+    <PackageReference Include="ReactiveUI" Version="28.0.0" />
   </ItemGroup>
 
 </Project>

@@ -6,6 +6,7 @@ using Layeron.App.Logging;
 using Layeron.App.Plugins;
 using Layeron.Plugin.Host;
 using ReactiveUI;
+using ReactiveUI.Binding;
 using RxVoid = ReactiveUI.Primitives.RxVoid;
 
 namespace Layeron.App.ViewModels;

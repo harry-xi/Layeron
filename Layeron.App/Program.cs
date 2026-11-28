@@ -3,6 +3,9 @@ using ReactiveUI.Avalonia;
 using System;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+#if DEBUG
+using Spyglass.Agent; 
+#endif
 
 namespace Layeron.App;
 
@@ -41,6 +44,9 @@ sealed partial class Program
             .AfterSetup(_ => StartupTrace.Mark("avalonia-setup-complete"))
             .WithInterFont()
             .LogToTrace()
+            #if DEBUG
+                .UseSpyglass()
+            #endif
             .UseReactiveUI(_ => { });
         StartupTrace.Mark("appbuilder-configured");
         return builder;

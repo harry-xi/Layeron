@@ -40,11 +40,11 @@
     <ProjectReference Include="..\Layeron.Plugin.Abstractions\Layeron.Plugin.Abstractions.csproj" Private="false" />
 
     <!-- UI plugins declare views in XAML against the host's Avalonia; runtime assets are excluded. -->
-    <PackageReference Include="Avalonia" Version="12.1.3" GeneratePathProperty="true" ExcludeAssets="runtime" />
+    <PackageReference Include="Avalonia" Version="12.2.0" GeneratePathProperty="true" ExcludeAssets="runtime" />
     <!-- Same MVVM stack as the host App (ReactiveUI): shared at runtime via PluginLoadContext
          (the App carries it, so plugins bind to that one copy), so the plugin never ships its own
          copy. Version must match Layeron.App. -->
-    <PackageReference Include="ReactiveUI.Avalonia" Version="12.1.2" ExcludeAssets="runtime" />
+    <PackageReference Include="ReactiveUI.Avalonia" Version="12.1.9" ExcludeAssets="runtime" />
   </ItemGroup>
 
 </Project>
