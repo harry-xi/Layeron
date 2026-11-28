@@ -2,7 +2,7 @@
     <PropertyGroup>
         <OutputType>WinExe</OutputType>
         <!-- <OutputType>Exe</OutputType> -->
-        <TargetFramework>net10.0</TargetFramework>
+        <TargetFramework>net11.0</TargetFramework>
         <Nullable>enable</Nullable>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -90,35 +90,35 @@
       $(RuntimeIdentifier) is part of the source path so a RID-specific build (for example
       `-r win-x64`) deploys the plugin's RID-specific output. Without it the plugins would still be
       copied from a RID-less folder and drag every platform's native assets into the packaged app.
-      It is empty for an ordinary build, where the path stays bin/<Configuration>/net10.0/.
+      It is empty for an ordinary build, where the path stays bin/<Configuration>/net11.0/.
     -->
     <Target Name="DeploySamplePlugins" AfterTargets="Build">
         <ItemGroup>
-            <SamplePluginFile Include="..\Layeron.Plugins.Threshold\bin\$(Configuration)\net10.0\$(RuntimeIdentifier)\**\*.*">
+            <SamplePluginFile Include="..\Layeron.Plugins.Threshold\bin\$(Configuration)\net11.0\$(RuntimeIdentifier)\**\*.*">
                 <PluginFolder>layeron.threshold</PluginFolder>
             </SamplePluginFile>
-            <SamplePluginFile Include="..\Layeron.Plugins.Filters\bin\$(Configuration)\net10.0\$(RuntimeIdentifier)\**\*.*">
+            <SamplePluginFile Include="..\Layeron.Plugins.Filters\bin\$(Configuration)\net11.0\$(RuntimeIdentifier)\**\*.*">
                 <PluginFolder>layeron.filters</PluginFolder>
             </SamplePluginFile>
-            <SamplePluginFile Include="..\Layeron.Plugins.MaskMorphology\bin\$(Configuration)\net10.0\$(RuntimeIdentifier)\**\*.*">
+            <SamplePluginFile Include="..\Layeron.Plugins.MaskMorphology\bin\$(Configuration)\net11.0\$(RuntimeIdentifier)\**\*.*">
                 <PluginFolder>layeron.maskmorphology</PluginFolder>
             </SamplePluginFile>
-            <SamplePluginFile Include="..\Layeron.Plugins.ScriptHost\bin\$(Configuration)\net10.0\$(RuntimeIdentifier)\**\*.*">
+            <SamplePluginFile Include="..\Layeron.Plugins.ScriptHost\bin\$(Configuration)\net11.0\$(RuntimeIdentifier)\**\*.*">
                 <PluginFolder>layeron.scripthost</PluginFolder>
             </SamplePluginFile>
-            <SamplePluginFile Include="..\Layeron.Plugins.Model3D\bin\$(Configuration)\net10.0\$(RuntimeIdentifier)\**\*.*">
+            <SamplePluginFile Include="..\Layeron.Plugins.Model3D\bin\$(Configuration)\net11.0\$(RuntimeIdentifier)\**\*.*">
                 <PluginFolder>layeron.model3d</PluginFolder>
             </SamplePluginFile>
-            <SamplePluginFile Include="..\Layeron.Plugins.ModelSmooth\bin\$(Configuration)\net10.0\$(RuntimeIdentifier)\**\*.*">
+            <SamplePluginFile Include="..\Layeron.Plugins.ModelSmooth\bin\$(Configuration)\net11.0\$(RuntimeIdentifier)\**\*.*">
                 <PluginFolder>layeron.modelsmooth</PluginFolder>
             </SamplePluginFile>
-            <SamplePluginFile Include="..\Layeron.Plugins.PythonRunner\bin\$(Configuration)\net10.0\$(RuntimeIdentifier)\**\*.*">
+            <SamplePluginFile Include="..\Layeron.Plugins.PythonRunner\bin\$(Configuration)\net11.0\$(RuntimeIdentifier)\**\*.*">
                 <PluginFolder>layeron.pythonrunner</PluginFolder>
             </SamplePluginFile>
-            <SamplePluginFile Include="..\Layeron.Plugins.Agent\bin\$(Configuration)\net10.0\$(RuntimeIdentifier)\**\*.*">
+            <SamplePluginFile Include="..\Layeron.Plugins.Agent\bin\$(Configuration)\net11.0\$(RuntimeIdentifier)\**\*.*">
                 <PluginFolder>layeron.agent</PluginFolder>
             </SamplePluginFile>
-            <SamplePluginFile Include="..\Layeron.Plugins.OnnxRuntime\bin\$(Configuration)\net10.0\$(RuntimeIdentifier)\**\*.*">
+            <SamplePluginFile Include="..\Layeron.Plugins.OnnxRuntime\bin\$(Configuration)\net11.0\$(RuntimeIdentifier)\**\*.*">
                 <PluginFolder>layeron.onnxruntime</PluginFolder>
             </SamplePluginFile>
         </ItemGroup>
@@ -137,8 +137,8 @@
     -->
     <Target Name="DeploySharedContracts" AfterTargets="Build">
         <ItemGroup>
-            <SharedContractFile Include="..\Layeron.Plugins.PythonRunner.Api\bin\$(Configuration)\net10.0\Layeron.Plugins.PythonRunner.Api.*" />
-            <SharedContractFile Include="..\Layeron.Plugins.Onnx.Api\bin\$(Configuration)\net10.0\Layeron.Plugins.Onnx.Api.*" />
+            <SharedContractFile Include="..\Layeron.Plugins.PythonRunner.Api\bin\$(Configuration)\net11.0\Layeron.Plugins.PythonRunner.Api.*" />
+            <SharedContractFile Include="..\Layeron.Plugins.Onnx.Api\bin\$(Configuration)\net11.0\Layeron.Plugins.Onnx.Api.*" />
         </ItemGroup>
 
         <Copy SourceFiles="@(SharedContractFile)" DestinationFolder="$(OutDir)plugins.shared" SkipUnchangedFiles="true" />

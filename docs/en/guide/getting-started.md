@@ -4,7 +4,7 @@
 
 | Component | Version |
 |---|---|
-| .NET SDK | 10.0 (projects target `net10.0`) |
+| .NET SDK | 11.0 (projects target `net11.0`) |
 | Operating system | Windows (the current development and verification platform) |
 | GPU | Not required. Slice viewing and the mask 3D model both use CPU paths |
 

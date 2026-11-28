@@ -114,7 +114,7 @@ public sealed class ScriptHostMenuTests
 
     /// <summary>The built script host plugin: loaded exactly as the app loads it, from its own folder.</summary>
     private static string ScriptHostAssemblyPath { get; } = Path.Combine(
-        FindRepositoryRoot(), "Layeron.Plugins.ScriptHost", "bin", Configuration, "net10.0",
+        FindRepositoryRoot(), "Layeron.Plugins.ScriptHost", "bin", Configuration, "net11.0",
         "Layeron.Plugins.ScriptHost.dll");
 
     private static string FindRepositoryRoot()

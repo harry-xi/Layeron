@@ -17,30 +17,30 @@ internal static class TestPaths
     public static string RepositoryRoot { get; } = FindRepositoryRoot();
 
     public static string ThresholdPluginAssembly { get; } =
-        Path.Combine(RepositoryRoot, "Layeron.Plugins.Threshold", "bin", Configuration, "net10.0",
+        Path.Combine(RepositoryRoot, "Layeron.Plugins.Threshold", "bin", Configuration, "net11.0",
             "Layeron.Plugins.Threshold.dll");
 
     /// <summary>The headless filter plugin: loaded by path so assembly metadata and activation are covered too.</summary>
     public static string FiltersPluginAssembly { get; } =
-        Path.Combine(RepositoryRoot, "Layeron.Plugins.Filters", "bin", Configuration, "net10.0",
+        Path.Combine(RepositoryRoot, "Layeron.Plugins.Filters", "bin", Configuration, "net11.0",
             "Layeron.Plugins.Filters.dll");
 
     /// <summary>The mask morphology plugin: referenced for its kernel, and loaded by path for activation coverage.</summary>
     public static string MaskMorphologyPluginAssembly { get; } =
-        Path.Combine(RepositoryRoot, "Layeron.Plugins.MaskMorphology", "bin", Configuration, "net10.0",
+        Path.Combine(RepositoryRoot, "Layeron.Plugins.MaskMorphology", "bin", Configuration, "net11.0",
             "Layeron.Plugins.MaskMorphology.dll");
 
     public static string ScriptHostPluginAssembly { get; } =
-        Path.Combine(RepositoryRoot, "Layeron.Plugins.ScriptHost", "bin", Configuration, "net10.0",
+        Path.Combine(RepositoryRoot, "Layeron.Plugins.ScriptHost", "bin", Configuration, "net11.0",
             "Layeron.Plugins.ScriptHost.dll");
 
     public static string Model3DPluginAssembly { get; } =
-        Path.Combine(RepositoryRoot, "Layeron.Plugins.Model3D", "bin", Configuration, "net10.0",
+        Path.Combine(RepositoryRoot, "Layeron.Plugins.Model3D", "bin", Configuration, "net11.0",
             "Layeron.Plugins.Model3D.dll");
 
     /// <summary>The smoothing transform plugin: loaded after the 3D plugin so its model-list point exists.</summary>
     public static string ModelSmoothPluginAssembly { get; } =
-        Path.Combine(RepositoryRoot, "Layeron.Plugins.ModelSmooth", "bin", Configuration, "net10.0",
+        Path.Combine(RepositoryRoot, "Layeron.Plugins.ModelSmooth", "bin", Configuration, "net11.0",
             "Layeron.Plugins.ModelSmooth.dll");
 
     /// <summary>
@@ -48,7 +48,7 @@ internal static class TestPaths
     /// its built assembly by explicit path so the plugin loader is exercised exactly as a user's plugin would be.
     /// </summary>
     public static string OnnxPluginAssembly { get; } =
-        Path.Combine(RepositoryRoot, "Layeron.Plugins.OnnxRuntime", "bin", Configuration, "net10.0",
+        Path.Combine(RepositoryRoot, "Layeron.Plugins.OnnxRuntime", "bin", Configuration, "net11.0",
             "Layeron.Plugins.OnnxRuntime.dll");
 
     /// <summary>
@@ -56,7 +56,7 @@ internal static class TestPaths
     /// activation is where the data directory is read, which is the one part of the plugin that is not UI-bound.
     /// </summary>
     public static string AgentPluginAssembly { get; } =
-        Path.Combine(RepositoryRoot, "Layeron.Plugins.Agent", "bin", Configuration, "net10.0",
+        Path.Combine(RepositoryRoot, "Layeron.Plugins.Agent", "bin", Configuration, "net11.0",
             "Layeron.Plugins.Agent.dll");
 
     /// <summary>Creates a throwaway plugin directory for sources that scan folders.</summary>

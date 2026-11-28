@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <!--
       Native and framework-dependent assets must follow the host's RID. Without this a RID-specific
       build (for example -r win-x64) still deploys this plugin's every-platform untimes folder,

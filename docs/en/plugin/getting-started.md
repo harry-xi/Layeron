@@ -4,13 +4,13 @@ From nothing to a running plugin: a dockable panel that appears in the `插件` 
 
 ## 1. Create the project
 
-A plugin is an ordinary .NET class library targeting the same framework as the host (`net10.0`):
+A plugin is an ordinary .NET class library targeting the same framework as the host (`net11.0`):
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
