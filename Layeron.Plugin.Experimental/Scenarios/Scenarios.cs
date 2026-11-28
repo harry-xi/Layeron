@@ -87,7 +87,7 @@ internal static class Scenarios
             Version = "1.0.0",
             ApiVersion = PluginApi.Version,
             Dependencies = [new PluginDependency("sample.app")],
-            Factory = () => new TrackingPlugin(host, "sample.tracker")
+            Factory = context => new TrackingPlugin(host, "sample.tracker", context)
         });
 
         Check.True(manager.LoadAll().Success, "the tracker plugin should load after the application plugin.");
@@ -165,18 +165,18 @@ internal static class Scenarios
         manager.Add(InProcess(
             "app.a",
             lifetime: PluginLifetime.Application,
-            factory: () => new TraceApplicationPlugin(host, "app.a")));
+            factory: context => new TraceApplicationPlugin(host, "app.a", context)));
 
         manager.Add(InProcess(
             "app.b",
             lifetime: PluginLifetime.Application,
             dependencies: [new PluginDependency("app.a")],
-            factory: () => new TraceApplicationPlugin(host, "app.b")));
+            factory: context => new TraceApplicationPlugin(host, "app.b", context)));
 
         manager.Add(InProcess(
             "regular",
             dependencies: [new PluginDependency("app.b")],
-            factory: () => new TrackingPlugin(host, "regular")));
+            factory: context => new TrackingPlugin(host, "regular", context)));
 
         var report = manager.LoadAll();
         Check.True(report.Success, Describe(report));
@@ -195,6 +195,52 @@ internal static class Scenarios
 
         var tail = host.PluginEvents.Skip(host.PluginEvents.Count - 3);
         Check.Sequence(tail, "regular:Dispose", "app.b:OnHostShutdown", "app.a:OnHostShutdown");
+    }
+
+    /// <summary>
+    /// The context is a constructor dependency: it is the same object during construction, activation
+    /// and teardown. A constructor that fails after registering is still rolled back, even though
+    /// registration in a constructor is not the recommended pattern.
+    /// </summary>
+    public static void ConstructorInjection()
+    {
+        var host = new ScenarioHost();
+        using (var manager = new PluginManager(host))
+        {
+            manager.Add(InProcess(
+                "ctor.probe",
+                factory: context => new ConstructorProbePlugin(host, context)));
+
+            var report = manager.LoadAll();
+            Check.True(report.Success, Describe(report));
+            Check.Sequence(host.PluginEvents, "ctor.probe:Constructed", "ctor.probe:Activate");
+
+            Check.True(manager.Unload("ctor.probe"), "the probe plugin should unload.");
+            Check.Sequence(
+                host.PluginEvents,
+                "ctor.probe:Constructed",
+                "ctor.probe:Activate",
+                "ctor.probe:Dispose");
+        }
+
+        var failing = new ScenarioHost();
+        using (var manager = new PluginManager(failing))
+        {
+            manager.Add(InProcess(
+                "ctor.throws",
+                factory: context => new ConstructorFailurePlugin(failing, context)));
+
+            var report = manager.LoadAll();
+
+            Check.False(report.Success, "a throwing constructor must fail activation.");
+            Check.False(manager.IsLoaded("ctor.throws"), "the failed plugin must not be active.");
+            Check.True(
+                report.Failed.Any(failure =>
+                    failure.PluginId == "ctor.throws" &&
+                    failure.Reason.Contains("constructor failure", StringComparison.Ordinal)),
+                "the constructor's own exception must be reported.");
+            Check.Sequence(failing.PluginEvents, "ctor.throws:Constructed", "ctor.throws:Dispose");
+        }
     }
 
     /// <summary>Every invalid graph shape is rejected before the affected plugin activates.</summary>
@@ -403,7 +449,7 @@ internal static class Scenarios
             "app",
             lifetime: PluginLifetime.Application,
             dependencies: [new PluginDependency("regular")],
-            factory: () => new NoopApplicationPlugin()));
+            factory: context => new NoopApplicationPlugin(context)));
 
         var report = manager.LoadAll();
 
@@ -424,7 +470,7 @@ internal static class Scenarios
         manager.Add(InProcess(
             "late.app",
             lifetime: PluginLifetime.Application,
-            factory: () => new NoopApplicationPlugin()));
+            factory: context => new NoopApplicationPlugin(context)));
 
         var report = manager.LoadAll();
 
@@ -440,7 +486,7 @@ internal static class Scenarios
         string version = "1.0.0",
         PluginLifetime lifetime = PluginLifetime.Reloadable,
         IReadOnlyList<PluginDependency>? dependencies = null,
-        Func<IPlugin>? factory = null) =>
+        Func<IPluginContext, IPlugin>? factory = null) =>
         new()
         {
             Id = id,
@@ -449,7 +495,7 @@ internal static class Scenarios
             ApiVersion = PluginApi.Version,
             Lifetime = lifetime,
             Dependencies = dependencies ?? [],
-            Factory = factory ?? (() => new NoopPlugin())
+            Factory = factory ?? (context => new NoopPlugin(context))
         };
 
     private static string Describe(LoadReport report)

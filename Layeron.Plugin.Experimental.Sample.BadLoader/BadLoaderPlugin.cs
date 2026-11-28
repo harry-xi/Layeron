@@ -9,10 +9,14 @@ namespace Layeron.Plugin.Experimental.Sample.BadLoader;
 [Plugin("bad.loader")]
 public sealed class BadLoaderPlugin : IPlugin
 {
-    public void Activate(IPluginContext context)
+    private readonly IPluginContext _context;
+
+    public BadLoaderPlugin(IPluginContext context) => _context = context;
+
+    public void Activate()
     {
-        context.Services.Log.Info($"{context.PluginId}:Activate");
-        context.Registry.AddPluginSource(new RejectedSource());
+        _context.Services.Log.Info($"{_context.PluginId}:Activate");
+        _context.Registry.AddPluginSource(new RejectedSource());
     }
 }
 

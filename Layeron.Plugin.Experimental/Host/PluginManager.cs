@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 
 namespace Layeron.Plugin.Experimental;
 
@@ -617,7 +618,7 @@ public sealed class PluginManager : IDisposable
 
             try
             {
-                ((IApplicationPlugin)plugin.Instance).OnEnable(plugin.Context);
+                ((IApplicationPlugin)plugin.Instance).OnEnable();
             }
             catch (Exception ex)
             {
@@ -720,7 +721,11 @@ public sealed class PluginManager : IDisposable
                     throw new InvalidOperationException($"Plugin '{descriptor.Id}' is already loaded.");
             }
 
-            var instance = CreateInstance(descriptor, ref loadContext);
+            // The context exists before the instance: it is a constructor dependency, not a
+            // parameter handed to a separate activation method.
+            context = new PluginContext(descriptor, this, Services);
+
+            var instance = CreateInstance(descriptor, context, ref loadContext);
 
             if (application && instance is not IApplicationPlugin)
             {
@@ -728,12 +733,10 @@ public sealed class PluginManager : IDisposable
                     "An application-lifetime plugin must implement IApplicationPlugin.");
             }
 
-            context = new PluginContext(descriptor, this, Services);
-
             if (application)
-                ((IApplicationPlugin)instance).OnLoad(context);
+                ((IApplicationPlugin)instance).OnLoad();
 
-            instance.Activate(context);
+            instance.Activate();
 
             var loaded = new PluginRuntime(
                 descriptor,
@@ -766,10 +769,13 @@ public sealed class PluginManager : IDisposable
         }
     }
 
-    private IPlugin CreateInstance(PluginDescriptor descriptor, ref PluginLoadContext? loadContext)
+    private IPlugin CreateInstance(
+        PluginDescriptor descriptor,
+        IPluginContext context,
+        ref PluginLoadContext? loadContext)
     {
         if (descriptor.Factory is { } factory)
-            return factory() ?? throw new InvalidOperationException("The plugin factory returned null.");
+            return factory(context) ?? throw new InvalidOperationException("The plugin factory returned null.");
 
         var path = descriptor.AssemblyPath
             ?? throw new InvalidOperationException("Descriptor has neither a factory nor an assembly path.");
@@ -780,7 +786,23 @@ public sealed class PluginManager : IDisposable
             ?? throw new InvalidOperationException(
                 $"No IPlugin entry type in '{Path.GetFileName(path)}'.");
 
-        return (IPlugin)Activator.CreateInstance(entry)!;
+        // One obvious construction contract. A parameterless fallback would silently create an
+        // instance that never saw its scope, which is the state constructor injection removes.
+        var constructor = entry.GetConstructor([typeof(IPluginContext)])
+            ?? throw new InvalidOperationException(
+                $"Plugin entry type '{entry.FullName}' must declare a public constructor " +
+                $"taking {nameof(IPluginContext)}.");
+
+        try
+        {
+            return (IPlugin)constructor.Invoke([context]);
+        }
+        catch (TargetInvocationException ex) when (ex.InnerException is not null)
+        {
+            // Report the plugin's own exception, not the reflection wrapper.
+            ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
+            throw;
+        }
     }
 
     private static Type? FindEntryType(Assembly assembly)
@@ -972,7 +994,7 @@ public sealed class PluginManager : IDisposable
         {
             try
             {
-                ((IApplicationPlugin)plugin.Instance).OnHostShutdown(plugin.Context);
+                ((IApplicationPlugin)plugin.Instance).OnHostShutdown();
             }
             catch (Exception ex)
             {

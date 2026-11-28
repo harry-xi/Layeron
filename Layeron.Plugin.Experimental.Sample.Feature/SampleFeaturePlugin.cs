@@ -10,21 +10,25 @@ namespace Layeron.Plugin.Experimental.Sample.Feature;
 [Plugin("sample.feature")]
 public sealed class SampleFeaturePlugin : IPlugin
 {
-    public void Activate(IPluginContext context)
-    {
-        Record(context, "Activate");
+    private readonly IPluginContext _context;
 
-        if (context.Registry.GetPoint<ISampleObserver>() is null)
+    public SampleFeaturePlugin(IPluginContext context) => _context = context;
+
+    public void Activate()
+    {
+        Record("Activate");
+
+        if (_context.Registry.GetPoint<ISampleObserver>() is null)
             throw new InvalidOperationException("The application plugin did not publish the observer point.");
 
-        context.Registry.Contribute<ISampleObserver>(
-            new FeatureObserver(context.PluginId, context.Services.Log));
+        _context.Registry.Contribute<ISampleObserver>(
+            new FeatureObserver(_context.PluginId, _context.Services.Log));
 
-        context.Registry.Track(new ActionDisposable(() => Record(context, "Dispose")));
+        _context.Registry.Track(new ActionDisposable(() => Record("Dispose")));
     }
 
-    private static void Record(IPluginContext context, string @event) =>
-        context.Services.Log.Info($"{context.PluginId}:{@event}");
+    private void Record(string @event) =>
+        _context.Services.Log.Info($"{_context.PluginId}:{@event}");
 }
 
 internal sealed class FeatureObserver(string pluginId, IPluginLog log) : ISampleObserver

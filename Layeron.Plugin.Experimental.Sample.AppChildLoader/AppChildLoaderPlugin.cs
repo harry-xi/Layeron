@@ -10,18 +10,21 @@ namespace Layeron.Plugin.Experimental.Sample.AppChildLoader;
 [Plugin("app.child.loader")]
 public sealed class AppChildLoaderPlugin : IApplicationPlugin
 {
-    public void OnLoad(IPluginContext context) =>
-        context.Registry.AddPluginSource(new ApplicationChildSource());
+    private readonly IPluginContext _context;
 
-    public void Activate(IPluginContext context)
+    public AppChildLoaderPlugin(IPluginContext context) => _context = context;
+
+    public void OnLoad() => _context.Registry.AddPluginSource(new ApplicationChildSource());
+
+    public void Activate()
     {
     }
 
-    public void OnEnable(IPluginContext context)
+    public void OnEnable()
     {
     }
 
-    public void OnHostShutdown(IPluginContext context)
+    public void OnHostShutdown()
     {
     }
 }
@@ -42,26 +45,28 @@ internal sealed class ApplicationChildSource : IPluginSource
             Description = "Source-discovered application plugin; the host must reject it.",
             ApiVersion = PluginApi.Version,
             Lifetime = PluginLifetime.Application,
-            Factory = () => new ApplicationChildPlugin()
+            Factory = context => new ApplicationChildPlugin(context)
         };
     }
 }
 
 internal sealed class ApplicationChildPlugin : IApplicationPlugin
 {
-    public void OnLoad(IPluginContext context)
+    public ApplicationChildPlugin(IPluginContext context) => _ = context;
+
+    public void OnLoad()
     {
     }
 
-    public void Activate(IPluginContext context)
+    public void Activate()
     {
     }
 
-    public void OnEnable(IPluginContext context)
+    public void OnEnable()
     {
     }
 
-    public void OnHostShutdown(IPluginContext context)
+    public void OnHostShutdown()
     {
     }
 }

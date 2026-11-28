@@ -4,6 +4,7 @@ var scenarios = new (string Name, Action Run)[]
 {
     ("application lifetime + assembly dependency chain", Scenarios.AssemblyDependencyChain),
     ("application lifetime callback order", Scenarios.ApplicationLifetimeOrder),
+    ("constructor injection", Scenarios.ConstructorInjection),
     ("typed extension point identity", Scenarios.TypedPointIdentity),
     ("child loaders", Scenarios.ChildLoaders),
     ("dependency validation", Scenarios.DependencyValidation)

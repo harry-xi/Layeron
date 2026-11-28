@@ -9,20 +9,24 @@ namespace Layeron.Plugin.Experimental.Sample.Loader;
 [Plugin("sample.loader")]
 public sealed class SampleLoaderPlugin : IApplicationPlugin
 {
-    public void OnLoad(IPluginContext context)
+    private readonly IPluginContext _context;
+
+    public SampleLoaderPlugin(IPluginContext context) => _context = context;
+
+    public void OnLoad()
     {
-        Record(context, "OnLoad");
-        context.Registry.AddPluginSource(new SampleChildSource());
+        Record("OnLoad");
+        _context.Registry.AddPluginSource(new SampleChildSource());
     }
 
-    public void Activate(IPluginContext context) => Record(context, "Activate");
+    public void Activate() => Record("Activate");
 
-    public void OnEnable(IPluginContext context) => Record(context, "OnEnable");
+    public void OnEnable() => Record("OnEnable");
 
-    public void OnHostShutdown(IPluginContext context) => Record(context, "OnHostShutdown");
+    public void OnHostShutdown() => Record("OnHostShutdown");
 
-    private static void Record(IPluginContext context, string @event) =>
-        context.Services.Log.Info($"{context.PluginId}:{@event}");
+    private void Record(string @event) =>
+        _context.Services.Log.Info($"{_context.PluginId}:{@event}");
 }
 
 /// <summary>
@@ -49,14 +53,14 @@ internal sealed class SampleChildSource : IPluginSource
         Description = "Child plugin discovered by the sample loader.",
         ApiVersion = PluginApi.Version,
         Dependencies = [new PluginDependency(dependency)],
-        Factory = () => new SampleChildPlugin()
+        Factory = context => new SampleChildPlugin(context)
     };
 }
 
 /// <summary>A child plugin owned by the loader and unloaded/reloaded as part of its subtree.</summary>
-internal sealed class SampleChildPlugin : IPlugin
+internal sealed class SampleChildPlugin(IPluginContext context) : IPlugin
 {
-    public void Activate(IPluginContext context)
+    public void Activate()
     {
         context.Services.Log.Info($"{context.PluginId}:Activate");
         context.Registry.Track(new ActionDisposable(

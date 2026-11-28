@@ -71,8 +71,13 @@ public sealed record PluginDescriptor
     /// <summary>
     /// Creates the plugin instance. Called once per activation, so a reload gets a fresh instance.
     /// Set this instead of <see cref="AssemblyPath"/> for an in-process plugin.
+    /// <para>
+    /// The factory receives the activation context and must pass that same instance to the
+    /// plugin's constructor. It must return a fresh plugin each time: a cached instance would keep
+    /// the context of an earlier activation.
+    /// </para>
     /// </summary>
-    public Func<IPlugin>? Factory { get; init; }
+    public Func<IPluginContext, IPlugin>? Factory { get; init; }
 
     /// <summary>
     /// The source that discovered this plugin, or <see cref="HostSourceId"/>. The manager writes it
@@ -95,15 +100,29 @@ public sealed record PluginDescriptor
     };
 }
 
-/// <summary>A unit of host functionality.</summary>
+/// <summary>
+/// A unit of host functionality.
+/// <para>
+/// The activation context is a constructor dependency. An instance therefore never exists without
+/// its scope, so a plugin that needs the context outside <see cref="Activate"/> can keep it in a
+/// readonly field instead of assigning a placeholder later during activation.
+/// </para>
+/// <para>
+/// Constructors should still only capture the context and initialize state. Registration belongs in
+/// <see cref="Activate"/> (or <see cref="IApplicationPlugin.OnLoad"/>), and a constructor must not
+/// let <c>this</c> escape to an external owner: the object is not fully constructed yet. The host
+/// cannot enforce that rule, but it does treat construction as part of the activation transaction:
+/// if a constructor throws, the context is disposed and everything it registered is rolled back.
+/// </para>
+/// </summary>
 public interface IPlugin
 {
     /// <summary>
     /// Called once after the plugin's dependencies are loaded. Everything a plugin registers through
-    /// <paramref name="context"/> is removed automatically when that context is disposed, so there is
-    /// no shutdown method to forget.
+    /// the constructor-supplied context is removed automatically when that context is disposed, so
+    /// there is no shutdown method to forget.
     /// </summary>
-    void Activate(IPluginContext context);
+    void Activate();
 }
 
 /// <summary>
@@ -114,17 +133,21 @@ public interface IPlugin
 /// <see cref="OnEnable"/>. Only then are reloadable plugins activated. At shutdown, reloadable
 /// plugins are disposed first, then <see cref="OnHostShutdown"/> runs in reverse dependency order.
 /// </para>
+/// <para>
+/// Every callback uses the same context instance that was passed to the constructor; no callback
+/// receives a second one.
+/// </para>
 /// </summary>
 public interface IApplicationPlugin : IPlugin
 {
     /// <summary>Load-time work, run before any regular plugin is activated.</summary>
-    void OnLoad(IPluginContext context);
+    void OnLoad();
 
     /// <summary>Enables the plugin after all application plugins have been loaded.</summary>
-    void OnEnable(IPluginContext context);
+    void OnEnable();
 
     /// <summary>Last callback before the host tears the plugin down.</summary>
-    void OnHostShutdown(IPluginContext context);
+    void OnHostShutdown();
 }
 
 /// <summary>The plugin's lifetime-scoped entry point. The host disposes it; plugins do not.</summary>

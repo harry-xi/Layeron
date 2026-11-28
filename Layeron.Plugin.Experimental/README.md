@@ -44,12 +44,45 @@ Layeron.Plugin.Experimental/
 | 概念 | 角色 |
 |---|---|
 | `PluginDescriptor` | 插件的声明，也是加载后的公开描述：id、名称、版本、依赖、生命周期、来源 |
-| `IPlugin` | 插件代码入口，只有 `Activate` |
+| `IPlugin` | 插件代码入口；context 由构造函数注入，`Activate` 是推荐的副作用点 |
 | `IPluginContext` | 一次激活的作用域，拥有所有注册和回滚 |
 | `PluginRuntime` | **宿主内部**的一次激活记录：descriptor + instance + context + ALC + 顺序，不是公开概念 |
 | `PluginManager.Plugins` | 当前活动插件的 `PluginDescriptor`，按激活顺序排列 |
 
 旧的 `LoadedPlugin` 名字没有保留。它把“运行时记录”和“公开插件视图”混在了一起；现在 `PluginRuntime` 只留在 `Host` 内部，持有实例、context、ALC 等可变对象，公开表面仍然是描述符。
+
+## 上下文注入
+
+`IPluginContext` 是构造函数依赖，而不是 `Activate` 的参数：
+
+```csharp
+[Plugin("sample.feature")]
+public sealed class SampleFeaturePlugin : IPlugin
+{
+    private readonly IPluginContext _context;
+
+    public SampleFeaturePlugin(IPluginContext context) => _context = context;
+
+    public void Activate()
+    {
+        _context.Registry.Contribute<ISampleObserver>(/* ... */);
+    }
+}
+```
+
+规则：
+
+| 规则 | 原因 |
+|---|---|
+| 实例不可能在没有 context 的状态下存在 | 构造函数参数写入 `readonly` 字段，插件不需要 `null!`，也不需要“构造后再注入”的占位符 |
+| 生命周期回调不接收 context | `OnLoad()` / `Activate()` / `OnEnable()` / `OnHostShutdown()` 都无参；context 只有一个来源 |
+| 构造函数只保存 context、初始化字段 | 注册仍推荐放在 `Activate` / `OnLoad`。C# 无法禁止构造函数产生副作用，所以宿主把构造当作激活事务的一部分 |
+| 构造函数失败会回滚 | 宿主先创建 context 再构造实例；构造抛出时释放 context，构造期间登记的贡献按逆序撤销，程序集插件的异常会解包后报告 |
+| 构造函数不得让 `this` 逃逸 | 对象尚未构造完成；只能把引用交给 context 管理的作用域，不能交给外部长生命周期持有者 |
+| 程序集插件必须有一个公开的 `(IPluginContext)` 构造函数 | 不提供无参回退；回退会重新制造“没有 context 的实例” |
+| `Factory` 接收 context，且每次返回新实例 | 缓存实例会保留旧激活的 context |
+
+这不是为了假装构造函数是纯的。恰恰相反：构造函数本来就是普通代码，无法强制纯；所以模型只保证能保证的部分——实例从出生起就绑定作用域，失败时整段回滚。注册仍推荐放在 `Activate`，但那是指南，不是宿主能验证的不变量。
 
 ## 加载后的插件描述
 
@@ -68,7 +101,7 @@ public sealed record PluginDescriptor
     public PluginLifetime Lifetime { get; init; }
     public IReadOnlyList<PluginDependency> Dependencies { get; init; }
     public string? AssemblyPath { get; init; }                  // 与 Factory 二选一
-    public Func<IPlugin>? Factory { get; init; }                // 与 AssemblyPath 二选一
+    public Func<IPluginContext, IPlugin>? Factory { get; init; } // 与 AssemblyPath 二选一
     public string SourceId { get; init; } = HostSourceId;       // 加载时由管理器写入
     public bool FromLoader => SourceId != HostSourceId;
 }
@@ -200,9 +233,13 @@ Layeron.Plugin.Experimental/bin/Debug/net10.0/
 [Plugin("sample.loader")]
 public sealed class SampleLoaderPlugin : IApplicationPlugin
 {
-    public void OnLoad(IPluginContext context)
+    private readonly IPluginContext _context;
+
+    public SampleLoaderPlugin(IPluginContext context) => _context = context;
+
+    public void OnLoad()
     {
-        context.Registry.AddPluginSource(new SampleChildSource());
+        _context.Registry.AddPluginSource(new SampleChildSource());
     }
 
     // Activate / OnEnable / OnHostShutdown ...
@@ -225,7 +262,7 @@ private static PluginDescriptor Child(string id, string name, string dependency)
     Description = "Child plugin discovered by the sample loader.",
     ApiVersion = PluginApi.Version,
     Dependencies = [new PluginDependency(dependency)],
-    Factory = () => new SampleChildPlugin()
+    Factory = context => new SampleChildPlugin(context)
 };
 ```
 
@@ -269,7 +306,7 @@ manager.Add(new PluginDescriptor
     Version = "1.1.0",
     ApiVersion = PluginApi.Version,
     Dependencies = [new PluginDependency("sample.app", "1.0.0")],
-    Factory = () => new FeaturePlugin()
+    Factory = context => new FeaturePlugin(context)
 });
 ```
 
@@ -310,7 +347,7 @@ Shutdown:
 
 其他设计仍保持现有系统的基本形状：
 
-- `IPlugin.Activate(IPluginContext)` 是唯一常规入口；
+- `IPlugin.Activate()` 是推荐的注册入口，context 只从构造函数来；
 - 注册即副作用，context 释放时按**逆序**自动回滚；
 - `DefinePoint<T>` / `GetPoint<T>` / `Contribute<T>` 支持跨插件扩展点，点身份由契约类型和可选 key 自动派生；
 - 程序集插件在独立的 collectible `AssemblyLoadContext` 中加载；
@@ -347,9 +384,10 @@ dotnet run --project Layeron.Plugin.Experimental --no-build
 
 1. 真实程序集的共享契约 + 依赖链 + 插件间消息/回复 + App 生命周期 + 拒绝卸载应用插件 + 级联卸载 + 热重载 + 泄漏检查；
 2. App 插件回调顺序；
-3. 类型驱动的扩展点身份，以及同一契约的多个 keyed point；
-4. 子加载器、子插件依赖、`ReloadSource` 子树重建，以及由真实程序集 `Sample.BadLoader` / `Sample.AppChildLoader` 验证的加载器生命周期限制；
-5. 缺失依赖、环、版本不足、App→可重载依赖、启动后新增 App 插件等失败路径。
+3. 构造函数注入：context 在构造、激活、释放三个阶段是同一个对象，构造函数失败会回滚；
+4. 类型驱动的扩展点身份，以及同一契约的多个 keyed point；
+5. 子加载器、子插件依赖、`ReloadSource` 子树重建，以及由真实程序集 `Sample.BadLoader` / `Sample.AppChildLoader` 验证的加载器生命周期限制；
+6. 缺失依赖、环、版本不足、App→可重载依赖、启动后新增 App 插件等失败路径。
 
 全部通过时退出码为 `0`。
 
@@ -361,6 +399,8 @@ dotnet run --project Layeron.Plugin.Experimental --no-build
 - 插件源发现 App 生命周期插件；
 - 用户可写的第二个共享契约目录、契约版本矩阵、插件商店/签名；
 - UI 工具面板、菜单、文档等具体宿主贡献类型；
-- 嵌套子作用域。
+- 嵌套子作用域；
+- 通用 DI 容器：构造函数只接收唯一的 `IPluginContext`，不解析任意服务；
+- 构造函数纯度校验：宿主无法阻止构造函数产生副作用或让 `this` 逃逸，只保证 context 作用域的回滚。
 
 这些都可以在核心不变量稳定之后再逐层加回，而不影响本实验已经验证的依赖和生命周期模型。

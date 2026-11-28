@@ -16,12 +16,16 @@ public sealed record DemoNote(string Text, string SourcePluginId);
 [Plugin("sample.points")]
 public sealed class SamplePointsPlugin : IPlugin
 {
-    public void Activate(IPluginContext context)
-    {
-        context.Registry.DefinePoint<DemoNote>("left", "Left notes");
-        context.Registry.DefinePoint<DemoNote>("right", "Right notes");
+    private readonly IPluginContext _context;
 
-        context.Registry.Contribute(new DemoNote("left", context.PluginId), "left");
-        context.Registry.Contribute(new DemoNote("right", context.PluginId), "right");
+    public SamplePointsPlugin(IPluginContext context) => _context = context;
+
+    public void Activate()
+    {
+        _context.Registry.DefinePoint<DemoNote>("left", "Left notes");
+        _context.Registry.DefinePoint<DemoNote>("right", "Right notes");
+
+        _context.Registry.Contribute(new DemoNote("left", _context.PluginId), "left");
+        _context.Registry.Contribute(new DemoNote("right", _context.PluginId), "right");
     }
 }

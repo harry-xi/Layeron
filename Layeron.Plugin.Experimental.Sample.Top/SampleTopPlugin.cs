@@ -11,21 +11,25 @@ namespace Layeron.Plugin.Experimental.Sample.Top;
 [Plugin("sample.top")]
 public sealed class SampleTopPlugin : IPlugin
 {
-    public void Activate(IPluginContext context)
-    {
-        Record(context, "Activate");
+    private readonly IPluginContext _context;
 
-        if (context.Registry.GetPoint<ISampleObserver>() is null)
+    public SampleTopPlugin(IPluginContext context) => _context = context;
+
+    public void Activate()
+    {
+        Record("Activate");
+
+        if (_context.Registry.GetPoint<ISampleObserver>() is null)
             throw new InvalidOperationException("The observer point is missing.");
 
-        context.Registry.Contribute<ISampleObserver>(
-            new TopObserver(context.PluginId, context.Services.Log));
+        _context.Registry.Contribute<ISampleObserver>(
+            new TopObserver(_context.PluginId, _context.Services.Log));
 
-        context.Registry.Track(new ActionDisposable(() => Record(context, "Dispose")));
+        _context.Registry.Track(new ActionDisposable(() => Record("Dispose")));
     }
 
-    private static void Record(IPluginContext context, string @event) =>
-        context.Services.Log.Info($"{context.PluginId}:{@event}");
+    private void Record(string @event) =>
+        _context.Services.Log.Info($"{_context.PluginId}:{@event}");
 }
 
 internal sealed class TopObserver(string pluginId, IPluginLog log) : ISampleObserver
