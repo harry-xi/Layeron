@@ -250,7 +250,17 @@ public partial class CustomImageViewer : UserControl
         }
         else if (current.IsRightButtonPressed)
         {
-            HandleRightClick(e);
+            // An active tool that opts in (e.g. the magnetic lasso) consumes the right button for
+            // its own undo; otherwise the right click keeps its browse meaning.
+            if (IsToolActive)
+            {
+                ExecuteTool(e, SlicePointerPhase.SecondaryPress);
+                e.Handled = true;
+            }
+            else
+            {
+                HandleRightClick(e);
+            }
         }
     }
 

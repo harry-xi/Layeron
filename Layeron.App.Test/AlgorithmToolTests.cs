@@ -306,6 +306,67 @@ public class AlgorithmToolTests
     }
 
     [TestMethod]
+    public void MagneticLasso_PreviewIsAPlainPath_WithoutVertexDots()
+    {
+        var (_, _, service) = CreateWithVolume(FlatVolume());
+        service.ActivateTool(LassoId);
+
+        Pointer(service, SlicePlane.XY, 4, 5, 5, SlicePointerPhase.Press);
+        Assert.IsNull(service.Overlay!.Points, "the seed previews without a vertex dot");
+
+        // The live wire is a whole interpolated path, but the preview is the bare line: marking
+        // vertices (or worse, every path pixel) would clutter the pending segment with dots.
+        Pointer(service, SlicePlane.XY, 4, 15, 5, SlicePointerPhase.Hover);
+        Assert.IsGreaterThan(1, service.Overlay!.Path!.Count, "the live segment is a path");
+        Assert.IsNull(service.Overlay.Points, "hovering draws no dots");
+
+        Pointer(service, SlicePlane.XY, 4, 15, 5, SlicePointerPhase.Press);
+        Assert.IsNull(service.Overlay!.Points, "pinning draws no dots either");
+    }
+
+    [TestMethod]
+    public void MagneticLasso_RightClick_UndoesLastPinnedPoint()
+    {
+        var (_, mask, service) = CreateWithVolume(FlatVolume());
+        service.ActivateTool(LassoId);
+
+        Pointer(service, SlicePlane.XY, 4, 5, 5, SlicePointerPhase.Press);
+        Pointer(service, SlicePlane.XY, 4, 15, 5, SlicePointerPhase.Hover);
+        Pointer(service, SlicePlane.XY, 4, 15, 5, SlicePointerPhase.Press);
+        Pointer(service, SlicePlane.XY, 4, 15, 15, SlicePointerPhase.Hover);
+        Pointer(service, SlicePlane.XY, 4, 15, 15, SlicePointerPhase.Press);
+        Assert.IsTrue(service.WantsSecondaryPress, "a pending chain claims the right button");
+
+        // Right-clicking on the last pin drops that segment: the chain is back to seed + first pin.
+        Pointer(service, SlicePlane.XY, 4, 15, 5, SlicePointerPhase.SecondaryPress);
+        Assert.IsNull(service.Overlay!.Points, "the preview stays dot-free after an undo");
+        Assert.HasCount(11, service.Overlay.Path!, "the wire falls back to the seed and the first pin");
+
+        // The chain stays usable: re-pin the missing vertex and close the triangle.
+        Pointer(service, SlicePlane.XY, 4, 15, 15, SlicePointerPhase.Hover);
+        Pointer(service, SlicePlane.XY, 4, 15, 15, SlicePointerPhase.Press);
+        service.HandleKey(SliceToolKey.Enter);
+
+        Assert.IsTrue(mask[10, 6, 4], "the triangle fills after re-pinning the undone vertex");
+        Assert.IsNull(service.Overlay, "closing clears the preview");
+    }
+
+    [TestMethod]
+    public void MagneticLasso_RightClickOnSeed_DropsChain()
+    {
+        var (_, mask, service) = CreateWithVolume(FlatVolume());
+        service.ActivateTool(LassoId);
+
+        Pointer(service, SlicePlane.XY, 4, 5, 5, SlicePointerPhase.Press);
+        Pointer(service, SlicePlane.XY, 4, 5, 5, SlicePointerPhase.SecondaryPress);
+
+        Assert.IsNull(service.Overlay, "undoing the only point cancels the chain");
+        Assert.IsFalse(service.WantsSecondaryPress, "an empty chain no longer claims the right button");
+        Assert.IsFalse(mask[5, 5, 4], "nothing was written");
+        Assert.IsFalse(service.CanUndo, "nothing was committed");
+    }
+
+    [TestMethod]
     public void MagneticLasso_DoubleClick_Closes()
     {
         var (_, mask, service) = CreateWithVolume(FlatVolume());

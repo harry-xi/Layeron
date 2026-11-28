@@ -551,12 +551,14 @@ public interface ISliceTool
     void Deactivate();
     void HandlePointer(in SlicePointerEvent e);
     void HandleKey(SliceToolKey key);
+    bool WantsSecondaryPress => false;   // 默认不接管右键
 }
 ```
 
 - `Activate` 收到的 context 一直有效到 `Deactivate`；`Deactivate` 必须清掉挂起的手势并丢弃 context（工具切换、会话关闭、插件卸载都会走到这里）。
 - `HandlePointer` 的一次按下 → 移动 → 抬起是**一次手势**：所有写入放进同一个 `BeginEdit` 括号，`Dispose` 时合成一条撤销命令。
 - `HandleKey` 只处理 `Enter`（提交挂起手势）与 `Escape`（取消并清空临时状态）；其余快捷键由宿主负责。
+- `WantsSecondaryPress` 只在工具确实需要右键手势时返回 true（例如磁力套索在链未闭合时用右键撤销上一个钉点）；为 true 期间右键以 `SecondaryPress` 相位送到工具，否则宿主保留右键移动十字线的默认行为。默认实现返回 false，既有工具无需改动。
 - 一切 `context` / `scope` 调用都必须在 **UI 线程**上发生。工具若在后台线程计算（大范围区域生长、路径搜索），算完必须经 `context.Post` 回到 UI 线程再提交。
 - 工具不持有 UI 类型，也不直接改掩膜——写入只有 `MaskEditScope` 一条路。
 
@@ -598,7 +600,7 @@ public enum SliceToolOptionKind { Number, Toggle, Choice }
 ### SlicePointerEvent / SlicePoint 与相关枚举
 
 ```csharp
-public enum SlicePointerPhase { Press, Move, Release, Hover }
+public enum SlicePointerPhase { Press, Move, Release, Hover, SecondaryPress }
 public enum SliceToolKey { Enter, Escape }
 
 [Flags]
@@ -621,6 +623,7 @@ public readonly record struct SlicePointerEvent(
 
 - U / V 是**连续像素坐标**（已从控件坐标换算，未取整）；整数化由工具或算法自己决定。区域缓冲一律 `[V, U]`，与 `GetXYSlice` 的 `[Y, X]` 约定一致。
 - 没有单独的 `Click` / `DoubleClick` 相位：单击 = 一次 `Press` + `Release`，双击看 `ClickCount`。
+- `SecondaryPress` 是右键按下，只在工具的 `WantsSecondaryPress` 为 true 时送达；其余情况右键仍由宿主用来移动十字线。
 - `Plane` 复用既有的 `SlicePlane`（XY / XZ / YZ），`Index` 是该平面的层号，与 `GetXYSlice(int z)` 的 `z` 同一语义。
 - 修饰键是契约程序集自己的 `[Flags]` 枚举：视图层负责从 UI 框架映射，工具因此不依赖任何 UI 类型。
 

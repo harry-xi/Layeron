@@ -234,7 +234,7 @@ CustomImageViewer (PointerPressed/Moved/Released/KeyDown)
 | 区域 | **矩形 Rectangle** | 按住拖对角 | 抬起填充 | — |
 | 区域 | **椭圆 Ellipse** | 按住拖外接矩形 | 抬起填充 | — |
 | 区域 | **魔棒 MagicWand** | 单击种子 | **3D 容差区域生长**（种子灰度 ± 容差，6/26 连通）→ 一条命令提交全部受影响切片；后台执行，再点即取消上次 | 容差 0–255（默认 12）、连通 6/26（默认 26）、深度窗口 1–1024（默认 16）、全卷开关（默认关） |
-| 区域 | **磁力套索 MagneticLasso** | 点击种子 → 拖动实时吸附 → 点击钉住 → 双击 / 回车闭合 | 闭合 → 填充；Esc 取消 | 搜索半径（默认 48 px） |
+| 区域 | **磁力套索 MagneticLasso** | 点击种子 → 拖动实时吸附 → 点击钉住 → 双击 / 回车闭合；右键撤销上一个钉点（只剩种子时清链） | 闭合 → 填充；Esc 取消；预览只画线，不画顶点圆点 | 搜索半径（默认 48 px） |
 | 修边 | **笔刷 Brush** | 按住拖动 | **实时写入**（可见即所得），抬起结束一条命令；Esc 中途回滚 | 半径 1–64（默认 3）、深度 0–16（默认 0） |
 | 修边 | **橡皮 Eraser** | 同笔刷，`MaskWriteMode.Clear` | 同笔刷 | 同笔刷 |
 
@@ -434,6 +434,6 @@ P1–P3 顺序执行（P2/P3 依赖 P1 的契约冻结）；每阶段结束跑�
 
 **P5 文档（2026-11-20）**：docs/plugin 与 docs/en/plugin 两语言树同步更新 extension-points / api-reference / index——`layeron.tools.slice` 扩展点、`SliceToolContribution`、`AddSliceTool` 注册糖、契约类型参考（ISliceTool / 描述符 / 选项 / 指针事件 / 上下文 / MaskEditScope）、插件工具与内置工具同等待遇（工具箱分组 / 选项面板 / 撤销通道不可绕过）；api-reference 的 Big3DBitMap 段旧 `SetXYSlice(int x, int z, ...)` 签名同步为修复后的三对读写 API；本文状态行改"已实现"。
 
-**设计稿 §3 与实现契约的差异**（文档轮核对，以 `Plugin.Abstractions\SliceTools.cs` 为准）：`SliceToolContribution` 只有 `Descriptor` + `Factory`（无独立 `Id` 成员，工具 id 即 `Descriptor.Id`）；`SlicePointerPhase` 只有 `Press/Move/Release/Hover`（无独立 `Click/DoubleClick`——双击是 `Press` 的 `ClickCount >= 2`）；`SliceCursor` 无 `None`（仅 `Arrow/Crosshair`）；`SliceToolDescriptor.Description`、`ISliceToolContext.GetPlaneCount` 为实现新增；`AddSliceTool` 的查重只扫贡献表（无法跨层引用内置清单），内置 `layeron.tools.*` 前缀按**保留前缀**文档化——插件撞内置 id 会被接受但被目录遮蔽；`MaskEditHistory` 字节预算实现为 512 MB（设计稿记 1 GB），宿主内部细节不进插件文档。
+**设计稿 §3 与实现契约的差异**（文档轮核对，以 `Plugin.Abstractions\SliceTools.cs` 为准）：`SliceToolContribution` 只有 `Descriptor` + `Factory`（无独立 `Id` 成员，工具 id 即 `Descriptor.Id`）；`SlicePointerPhase` 在 `Press/Move/Release/Hover` 之外新增 `SecondaryPress`（右键按下；仅在工具的 `ISliceTool.WantsSecondaryPress` 为 true 时送达，默认 false 保持右键移动十字线，无独立 `Click/DoubleClick`——双击是 `Press` 的 `ClickCount >= 2`）；`SliceCursor` 无 `None`（仅 `Arrow/Crosshair`）；`SliceToolDescriptor.Description`、`ISliceToolContext.GetPlaneCount` 为实现新增；`AddSliceTool` 的查重只扫贡献表（无法跨层引用内置清单），内置 `layeron.tools.*` 前缀按**保留前缀**文档化——插件撞内置 id 会被接受但被目录遮蔽；`MaskEditHistory` 字节预算实现为 512 MB（设计稿记 1 GB），宿主内部细节不进插件文档。
 
 **至此设计 §11 全部阶段（P1–P5）完成。**

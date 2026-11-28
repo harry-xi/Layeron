@@ -200,6 +200,13 @@ public sealed class SliceToolService : IDisposable
             _active?.HandleKey(key);
     }
 
+    /// <summary>
+    /// True while the active tool wants right-button presses (e.g. the magnetic lasso undoing the
+    /// last pin); the slice view then forwards them as <see cref="SlicePointerPhase.SecondaryPress"/>
+    /// instead of moving the crosshair.
+    /// </summary>
+    public bool WantsSecondaryPress => !_disposed && _active?.WantsSecondaryPress == true;
+
     public void Undo() => History.Undo(_masks);
 
     public void Redo() => History.Redo(_masks);

@@ -829,11 +829,21 @@ public class SliceViewerViewModel : Document
     // The viewer converts gestures to continuous image-pixel coordinates; everything else
     // (axis→plane mapping, crosshair slice as index) is resolved here so a tool always
     // receives one consistent slice-space event no matter which view the user drew in.
-    private void OnToolPointer(SliceToolPointerArgs args) =>
+    private void OnToolPointer(SliceToolPointerArgs args)
+    {
+        // A right press is the tool's only while it opts in (the magnetic lasso's pin undo);
+        // otherwise it keeps the browse meaning of moving the crosshair to the clicked pixel.
+        if (args.Phase == SlicePointerPhase.SecondaryPress && _toolService?.WantsSecondaryPress != true)
+        {
+            OnClick(args.Point);
+            return;
+        }
+
         _toolService?.HandlePointer(
             CurrentPlane, CurrentSlice,
             args.Point.X, args.Point.Y,
             args.Phase, args.Modifiers, args.ClickCount);
+    }
 
     private void OnToolKey(SliceToolKey key) => _toolService?.HandleKey(key);
 

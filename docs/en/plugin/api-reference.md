@@ -475,6 +475,7 @@ public interface ISliceTool
     void Deactivate();
     void HandlePointer(in SlicePointerEvent e);
     void HandleKey(SliceToolKey key);
+    bool WantsSecondaryPress => false;   // opt in to right-button events
 }
 ```
 
@@ -484,6 +485,7 @@ A tool is a state machine, not a drawing primitive: it interprets pointer and ke
 - `Deactivate` must clear pending state and drop the context. The same instance is cached for the whole session, so it is activated again later.
 - `HandlePointer` receives one event in slice-pixel space. A drag (`Press` … `Move` … `Release`), a single click, or an `Enter`-closed polygon is **one gesture = one undo command**.
 - `HandleKey` exists for `Enter` (commit the pending gesture) and `Escape` (cancel it and clear scratch state).
+- `WantsSecondaryPress` opts in to right-button presses: while it is true the host forwards a `SecondaryPress` event to the tool (the magnetic lasso undoes its last pin this way); otherwise the right click keeps its default crosshair-navigation meaning. The default implementation returns false, so existing tools need no change.
 
 ### SliceToolDescriptor
 
@@ -541,14 +543,14 @@ public readonly record struct SlicePointerEvent(
     SliceKeyModifiers Modifiers,
     int ClickCount);        // 2+ means a double press on the same spot
 
-public enum SlicePointerPhase { Press, Move, Release, Hover }
+public enum SlicePointerPhase { Press, Move, Release, Hover, SecondaryPress }
 public enum SliceToolKey { Enter, Escape }
 
 [Flags]
 public enum SliceKeyModifiers { None = 0, Shift = 1, Control = 2, Alt = 4 }
 ```
 
-Coordinates are **continuous pixels**, not indices: rounding is the tool's decision. `Hover` means the pointer moved with no button held and is used for rubber-band previews; `Move` means a button is held. There is no separate double-click phase — `Press` with `ClickCount >= 2` is it. `SliceKeyModifiers` is a plain flags enum so the contract assembly stays free of any UI framework type.
+Coordinates are **continuous pixels**, not indices: rounding is the tool's decision. `Hover` means the pointer moved with no button held and is used for rubber-band previews; `Move` means a button is held. There is no separate double-click phase — `Press` with `ClickCount >= 2` is it. `SecondaryPress` is the right button going down; it reaches a tool only while that tool's `WantsSecondaryPress` is true, otherwise the host keeps using right-click to move the crosshair. `SliceKeyModifiers` is a plain flags enum so the contract assembly stays free of any UI framework type.
 
 ### ISliceToolContext
 

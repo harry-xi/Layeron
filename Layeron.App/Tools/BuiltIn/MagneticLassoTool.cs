@@ -8,8 +8,10 @@ namespace Layeron.App.Tools.BuiltIn;
 /// The magnetic lasso: the first click plants a seed, pointer moves show the live-wire segment from
 /// the last pinned point to the cursor (snapping to strong gradients), every further click pins the
 /// current segment, and a double-click or Enter closes the chain back to the seed and fills it.
-/// Escape drops the pending chain. Closing commits through <see cref="RegionToolBase"/>, so the fill
-/// participates in the cross-slice auto-connection like every other region tool.
+/// A right-click takes back the last pin (undoing the seed drops the whole chain); the preview is
+/// the bare wire path, without vertex dots. Escape drops the pending chain. Closing commits through
+/// <see cref="RegionToolBase"/>, so the fill participates in the cross-slice auto-connection like
+/// every other region tool.
 /// </summary>
 internal sealed class MagneticLassoTool : RegionToolBase
 {
@@ -17,7 +19,7 @@ internal sealed class MagneticLassoTool : RegionToolBase
     {
         Id = "layeron.tools.magneticlasso",
         DisplayName = "磁力套索",
-        Description = "点击种子，拖动实时吸附，点击钉住；双击或回车闭合；Esc 取消",
+        Description = "点击种子，拖动实时吸附，点击钉住；右键撤销上一个点；双击或回车闭合；Esc 取消",
         Group = "region",
         Order = 60,
         Options =
@@ -28,6 +30,11 @@ internal sealed class MagneticLassoTool : RegionToolBase
 
     private readonly List<SlicePoint> _pinned = [];
     private readonly List<SlicePoint> _live = [];
+
+    // Index in _pinned where each pinned segment starts (the seed itself is index 0). A right
+    // click pops the last entry and trims _pinned back to it, which undoes exactly the last pin
+    // regardless of how many interpolated pixels that segment contributed.
+    private readonly List<int> _segmentStarts = [];
     private SlicePlane _plane;
     private int _index;
     private bool _started;
@@ -62,6 +69,10 @@ internal sealed class MagneticLassoTool : RegionToolBase
                     }
 
                     UpdateLiveSegment(e.U, e.V);
+                    // A volume reload during the segment search drops the chain; do not pin into it.
+                    if (!_started)
+                        return;
+                    _segmentStarts.Add(_pinned.Count);
                     _pinned.AddRange(_live);
                     _live.Clear();
                     _pinCount++;
@@ -86,7 +97,16 @@ internal sealed class MagneticLassoTool : RegionToolBase
                 if (!_started || e.Plane != _plane || e.Index != _index)
                     return;
                 UpdateLiveSegment(e.U, e.V);
-                Preview();
+                if (_started)
+                    Preview();
+                break;
+
+            // A right click takes back the most recent pin: the chain falls back to the previous
+            // vertex and the live segment starts over towards the cursor.
+            case SlicePointerPhase.SecondaryPress:
+                if (!_started || e.Plane != _plane || e.Index != _index)
+                    return;
+                UndoLastPin(e.U, e.V);
                 break;
         }
     }
@@ -105,11 +125,36 @@ internal sealed class MagneticLassoTool : RegionToolBase
         }
     }
 
+    /// <summary>Right-button presses undo pending pins instead of moving the crosshair.</summary>
+    public override bool WantsSecondaryPress => _started;
+
+    /// <summary>
+    /// Drops the most recent pinned segment and re-opens the live wire from the previous vertex
+    /// towards the cursor. Undoing when only the seed is left clears the whole chain.
+    /// </summary>
+    private void UndoLastPin(double u, double v)
+    {
+        if (_segmentStarts.Count == 0)
+        {
+            ClearPending();
+            return;
+        }
+
+        var start = _segmentStarts[^1];
+        _segmentStarts.RemoveAt(_segmentStarts.Count - 1);
+        _pinned.RemoveRange(start, _pinned.Count - start);
+        _pinCount--;
+        UpdateLiveSegment(u, v);
+        if (_started)
+            Preview();
+    }
+
     protected override void ClearPending()
     {
         _started = false;
         _pinCount = 0;
         _pinned.Clear();
+        _segmentStarts.Clear();
         _live.Clear();
         ClearPreview();
     }
@@ -196,5 +241,5 @@ internal sealed class MagneticLassoTool : RegionToolBase
     }
 
     private void Preview() =>
-        SetPreview(_plane, _index, [.. _pinned, .. _live], _pinned, null);
+        SetPreview(_plane, _index, [.. _pinned, .. _live], null, null);
 }

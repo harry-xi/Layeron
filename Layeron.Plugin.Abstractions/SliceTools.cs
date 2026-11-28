@@ -23,7 +23,14 @@ public enum SlicePointerPhase
     Release,
 
     /// <summary>The pointer moved with no button held.</summary>
-    Hover
+    Hover,
+
+    /// <summary>
+    /// A secondary (right) button went down. Routed to the tool only while its
+    /// <see cref="ISliceTool.WantsSecondaryPress"/> is true; every other tool keeps the host's
+    /// default right-click behaviour.
+    /// </summary>
+    SecondaryPress
 }
 
 /// <summary>The two keys a slice tool needs beyond pointer events.</summary>
@@ -180,6 +187,13 @@ public interface ISliceTool
 
     /// <summary>Handles Enter/Escape while active.</summary>
     void HandleKey(SliceToolKey key);
+
+    /// <summary>
+    /// True while a secondary (right-button) press should be delivered to the tool as
+    /// <see cref="SlicePointerPhase.SecondaryPress"/> instead of the host's right-click navigation.
+    /// Defaults to false, so tools that do not opt in keep the default behaviour.
+    /// </summary>
+    bool WantsSecondaryPress => false;
 }
 
 /// <summary>

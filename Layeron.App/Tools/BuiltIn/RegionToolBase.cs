@@ -37,6 +37,12 @@ internal abstract class RegionToolBase : ISliceTool
 
     public abstract void HandleKey(SliceToolKey key);
 
+    /// <summary>
+    /// True while the tool consumes right-button presses (delivered as
+    /// <see cref="SlicePointerPhase.SecondaryPress"/>). Region tools default to false.
+    /// </summary>
+    public virtual bool WantsSecondaryPress => false;
+
     /// <summary>Drops every tool's pending gesture state and clears the preview overlay.</summary>
     protected abstract void ClearPending();
 
